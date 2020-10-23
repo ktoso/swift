@@ -39,7 +39,7 @@ extension Task {
     ///
     /// This is appropriate when the caller is something "busy", like an event
     /// loop, and doesn't want to be potentially delayed by arbitrary work.
-    func resume(returning: T) {
+    public func resume(returning: T) {
       fatalError("\(#function) not implemented yet.")
     }
   }
@@ -52,18 +52,18 @@ extension Task {
     ///
     /// This is appropriate when the caller is something "busy", like an event
     /// loop, and doesn't want to be potentially delayed by arbitrary work.
-    func resume(returning: T) {
+    public func resume(returning: T) {
       fatalError("\(#function) not implemented yet.")
     }
 
-    /// Resume the continuation with an error value and make the task schedulable.
+    /// Resume the continuation with an error and make the task schedulable.
     ///
     /// The task will never run synchronously, even if the task does not
     /// need to be resumed on a specific executor.
     ///
     /// This is appropriate when the caller is something "busy", like an event
     /// loop, and doesn't want to be potentially delayed by arbitrary work.
-    func resume(throwing: E) {
+    public func resume(throwing: E) {
       fatalError("\(#function) not implemented yet.")
     }
   }
@@ -71,7 +71,7 @@ extension Task {
   /// The operation functions must resume the continuation *exactly once*.
   ///
   /// The continuation will not begin executing until the operation function returns.
-  public func withUnsafeContinuation<T>(
+  public static func withUnsafeContinuation<T>(
     operation: (UnsafeContinuation<T>) -> Void
   ) async -> T {
     fatalError("\(#function) not implemented yet.")
@@ -80,7 +80,9 @@ extension Task {
   /// The operation functions must resume the continuation *exactly once*.
   ///
   /// The continuation will not begin executing until the operation function returns.
-  public func withUnsafeThrowingContinuation<T>(operation: (UnsafeThrowingContinuation<T, Error>) -> Void) async throws -> T {
+  public static func withUnsafeThrowingContinuation<T>(
+    operation: (UnsafeThrowingContinuation<T, Error>) -> Void
+  ) async throws -> T {
     fatalError("\(#function) not implemented yet.")
   }
 }
