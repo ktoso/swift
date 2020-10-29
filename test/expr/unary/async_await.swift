@@ -77,6 +77,9 @@ func testClosure() {
 
 // Nesting async and await together
 func throwingAndAsync() async throws -> Int { return 0 }
+func rethrowingAndAsync<T>(_ f: () async throws -> T) async rethrows -> T {
+  return await try f()
+}
 
 enum HomeworkError : Error {
   case dogAteIt
@@ -87,6 +90,8 @@ func testThrowingAndAsync() async throws {
   _ = try await throwingAndAsync()
   _ = await (try throwingAndAsync())
   _ = try (await throwingAndAsync())
+
+  _ = await try rethrowingAndAsync { await try throwingAndAsync() }
 
   // Errors
   _ = await throwingAndAsync() // expected-error{{call can throw but is not marked with 'try'}}
