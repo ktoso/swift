@@ -2306,6 +2306,14 @@ class Serializer::DeclSerializer : public DeclVisitor<DeclSerializer> {
       return;
     }
 
+    case DAK_DistributedActor: {
+      auto *theAttr = cast<DistributedActorAttr>(DA);
+      auto abbrCode = S.DeclTypeAbbrCodes[DistributedActorDeclAttrLayout::Code];
+      DistributedActorDeclAttrLayout::emitRecord(S.Out, S.ScratchRecord,
+                                        abbrCode, (unsigned)theAttr->getKind());
+      return;
+    }
+
     case DAK_Optimize: {
       auto *theAttr = cast<OptimizeAttr>(DA);
       auto abbrCode = S.DeclTypeAbbrCodes[OptimizeDeclAttrLayout::Code];

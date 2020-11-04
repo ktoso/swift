@@ -3621,6 +3621,9 @@ public:
   /// Whether the class is an actor.
   bool isActor() const;
 
+  /// Whether the class is an distributed actor.
+  bool isDistributedActor() const;
+
   /// Returns true if the class has designated initializers that are not listed
   /// in its members.
   ///

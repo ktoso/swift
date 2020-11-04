@@ -1710,20 +1710,20 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
     break;
   }
 
-//  case DAK_DistributedActor: {
-//    // if no option is provided, then it's the 'safe' version.
-//    if (!consumeIf(tok::l_paren)) {
-//      if (!DiscardAttribute) {
-//        AttrRange = SourceRange(Loc, Tok.getRange().getStart());
-//        Attributes.add(new (Context) DistributedActorAttr(AtLoc, AttrRange,
-//                                               DistributedActorKind::Default));
-//      }
-//      break;
-//    }
-//
-//    // We do not (yet) support any additional options for @distributed.
-//    return false;
-//  }
+  case DAK_DistributedActor: {
+    // if no option is provided, then it's the 'safe' version.
+    if (!consumeIf(tok::l_paren)) {
+      if (!DiscardAttribute) {
+        AttrRange = SourceRange(Loc, Tok.getRange().getStart());
+        Attributes.add(new (Context) DistributedActorAttr(AtLoc, AttrRange,
+                                               DistributedActorKind::Default));
+      }
+      break;
+    }
+
+    // We do not (yet) support any additional options for @distributed.
+    return false;
+  }
 
   case DAK_Optimize: {
     if (!consumeIf(tok::l_paren)) {

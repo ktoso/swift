@@ -4271,10 +4271,10 @@ ERROR(distributedactor_storage,none,
       ())
 ERROR(distributedactor_not_actor,none,
       "'@distributed' can only be applied to 'actor class' definitions, "
-      "or actor-isolated async functions",
+      "and distributed actor isolated async functions",
       ())
 ERROR(distributedactor_not_actor_func,none,
-      "'@distributed' can only be applied to actor-isolated async functions",
+      "'@distributed' can only be applied to @distributed actor async functions",
       ())
 
 ERROR(concurrency_lib_missing,none,

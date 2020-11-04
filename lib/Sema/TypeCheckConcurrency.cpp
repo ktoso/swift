@@ -235,6 +235,16 @@ bool IsActorRequest::evaluate(
   return actorAttr != nullptr;
 }
 
+bool IsDistributedActorRequest::evaluate(
+    Evaluator &evaluator, ClassDecl *classDecl) const {
+  // If concurrency is not enabled, we don't have actors.
+  auto distributedAttr = classDecl->getAttrs().getAttribute<DistributedActorAttr>();
+
+  // NOTE: that we DO NOT infer @distributed even if the parent class was distributed.
+
+  return distributedAttr != nullptr;
+}
+
 static bool isDeclNotAsAccessibleAsParent(ValueDecl *decl,
                                           NominalTypeDecl *parent) {
   return decl->getFormalAccess() <
