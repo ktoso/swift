@@ -337,6 +337,67 @@ public:
     (void)getActorIsolation(VD);
   }
 
+  void visitDistributedActorAttr(DistributedActorAttr *attr) {
+    // @distributed can be applied to actor class definitions and async functions
+    auto dc = D->getDeclContext();
+    if (auto var = dyn_cast<VarDecl>(D)) {
+      // @distributed can not be applied to stored properties
+      diagnoseAndRemoveAttr(attr, diag::distributedactor_let);
+      return;
+
+//      if (var->hasStorage()) {
+//        switch (attr->getKind()) {
+//          case ActorIndependentKind::Safe:
+//            diagnoseAndRemoveAttr(attr, diag::distributedactor_storage);
+//            return;
+//
+//          case DistributedActorKind::Unsafe:
+//            break;
+//        }
+//      }
+//
+//      // @distributed can not be applied to local properties.
+//      if (dc->isLocalContext()) {
+//        diagnoseAndRemoveAttr(attr, diag::distributedactor_local_var);
+//        return;
+//      }
+//
+//      // If this is a static or global variable, we're all set.
+//      if (dc->isModuleScopeContext() ||
+//          (dc->isTypeContext() && var->isStatic())) {
+//        return;
+//      }
+//
+//      // Otherwise, fall through to make sure we're in an appropriate context.
+    }
+
+    // @distributed only makes sense on an actor instance member.
+//    if (dc->getSelfClassDecl() && dc->getSelfClassDecl()->isActor()) {
+//      diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
+//      return;
+//    }
+
+    // @distributed may only be declared on an `actor class`
+    if (auto classDecl = dyn_cast<ClassDecl>(D)) {
+      if (!classDecl->isActor()) {
+        diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
+        return;
+      } // else, good: `@distributed actor class`
+    } else {
+      diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
+      return;
+    }
+
+
+//    auto VD = cast<ValueDecl>(D);
+//    if (!VD->isInstanceMember()) {
+//      diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor_func);
+//      return;
+//    }
+//
+//    (void)getActorIsolation(VD);
+  }
+
   void visitGlobalActorAttr(GlobalActorAttr *attr) {
     auto nominal = dyn_cast<NominalTypeDecl>(D);
     if (!nominal)

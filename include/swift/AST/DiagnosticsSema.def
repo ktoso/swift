@@ -4259,6 +4259,24 @@ ERROR(actorindependent_not_actor_instance_member,none,
       "'@actorIndependent' can only be applied to instance members of actors",
       ())
 
+ERROR(distributedactor_local_var,none,
+      "'@distributed' can not be applied to local variables",
+      ())
+ERROR(distributedactor_let,none,
+      "'@distributed' can not be applied to local properties",
+      ())
+ERROR(distributedactor_storage,none,
+      "'@distributed' can not be applied to actor properties; "
+      "Only async functions can be '@distributed'",
+      ())
+ERROR(distributedactor_not_actor,none,
+      "'@distributed' can only be applied to 'actor class' definitions, "
+      "or actor-isolated async functions",
+      ())
+ERROR(distributedactor_not_actor_func,none,
+      "'@distributed' can only be applied to actor-isolated async functions",
+      ())
+
 ERROR(concurrency_lib_missing,none,
       "missing '%0' declaration, probably because the '_Concurrency' "
       "module was not imported", (StringRef))

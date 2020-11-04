@@ -583,7 +583,7 @@ SIMPLE_DECL_ATTR(globalActor, GlobalActor,
   APIStableToAdd | APIBreakingToRemove,
   104)
 
-DECL_ATTR(distributed, DistributedActor,
+SIMPLE_DECL_ATTR(distributed, DistributedActor,
   OnClass | ConcurrencyOnly |
   ABIBreakingToAdd | ABIBreakingToRemove |
   APIStableToAdd | APIBreakingToRemove,
