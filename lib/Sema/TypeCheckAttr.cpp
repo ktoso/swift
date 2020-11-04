@@ -383,11 +383,7 @@ public:
         diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
         return;
       } // else, good: `@distributed actor class`
-    } else {
-      diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
-      return;
     }
-
 
 //    auto VD = cast<ValueDecl>(D);
 //    if (!VD->isInstanceMember()) {

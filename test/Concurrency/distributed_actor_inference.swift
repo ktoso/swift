@@ -23,13 +23,13 @@ actor class SomeActor { }
 //  @distributed func nopeAsync() async -> Int { 42 }
 //}
 
-//@distributed
-//actor class SomeDistributedActor_5 {
-//  // ==== ----------------------------------------------------------------------
-//  // BAD:
-////  @distributed func nope() -> Int { 42 } // must be async
-//
-//  // ==== ----------------------------------------------------------------------
-//  // OK:
-//  @distributed func nopeAsync() async -> Int { 42 } // ok
-//}
+@distributed
+actor class SomeDistributedActor_5 {
+  // ==== ----------------------------------------------------------------------
+  // BAD:
+//  @distributed func nope() -> Int { 42 } // must be async
+
+  // ==== ----------------------------------------------------------------------
+  // OK:
+  @distributed func nopeAsync() async -> Int { 42 } // ok
+}
