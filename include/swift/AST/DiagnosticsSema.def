@@ -4276,6 +4276,9 @@ ERROR(distributedactor_not_actor,none,
 ERROR(distributedactor_not_actor_func,none,
       "'@distributed' can only be applied to @distributed actor async functions",
       ())
+ERROR(distributedactor_func_not_async,none,
+      "'@distributed' actor-isolated function must be async",
+      ())
 
 ERROR(concurrency_lib_missing,none,
       "missing '%0' declaration, probably because the '_Concurrency' "

@@ -16,12 +16,12 @@ actor class SomeActor { }
 
 // ==== ------------------------------------------------------------------------
 // MARK: Declaring distributed functions
-//
-//// NOTE: not distributed actor, so cannot have any distributed functions
-//actor class SomeDistributedActor_4 {
-//  @distributed func nope() -> Int { 42 }
-//  @distributed func nopeAsync() async -> Int { 42 }
-//}
+
+// NOTE: not distributed actor, so cannot have any distributed functions
+actor class SomeDistributedActor_4 {
+  @distributed func nope() -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be async}}
+  @distributed func nopeAsync() async -> Int { 42 }
+}
 
 @distributed
 actor class SomeDistributedActor_5 {
