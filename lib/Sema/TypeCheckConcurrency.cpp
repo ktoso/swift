@@ -483,12 +483,24 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
 
   case DeclKind::Param:
   case DeclKind::Var:
-    // 'let' declarations are immutable, so there are no restrictions on
-    // their access.
-    if (cast<VarDecl>(decl)->isLet())
-      return forUnrestricted();
+      switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
+      case ActorIsolation::DistributedActorInstance:
+          // Accessing properties on a distributed actor is only allowed when
+          // accessing 'self', because otherwise the actor may be remote, and
+          // thus the state is not held locally at all.
+          return forActorSelf(isolation.getActor());
 
-    LLVM_FALLTHROUGH;
+      case ActorIsolation::ActorInstance:
+      case ActorIsolation::Unspecified:
+      case ActorIsolation::Independent:
+      case ActorIsolation::IndependentUnsafe:
+      case ActorIsolation::GlobalActor:
+          // for local actors 'let' declarations are immutable,
+          // so there are no restrictions on their access.
+          if (cast<VarDecl>(decl)->isLet())
+              return forUnrestricted();
+        LLVM_FALLTHROUGH;
+      }
 
   case DeclKind::Accessor:
   case DeclKind::Func:
@@ -508,6 +520,7 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
     // Determine the actor isolation of the given declaration.
     switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
     case ActorIsolation::ActorInstance:
+    case ActorIsolation::DistributedActorInstance:
       // Protected actor instance members can only be accessed on 'self'.
       return forActorSelf(isolation.getActor());
 
@@ -777,6 +790,7 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
       auto getActorIsolation = [constDC](ValueDecl *value) {
         switch (auto isolation = swift::getActorIsolation(value)) {
         case ActorIsolation::ActorInstance:
+        case ActorIsolation::DistributedActorInstance:
         case ActorIsolation::Independent:
         case ActorIsolation::IndependentUnsafe:
         case ActorIsolation::Unspecified:
@@ -834,6 +848,7 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
       switch (auto contextIsolation =
                   getInnermostIsolatedContext(getDeclContext())) {
       case ActorIsolation::ActorInstance:
+      case ActorIsolation::DistributedActorInstance:
         ctx.Diags.diagnose(
             loc, diag::global_actor_from_instance_actor_context,
             value->getDescriptiveKind(), value->getName(), globalActor,
@@ -944,6 +959,7 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
         switch (auto contextIsolation = getActorIsolation(
                    cast<ValueDecl>(selfVar->getDeclContext()->getAsDecl()))) {
           case ActorIsolation::ActorInstance:
+          case ActorIsolation::DistributedActorInstance:
             // An escaping partial application of something that is part of
             // the actor's isolated state is never permitted.
             if (isEscapingPartialApply) {
@@ -1025,9 +1041,12 @@ static Optional<ActorIsolation> getIsolationFromAttributes(Decl *decl) {
   // Look up attributes on the declaration that can affect its actor isolation.
   // If any of them are present, use that attribute.
   auto independentAttr = decl->getAttrs().getAttribute<ActorIndependentAttr>();
+//  auto distributedAttr = decl->getAttrs().getAttribute<DistributedActorAttr>();
   auto globalActorAttr = decl->getGlobalActorAttr();
   unsigned numIsolationAttrs =
-    (independentAttr ? 1 : 0) + (globalActorAttr ? 1 : 0);
+    (independentAttr ? 1 : 0) +
+//    (distributedAttr ? 1 : 0) +
+    (globalActorAttr ? 1 : 0);
   if (numIsolationAttrs == 0)
     return None;
 
@@ -1054,6 +1073,11 @@ static Optional<ActorIsolation> getIsolationFromAttributes(Decl *decl) {
   if (independentAttr) {
     return ActorIsolation::forIndependent(independentAttr->getKind());
   }
+
+//  // If the declaration is explicitly marked @distributed, report it as such.
+//  if (distributedAttr) {
+//      return ActorIsolation::forDistributedActorInstance(nullptr); // FIXME how to get the actor here?
+//  }
 
   // If the declaration is marked with a global actor, report it as being
   // part of that global actor.
@@ -1126,6 +1150,7 @@ static Optional<ActorIsolation> getIsolationFromWitnessedRequirements(
     auto isolation = std::get<1>(isolated);
     switch (isolation) {
       case ActorIsolation::ActorInstance:
+      case ActorIsolation::DistributedActorInstance:
         llvm_unreachable("protocol requirements cannot be actor instances");
 
       case ActorIsolation::Independent:
@@ -1180,7 +1205,14 @@ ActorIsolation ActorIsolationRequest::evaluate(
   // actor-isolated state.
   auto classDecl = value->getDeclContext()->getSelfClassDecl();
   if (classDecl && classDecl->isActor() && value->isInstanceMember()) {
-    defaultIsolation = ActorIsolation::forActorInstance(classDecl);
+      auto distributedAttr = value->getAttrs().getAttribute<DistributedActorAttr>();
+      if (distributedAttr) {
+        // It is distributed, so we must apply slightly stronger isolation.
+        defaultIsolation = ActorIsolation::forDistributedActorInstance(classDecl);
+      } else {
+        // It is a local actor
+        defaultIsolation = ActorIsolation::forActorInstance(classDecl);
+      }
   }
 
   // Disable inference of actor attributes outside of normal Swift source files.
@@ -1209,6 +1241,7 @@ ActorIsolation ActorIsolationRequest::evaluate(
     }
 
     case ActorIsolation::ActorInstance:
+    case ActorIsolation::DistributedActorInstance:
     case ActorIsolation::Unspecified:
       // Nothing to do.
       break;

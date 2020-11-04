@@ -62,6 +62,10 @@ public:
     /// References to a declaration that is part of a global actor are only
     /// permitted from other declarations with that same global actor.
     GlobalActor,
+//
+//    /// References to declarations that are part of a distributed actor are
+//    /// only permitted if they are async.
+//    DistributedActor,
   };
 
 private:

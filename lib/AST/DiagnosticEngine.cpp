@@ -669,6 +669,10 @@ static void formatDiagnosticArgument(StringRef Modifier,
       Out << "actor-isolated";
       break;
 
+    case ActorIsolation::DistributedActorInstance:
+      Out << "distributed actor "; // TODO: could print it's address?
+      break;
+
     case ActorIsolation::GlobalActor:
       Out << "global actor " << FormatOpts.OpeningQuotationMark
         << isolation.getGlobalActor().getString()

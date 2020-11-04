@@ -2695,6 +2695,7 @@ bool ConformanceChecker::checkActorIsolation(
   Type requirementGlobalActor;
   switch (auto requirementIsolation = getActorIsolation(requirement)) {
   case ActorIsolation::ActorInstance:
+  case ActorIsolation::DistributedActorInstance:
     llvm_unreachable("There are not actor protocols");
 
   case ActorIsolation::GlobalActor: {

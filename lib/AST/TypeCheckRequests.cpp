@@ -1494,6 +1494,7 @@ void CustomAttrTypeRequest::cacheResult(Type value) const {
 bool ActorIsolation::requiresSubstitution() const {
   switch (kind) {
   case ActorInstance:
+  case DistributedActorInstance:
   case Independent:
   case IndependentUnsafe:
   case Unspecified:
@@ -1508,6 +1509,7 @@ bool ActorIsolation::requiresSubstitution() const {
 ActorIsolation ActorIsolation::subst(SubstitutionMap subs) const {
   switch (kind) {
   case ActorInstance:
+  case DistributedActorInstance:
   case Independent:
   case IndependentUnsafe:
   case Unspecified:
@@ -1524,6 +1526,10 @@ void swift::simple_display(
   switch (state) {
     case ActorIsolation::ActorInstance:
       out << "actor-isolated to instance of " << state.getActor()->getName();
+      break;
+
+    case ActorIsolation::DistributedActorInstance:
+      out << "distributed-actor-isolated to instance of " << state.getActor()->getName();
       break;
 
     case ActorIsolation::Independent:
