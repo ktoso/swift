@@ -338,7 +338,7 @@ public:
   }
 
   void visitDistributedActorAttr(DistributedActorAttr *attr) {
-    // auto dc = D->getDeclContext();
+    auto dc = D->getDeclContext();
 
     // @distributed can be applied to actor class definitions and async functions
     if (auto var = dyn_cast<VarDecl>(D)) {
@@ -347,10 +347,6 @@ public:
       return;
     }
 
-//    if (dc->getSelfClassDecl() && dc->getSelfClassDecl()->isActor()) {
-//      diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
-//      return;
-//    }
 
     // @distributed can only be declared on an `actor class`
     if (auto classDecl = dyn_cast<ClassDecl>(D)) {
@@ -364,6 +360,13 @@ public:
     if (auto funcDecl = dyn_cast<FuncDecl>(D)) {
       if (!funcDecl->hasAsync()) {
         diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_async);
+        return;
+      }
+
+      if (dc->getSelfClassDecl() &&
+          !dc->getSelfClassDecl()->isDistributedActor()) {
+        diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_in_distributed_actor);
+        return;
       }
     }
 

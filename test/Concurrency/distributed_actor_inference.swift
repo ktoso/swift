@@ -23,8 +23,13 @@ actor class SomeDistributedActor_4 {
   @distributed func nopeAsync() async -> Int { 42 }
 }
 
+struct SomeDistributedActor_5 {
+  @distributed func nope() -> Int { 42 } // expected-error{{NO}}
+  @distributed func nopeAsync() async -> Int { 42 } // expected-error{{'@distributed' function can only be declared within '@distributed actor class'}}
+}
+
 @distributed
-actor class SomeDistributedActor_5 {
+actor class SomeDistributedActor_6 {
   // ==== ----------------------------------------------------------------------
   // BAD:
 //  @distributed func nope() -> Int { 42 } // must be async
