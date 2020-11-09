@@ -6757,6 +6757,18 @@ bool AbstractFunctionDecl::canBeAsyncHandler() const {
                            false);
 }
 
+bool AbstractFunctionDecl::isDistributed() const {
+  auto func = dyn_cast<FuncDecl>(this);
+  if (!func)
+    return false;
+
+  auto mutableFunc = const_cast<FuncDecl *>(func);
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsDistributedFuncRequest{mutableFunc},
+                           false);
+}
+
+
 BraceStmt *AbstractFunctionDecl::getBody(bool canSynthesize) const {
   if ((getBodyKind() == BodyKind::Synthesize ||
        getBodyKind() == BodyKind::Unparsed) &&

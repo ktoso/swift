@@ -4183,6 +4183,10 @@ ERROR(actor_isolated_non_self_reference,none,
         "actor-isolated %0 %1 can only be referenced "
         "%select{inside the actor|on 'self'}2",
         (DescriptiveDeclKind, DeclName, bool))
+ERROR(distributed_actor_isolated_non_self_reference,none,
+        "actor-isolated %0 %1 can only be referenced "
+        "inside the distributed actor",
+        (DescriptiveDeclKind, DeclName))
 ERROR(actor_isolated_self_independent_context,none,
         "actor-isolated %0 %1 can not be referenced from an "
         "'@actorIndependent' context",

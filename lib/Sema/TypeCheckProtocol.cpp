@@ -2652,7 +2652,8 @@ bool ConformanceChecker::checkActorIsolation(
   Type witnessGlobalActor;
   switch (auto witnessRestriction =
               ActorIsolationRestriction::forDeclaration(witness)) {
-  case ActorIsolationRestriction::ActorSelf: {
+  case ActorIsolationRestriction::ActorSelf:
+  case ActorIsolationRestriction::DistributedActor: {
     // Actor-isolated witnesses cannot conform to protocol requirements.
     bool canBeAsyncHandler = false;
     if (auto witnessFunc = dyn_cast<FuncDecl>(witness)) {

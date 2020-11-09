@@ -62,10 +62,10 @@ public:
     /// References to a declaration that is part of a global actor are only
     /// permitted from other declarations with that same global actor.
     GlobalActor,
-//
-//    /// References to declarations that are part of a distributed actor are
-//    /// only permitted if they are async.
-//    DistributedActor,
+
+    /// References to declarations that are part of a distributed actor are
+    /// only permitted if they are async.
+    DistributedActor,
   };
 
 private:
@@ -96,7 +96,7 @@ public:
 
   /// Retrieve the actor class that the declaration is within.
   ClassDecl *getActorClass() const {
-    assert(kind == ActorSelf);
+    assert(kind == ActorSelf || kind == DistributedActor);
     return data.actorClass;
   }
 
@@ -118,8 +118,17 @@ public:
 
   /// Accesses to the given declaration can only be made via the 'self' of
   /// the current actor.
+  // FIXME: this is not _entirely_ just self is it? it also allows a let to be accessed externally!
   static ActorIsolationRestriction forActorSelf(ClassDecl *actorClass) {
     ActorIsolationRestriction result(ActorSelf);
+    result.data.actorClass = actorClass;
+    return result;
+  }
+
+  /// Accesses to the given declaration can only be made via the 'self' of
+  /// the current actor.
+  static ActorIsolationRestriction forDistributedActorSelf(ClassDecl *actorClass) {
+    ActorIsolationRestriction result(DistributedActor);
     result.data.actorClass = actorClass;
     return result;
   }

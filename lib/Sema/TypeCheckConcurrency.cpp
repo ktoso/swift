@@ -22,6 +22,7 @@
 #include "swift/AST/ProtocolConformance.h"
 #include "swift/AST/NameLookupRequests.h"
 #include "swift/AST/TypeCheckRequests.h"
+#include <cstdio>
 
 using namespace swift;
 
@@ -238,10 +239,17 @@ bool IsActorRequest::evaluate(
 bool IsDistributedActorRequest::evaluate(
     Evaluator &evaluator, ClassDecl *classDecl) const {
   // If concurrency is not enabled, we don't have actors.
-  auto distributedAttr = classDecl->getAttrs().getAttribute<DistributedActorAttr>();
+  auto distributedAttr = classDecl->getAttrs()
+      .getAttribute<DistributedActorAttr>();
 
   // NOTE: that we DO NOT infer @distributed even if the parent class was distributed.
 
+  return distributedAttr != nullptr;
+}
+
+bool IsDistributedFuncRequest::evaluate(
+    Evaluator &evaluator, FuncDecl *func) const {
+  auto distributedAttr = func->getAttrs().getAttribute<DistributedActorAttr>();
   return distributedAttr != nullptr;
 }
 
@@ -496,9 +504,9 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
       switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
       case ActorIsolation::DistributedActorInstance:
           // Accessing properties on a distributed actor is only allowed when
-          // accessing 'self', because otherwise the actor may be remote, and
-          // thus the state is not held locally at all.
-          return forActorSelf(isolation.getActor());
+          // accessing 'self'; this includes `let` properties as well,
+          // unlike local actors
+          return forDistributedActorSelf(isolation.getActor());
 
       case ActorIsolation::ActorInstance:
       case ActorIsolation::Unspecified:
@@ -518,6 +526,11 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
     // A function that provides an asynchronous context has no restrictions
     // on its access.
     if (auto func = dyn_cast<AbstractFunctionDecl>(decl)) {
+      printf("analysis: %s\n", decl->printRef().c_str());
+      if (func->isDistributed())
+        if (auto classDecl = dyn_cast<ClassDecl>(decl->getDeclContext()))
+          return forDistributedActorSelf(classDecl);
+
       if (func->isAsyncContext())
         return forUnrestricted();
     }
@@ -529,8 +542,12 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
 
     // Determine the actor isolation of the given declaration.
     switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
-    case ActorIsolation::ActorInstance:
     case ActorIsolation::DistributedActorInstance:
+      // Only distributed functions can be called externally on a distributed actor.
+      printf("detected distributed actor isolated declaration");
+      return forDistributedActorSelf(isolation.getActor());
+
+    case ActorIsolation::ActorInstance:
       // Protected actor instance members can only be accessed on 'self'.
       return forActorSelf(isolation.getActor());
 
@@ -906,6 +923,7 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
         return false;
 
       case ActorIsolationRestriction::ActorSelf:
+      case ActorIsolationRestriction::DistributedActor:
         llvm_unreachable("non-member reference into an actor");
 
       case ActorIsolationRestriction::GlobalActor:
@@ -951,7 +969,33 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
       case ActorIsolationRestriction::Unrestricted:
         return false;
 
-      case ActorIsolationRestriction::ActorSelf: {
+      case ActorIsolationRestriction::DistributedActor:
+        // distributed actor properties may not be accessed, ever, unlike local
+        // ones where a let may be allowed.
+
+//        if (auto selfVar = getSelfReference(base)) {
+//          if (cast<ValueDecl>(selfVar->getDeclContext()->getAsDecl())) {
+
+            // no value declaration may be accessed directly on distributed actor
+//            ctx.Diags.diagnose(
+//                memberLoc, diag::distributed_actor_isolated_non_self_reference,
+//                member->getDescriptiveKind(),
+//                member->getName(),
+//                isolation.getActorClass() ==
+//                getNearestEnclosingActorContext(getDeclContext()));
+            ctx.Diags.diagnose(
+                memberLoc, diag::distributed_actor_isolated_non_self_reference,
+                member->getDescriptiveKind(),
+                member->getName());
+            noteIsolatedActorMember(member);
+            printf(">>>>>> nein");
+            return true;
+//          }
+//        }
+        // continue checking as if it was actor self isolated
+        LLVM_FALLTHROUGH;
+
+        case ActorIsolationRestriction::ActorSelf: {
         // Must reference actor-isolated state on 'self'.
         auto selfVar = getSelfReference(base);
         if (!selfVar) {

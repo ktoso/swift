@@ -394,6 +394,8 @@ static bool checkObjCActorIsolation(const ValueDecl *VD,
     // declarations.
   case ActorIsolationRestriction::Unrestricted:
   case ActorIsolationRestriction::LocalCapture:
+  case ActorIsolationRestriction::DistributedActor:
+    // TODO: Do we need to allow distributed actors be accessible from obj-c?
   case ActorIsolationRestriction::Unsafe:
     return false;
   }
