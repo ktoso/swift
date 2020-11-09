@@ -469,6 +469,10 @@ void SILGenFunction::emitProlog(CaptureInfo captureInfo,
         actor = borrowedSelf.getValue();
         break;
       }
+      case ActorIsolation::DistributedActorInstance: {
+        // TODO: perhaps here we can emit our special handling to make a message?
+        LLVM_FALLTHROUGH;
+      }
       case ActorIsolation::GlobalActor: {
         CanType actorType = CanType(actorIsolation.getGlobalActor());
         NominalTypeDecl *nominal = actorType->getNominalOrBoundGenericNominal();

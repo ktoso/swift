@@ -353,18 +353,28 @@ public:
       if (!classDecl->isActor()) {
         diagnoseAndRemoveAttr(attr, diag::distributedactor_not_actor);
         return;
-      } // else, good: `@distributed actor class`
+      } else {
+         // good: `@distributed actor class`
+        return;
+      }
+    } else if (dyn_cast<StructDecl>(D) || dyn_cast<EnumDecl>(D)) {
+      diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_in_distributed_actor);
+      return;
     }
 
-    // @distributed func must be async
     if (auto funcDecl = dyn_cast<FuncDecl>(D)) {
-      if (!funcDecl->hasAsync()) {
-        diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_async);
+      // @distributed func must be `async throws`
+      if (!funcDecl->hasAsync() || !funcDecl->hasThrows()) {
+        diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_async_throws);
         return;
       }
 
+      // @distributed func must be declared inside an distibuted actor
       if (dc->getSelfClassDecl() &&
           !dc->getSelfClassDecl()->isDistributedActor()) {
+        diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_in_distributed_actor);
+        return;
+      } else if (dc->getSelfStructDecl() || dc->getSelfEnumDecl()) {
         diagnoseAndRemoveAttr(attr, diag::distributedactor_func_not_in_distributed_actor);
         return;
       }

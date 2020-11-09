@@ -18,23 +18,40 @@ actor class SomeActor { }
 // MARK: Declaring distributed functions
 
 // NOTE: not distributed actor, so cannot have any distributed functions
-actor class SomeDistributedActor_4 {
-  @distributed func nope() -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be async}}
-  @distributed func nopeAsync() async -> Int { 42 }
+actor class SomeNotDistributedActor_4 {
+  @distributed func notInDistActorSync() -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func notInDistActorAsync() async -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func notInDistActorAsyncThrowing() async throws -> Int { 42 } // expected-error{{'@distributed' function can only be declared within '@distributed actor class'}}
 }
 
-struct SomeDistributedActor_5 {
-  @distributed func nope() -> Int { 42 } // expected-error{{NO}}
-  @distributed func nopeAsync() async -> Int { 42 } // expected-error{{'@distributed' function can only be declared within '@distributed actor class'}}
+struct SomeNotActorStruct_5 {
+  @distributed func nope() -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func nopeAsync() async -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func asyncThrows() async -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
 }
 
-@distributed
-actor class SomeDistributedActor_6 {
+enum SomeNotActorEnum_5 {
+  @distributed func nope() -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func nopeAsync() async -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func nopeAsyncThrows() async throws -> Int { 42 } // expected-error{{'@distributed' function can only be declared within '@distributed actor class'}}
+}
+
+@distributed actor class SomeDistributedActor_6 {
   // ==== ----------------------------------------------------------------------
   // BAD:
-//  @distributed func nope() -> Int { 42 } // must be async
+  @distributed func sync() -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
+  @distributed func async() async -> Int { 42 } // expected-error{{'@distributed' actor-isolated function must be 'async throws'}}
 
   // ==== ----------------------------------------------------------------------
   // OK:
-  @distributed func nopeAsync() async -> Int { 42 } // ok
+  @distributed func yay() async throws -> Int { 42 } // ok
+}
+
+@distributed actor class BadValuesDistributedActor_7 {
+  @distributed var varItNope: Int { 13 } // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+  @distributed let letItNope: Int = 13 // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+  @distributed lazy var lazyVarNope: Int = 13 // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+
+  @distributed subscript(nope: Int) -> Int { nope * 2 } // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+
 }
