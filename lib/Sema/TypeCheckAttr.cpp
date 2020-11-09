@@ -369,6 +369,12 @@ public:
         return;
       }
 
+      // @distributed functions must not be static
+      if (funcDecl->isStatic()) {
+        diagnoseAndRemoveAttr(attr, diag::distributedactor_func_static);
+        return;
+      }
+
       // @distributed func must be declared inside an distibuted actor
       if (dc->getSelfClassDecl() &&
           !dc->getSelfClassDecl()->isDistributedActor()) {

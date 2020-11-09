@@ -4279,6 +4279,9 @@ ERROR(distributedactor_not_actor_func,none,
 ERROR(distributedactor_func_not_async_throws,none,
       "'@distributed' actor-isolated function must be 'async throws'",
       ())
+ERROR(distributedactor_func_static,none,
+      "'@distributed' actor-isolated functions cannot be 'static'",
+      ())
 ERROR(distributedactor_func_not_in_distributed_actor,none,
       "'@distributed' function can only be declared within '@distributed actor class'",
       ())

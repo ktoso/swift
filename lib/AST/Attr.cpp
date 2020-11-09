@@ -1154,7 +1154,7 @@ StringRef DeclAttribute::getAttrName() const {
   case DAK_DistributedActor: {
     switch (cast<DistributedActorAttr>(this)->getKind()) {
     case DistributedActorKind::Default:
-      return "distributedActor";
+      return "distributed";
     }
     llvm_unreachable("Invalid distributedActor kind");
   }

@@ -11,8 +11,8 @@ actor class SomeActor { }
 
 // BAD:
 @distributed class SomeDistributedActor_1 { } // expected-error{{'@distributed' can only be applied to 'actor class' definitions, and distributed actor isolated async functions}}
-@distributed struct SomeDistributedActor_2 { } // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
-@distributed enum SomeDistributedActor_3 { } // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+@distributed struct SomeDistributedActor_2 { } // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
+@distributed enum SomeDistributedActor_3 { } // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
 
 // ==== ------------------------------------------------------------------------
 // MARK: Declaring distributed functions
@@ -48,10 +48,14 @@ enum SomeNotActorEnum_5 {
 }
 
 @distributed actor class BadValuesDistributedActor_7 {
-  @distributed var varItNope: Int { 13 } // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
-  @distributed let letItNope: Int = 13 // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
-  @distributed lazy var lazyVarNope: Int = 13 // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+  @distributed var varItNope: Int { 13 } // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
+  @distributed let letItNope: Int = 13 // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
+  @distributed lazy var lazyVarNope: Int = 13 // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
 
-  @distributed subscript(nope: Int) -> Int { nope * 2 } // expected-error{{'@distributedActor' attribute cannot be applied to this declaration}}
+  @distributed subscript(nope: Int) -> Int { nope * 2 } // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
+
+  @distributed static let staticLetNope: Int = 13 // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
+  @distributed static var staticVarNope: Int { 13 } // expected-error{{'@distributed' attribute cannot be applied to this declaration}}
+  @distributed static func staticNope() async throws -> Int { 13 } // expected-error{{'@distributed' actor-isolated functions cannot be 'static'}}
 
 }
