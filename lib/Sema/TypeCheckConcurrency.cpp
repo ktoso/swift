@@ -113,7 +113,7 @@ static bool checkAsyncHandler(FuncDecl *func, bool diagnose) {
 
   return false;
 }
-//
+
 ///// Check whether the function is a proper distributed function
 /////
 ///// \param diagnose Whether to emit a diagnostic when a problem is encountered.
@@ -125,7 +125,7 @@ static bool checkAsyncHandler(FuncDecl *func, bool diagnose) {
 //    if (diagnose) {
 ////      func->diagnose(diag::asynchandler_throws)
 ////          .fixItRemove(func->getThrowsLoc());
-//      printf("TODO: diagnose that distributed function must be 'async throws'"); // FIXME
+//      printf("TODO: diagnose that distributed function must be 'async throws'") // FIXME
 //    }
 //
 //    return true;
@@ -135,7 +135,7 @@ static bool checkAsyncHandler(FuncDecl *func, bool diagnose) {
 //    if (diagnose) {
 ////      func->diagnose(diag::asynchandler_async)
 ////          .fixItRemove(func->getAsyncLoc());
-//      printf("TODO: diagnose that distributed function must be 'async async'"); // FIXME
+//      printf("TODO: diagnose that distributed function must be 'async'") // FIXME
 //    }
 //
 //    return true;
@@ -1034,10 +1034,14 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
         if (!selfVar) {
 
           // invocation on not-'self', is only okey if this is a @distributed func
-          if (auto func = cast<FuncDecl>(selfVar->getDeclContext())) {
+          if (auto func = dyn_cast<FuncDecl>(member)) {
             if (!func->isDistributed()) {
               ctx.Diags.diagnose(memberLoc, diag::distributed_actor_isolated_method);
-              noteIsolatedActorMember(member); // TODO distributed isolated?
+              noteIsolatedActorMember(member);
+              return true;
+            } else {
+              // distributed func, excellent
+              return false;
             }
           }
 
