@@ -462,6 +462,8 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
     ConcreteDeclRef declRef) {
   auto decl = declRef.getDecl();
 
+  printf("analysis 0: %s\n", decl->printRef().c_str());
+
   switch (decl->getKind()) {
   case DeclKind::AssociatedType:
   case DeclKind::Class:
@@ -501,6 +503,7 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
 
   case DeclKind::Param:
   case DeclKind::Var:
+    printf("analysis 1 var: %s\n", decl->printRef().c_str());
       switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
       case ActorIsolation::DistributedActorInstance:
           // Accessing properties on a distributed actor is only allowed when
@@ -525,8 +528,10 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
   case DeclKind::Subscript:
     // A function that provides an asynchronous context has no restrictions
     // on its access.
+    printf("analysis 1: %s\n", decl->printRef().c_str());
+
     if (auto func = dyn_cast<AbstractFunctionDecl>(decl)) {
-      printf("analysis: %s\n", decl->printRef().c_str());
+      printf("analysis  2: %s\n", decl->printRef().c_str());
       if (func->isDistributed())
         if (auto classDecl = dyn_cast<ClassDecl>(decl->getDeclContext()))
           return forDistributedActorSelf(classDecl);
@@ -964,6 +969,7 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
         return false;
 
       auto member = memberRef.getDecl();
+      printf(">>>> checkMemberReference: %s", member->printRef().c_str());
       switch (auto isolation =
                   ActorIsolationRestriction::forDeclaration(memberRef)) {
       case ActorIsolationRestriction::Unrestricted:
@@ -988,7 +994,7 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
                 member->getDescriptiveKind(),
                 member->getName());
             noteIsolatedActorMember(member);
-            printf(">>>>>> nein");
+            printf(">>>>>> nein\n");
             return true;
 //          }
 //        }
@@ -1258,9 +1264,11 @@ ActorIsolation ActorIsolationRequest::evaluate(
   // Check for instance members of actor classes, which are part of
   // actor-isolated state.
   auto classDecl = value->getDeclContext()->getSelfClassDecl();
+  printf(">> class decl\n");
   if (classDecl && classDecl->isActor() && value->isInstanceMember()) {
-      auto distributedAttr = value->getAttrs().getAttribute<DistributedActorAttr>();
-      if (distributedAttr) {
+    printf(">> class + actor + is instance member\n");
+      if (classDecl->isDistributedActor()) {
+        printf(">> distributed !!!\n");
         // It is distributed, so we must apply slightly stronger isolation.
         defaultIsolation = ActorIsolation::forDistributedActorInstance(classDecl);
       } else {

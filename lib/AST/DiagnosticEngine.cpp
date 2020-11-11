@@ -670,7 +670,7 @@ static void formatDiagnosticArgument(StringRef Modifier,
       break;
 
     case ActorIsolation::DistributedActorInstance:
-      Out << "distributed actor "; // TODO: could print it's address?
+      Out << "distributed actor-isolated";
       break;
 
     case ActorIsolation::GlobalActor:

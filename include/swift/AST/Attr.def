@@ -598,7 +598,7 @@ CONTEXTUAL_SIMPLE_DECL_ATTR(async, Async,
   DeclModifier | OnVar | OnFunc | ConcurrencyOnly |
   ABIBreakingToAdd | ABIBreakingToRemove |
   APIBreakingToAdd | APIBreakingToRemove,
-  106)
+  107)
 
 #undef TYPE_ATTR
 #undef DECL_ATTR_ALIAS

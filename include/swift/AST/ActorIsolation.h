@@ -112,7 +112,7 @@ public:
   bool isUnspecified() const { return kind == Unspecified; }
 
   ClassDecl *getActor() const {
-    assert(getKind() == ActorInstance);
+    assert(getKind() == ActorInstance || getKind() == DistributedActorInstance);
     return actor;
   }
 
