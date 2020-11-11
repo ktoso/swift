@@ -31,6 +31,14 @@ actor class LocalActor_1 {
   @distributed func dist() async throws -> Int {
     42
   }
+
+  func test() async throws {
+    _ = self.name
+    _ = self.computedMutable
+    _ = self.sync()
+    _ = await self.async()
+    _ = await try self.dist()
+  }
 }
 
 func test(
@@ -46,5 +54,6 @@ func test(
 //    _ = distributed.sync() // expected- error{{actor-isolated instance method 'sync()' can only be referenced inside the actor}}
 //
 //    _ = await distributed.async() // expected -error{{actor-isolated instance method 'dist()' can only be referenced inside the distributed actor}}
-//    _ = await try distributed.dist() // ok
+
+    _ = await try distributed.dist() // ok
 }

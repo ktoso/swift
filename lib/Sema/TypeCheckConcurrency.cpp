@@ -113,6 +113,55 @@ static bool checkAsyncHandler(FuncDecl *func, bool diagnose) {
 
   return false;
 }
+//
+///// Check whether the function is a proper distributed function
+/////
+///// \param diagnose Whether to emit a diagnostic when a problem is encountered.
+/////
+///// \returns \c true if there was a problem with adding the attribute, \c false
+///// otherwise.
+//static bool checkDistributedFunction(FuncDecl *func, bool diagnose) {
+//  if (!func->hasThrows()) {
+//    if (diagnose) {
+////      func->diagnose(diag::asynchandler_throws)
+////          .fixItRemove(func->getThrowsLoc());
+//      printf("TODO: diagnose that distributed function must be 'async throws'"); // FIXME
+//    }
+//
+//    return true;
+//  }
+//
+//  if (!func->hasAsync()) {
+//    if (diagnose) {
+////      func->diagnose(diag::asynchandler_async)
+////          .fixItRemove(func->getAsyncLoc());
+//      printf("TODO: diagnose that distributed function must be 'async async'"); // FIXME
+//    }
+//
+//    return true;
+//  }
+//
+////  for (auto param : *func->getParameters()) {
+////    printf("TODO: check that distributed function parameters must be 'Codable'") // FIXME
+//////    if (auto fnType = param->getInterfaceType()->getAs<FunctionType>()) {
+//////      // FIXME: Codable parameters checks
+//////
+//////      return true;
+//////    }
+////  }
+//
+////  if (!func->getResultInterfaceType()->isVoid()) {
+////    // FIXME: check that return type conforms to 'Codable'
+////  }
+//
+//// RELATED SNIPPET to check if Codable:
+////     auto target =
+////        conformanceDC->mapTypeIntoContext(it->second->getValueInterfaceType());
+////    if (TypeChecker::conformsToProtocol(target, derived.Protocol, conformanceDC)
+////            .isInvalid()) {
+//
+//  return false;
+//}
 
 void swift::addAsyncNotes(FuncDecl *func) {
   func->diagnose(diag::note_add_async_to_function, func->getName());
@@ -975,33 +1024,45 @@ void swift::checkActorIsolation(const Expr *expr, const DeclContext *dc) {
       case ActorIsolationRestriction::Unrestricted:
         return false;
 
-      case ActorIsolationRestriction::DistributedActor:
-        // distributed actor properties may not be accessed, ever, unlike local
-        // ones where a let may be allowed.
+      case ActorIsolationRestriction::DistributedActor: {
+        // distributed actor isolation is more strict;
+        // we do not allow any property access, or synchronous access at all.
+        // TODO: special case some "unsafe version"?
 
-//        if (auto selfVar = getSelfReference(base)) {
-//          if (cast<ValueDecl>(selfVar->getDeclContext()->getAsDecl())) {
+        // Must reference distributed actor-isolated state on 'self'.
+        auto selfVar = getSelfReference(base);
+        if (!selfVar) {
 
-            // no value declaration may be accessed directly on distributed actor
+          // invocation on not-'self', is only okey if this is a @distributed func
+          if (auto func = cast<FuncDecl>(selfVar->getDeclContext())) {
+            if (!func->isDistributed()) {
+              ctx.Diags.diagnose(memberLoc, diag::distributed_actor_isolated_method);
+              noteIsolatedActorMember(member); // TODO distributed isolated?
+            }
+          }
+
+          // no value declaration may be accessed directly on distributed actor
 //            ctx.Diags.diagnose(
 //                memberLoc, diag::distributed_actor_isolated_non_self_reference,
 //                member->getDescriptiveKind(),
 //                member->getName(),
 //                isolation.getActorClass() ==
 //                getNearestEnclosingActorContext(getDeclContext()));
-            ctx.Diags.diagnose(
-                memberLoc, diag::distributed_actor_isolated_non_self_reference,
-                member->getDescriptiveKind(),
-                member->getName());
-            noteIsolatedActorMember(member);
-            printf(">>>>>> nein\n");
-            return true;
+          ctx.Diags.diagnose(
+              memberLoc, diag::distributed_actor_isolated_non_self_reference,
+              member->getDescriptiveKind(),
+              member->getName());
+          noteIsolatedActorMember(member);
+          return true;
 //          }
-//        }
-        // continue checking as if it was actor self isolated
-        LLVM_FALLTHROUGH;
+        }
 
-        case ActorIsolationRestriction::ActorSelf: {
+        // continue checking as if it was actor self isolated
+        // LLVM_FALLTHROUGH;
+        return false;
+      }
+
+      case ActorIsolationRestriction::ActorSelf: {
         // Must reference actor-isolated state on 'self'.
         auto selfVar = getSelfReference(base);
         if (!selfVar) {
