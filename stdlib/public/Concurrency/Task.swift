@@ -12,6 +12,7 @@
 
 import Swift
 @_implementationOnly import _SwiftConcurrencyShims
+import Darwin
 
 // ==== Task -------------------------------------------------------------------
 
@@ -209,7 +210,7 @@ extension Task {
       }
     }
 
-    /// Whether this is a channel.
+    /// Whether this is a task group.
     var isTaskGroup: Bool {
       get {
         (bits & (1 << 26)) != 0
@@ -220,6 +221,21 @@ extension Task {
           bits = bits | 1 << 26
         } else {
           bits = (bits & ~(1 << 26))
+        }
+      }
+    }
+
+    /// Whether this (or its parents) have task local values.
+    var hasLocalValues: Bool {
+      get {
+        (bits & (1 << 27)) != 0
+      }
+
+      set {
+        if newValue {
+          bits = bits | 1 << 27
+        } else {
+          bits = (bits & ~(1 << 27))
         }
       }
     }
@@ -263,6 +279,7 @@ extension Task {
   public static func runDetached<T>(
     priority: Priority = .default,
     operation: @concurrent @escaping () async throws -> T
+    // TODO: Allow inheriting task-locals?
   ) -> Handle<T> {
     // Set up the job flags for a new task.
     var flags = JobFlags()
@@ -381,6 +398,7 @@ public func _runChildTask<T>(
   flags.priority = getJobFlags(currentTask).priority
   flags.isFuture = true
   flags.isChildTask = true
+  flags.hasLocalValues = true // _taskHasTaskLocalValues(currentTask)
 
   // Create the asynchronous task future.
   let (task, _) = Builtin.createAsyncTaskFuture(
@@ -391,10 +409,36 @@ public func _runChildTask<T>(
 
   return task
 }
+class StringLike: CustomStringConvertible {
+  let value: String
+  init(_ value: String) {
+    self.value = value
+  }
+  var description: String { value }
+}
 
 public func _runGroupChildTask<T>(
   overridingPriority priorityOverride: Task.Priority? = nil,
+  withLocalValues hasLocalValues: Bool = false,
   operation: @concurrent @escaping () async throws -> T
+) async -> Builtin.NativeObject {
+  let task = await _prepareChildTask(
+    overridingPriority: priorityOverride,
+    withLocalValues: hasLocalValues,
+    operation: operation
+  )
+
+  // Enqueue the resulting job.
+  _enqueueJobGlobal(Builtin.convertTaskToJob(task))
+
+  return task
+}
+
+/// Prepare and return a child task without scheduling it yet.
+public func _prepareChildTask<T>(
+  overridingPriority priorityOverride: Task.Priority? = nil,
+  withLocalValues hasLocalValues: Bool = false,
+  operation: @escaping () async throws -> T
 ) async -> Builtin.NativeObject {
   let currentTask = Builtin.getCurrentAsyncTask()
 
@@ -404,16 +448,16 @@ public func _runGroupChildTask<T>(
   flags.priority = priorityOverride ?? getJobFlags(currentTask).priority
   flags.isFuture = true
   flags.isChildTask = true
+  flags.hasLocalValues = true // hasLocalValues || _taskHasTaskLocalValues(currentTask)
 
   // Create the asynchronous task future.
   let (task, _) = Builtin.createAsyncTaskFuture(
-      flags.bits, currentTask, operation)
-
-  // Enqueue the resulting job.
-  _enqueueJobGlobal(Builtin.convertTaskToJob(task))
+      flags.bits, currentTask, operation
+  )
 
   return task
 }
+
 
 @_silgen_name("swift_task_cancel")
 func _taskCancel(_ task: Builtin.NativeObject)
