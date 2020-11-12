@@ -6,6 +6,8 @@ actor class LocalActor_1 {
   var mutable: String = ""
 }
 
+struct NotCodableParameter { }
+
 @distributed actor class DistributedActor_1 {
   let name: String = "alice" // expected-note{{mutable state is only available within the actor instance}}
 
@@ -28,16 +30,25 @@ actor class LocalActor_1 {
     42
   }
 
-  @distributed func dist() async throws -> Int {
+  @distributed func distVoid() async throws { }
+
+  @distributed func distInt() async throws -> Int {
     42
   }
+
+  @distributed func distInt(int: Int) async throws -> Int {
+    int
+  }
+
+  @distributed func dist(notCodable: NotCodableParameter) async throws { }
 
   func test() async throws {
     _ = self.name
     _ = self.computedMutable
     _ = self.sync()
     _ = await self.async()
-    _ = await try self.dist()
+    await try self.distVoid()
+    _ = await try self.distInt()
   }
 }
 
@@ -55,5 +66,15 @@ func test(
 //
 //    _ = await distributed.async() // expected -error{{actor-isolated instance method 'dist()' can only be referenced inside the distributed actor}}
 
-    _ = await try distributed.dist() // ok
+  await try distributed.distVoid() // ok
+}
+
+// ==== Codable parameters and return types ------------------------------------
+func test_params(
+  distributed: DistributedActor_1
+) async throws {
+  _ = await try distributed.distInt() // ok
+  _ = await try distributed.distInt(int: 42) // ok
+
+  _ = await try distributed.dist(notCodable: .init()) // expected-error{{@distributed function parameter 'notCodable' type 'NotCodableParameter' must conform to 'Codable'}}
 }

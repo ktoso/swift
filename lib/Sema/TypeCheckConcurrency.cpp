@@ -114,54 +114,60 @@ static bool checkAsyncHandler(FuncDecl *func, bool diagnose) {
   return false;
 }
 
-///// Check whether the function is a proper distributed function
-/////
-///// \param diagnose Whether to emit a diagnostic when a problem is encountered.
-/////
-///// \returns \c true if there was a problem with adding the attribute, \c false
-///// otherwise.
-//static bool checkDistributedFunction(FuncDecl *func, bool diagnose) {
-//  if (!func->hasThrows()) {
-//    if (diagnose) {
-////      func->diagnose(diag::asynchandler_throws)
-////          .fixItRemove(func->getThrowsLoc());
-//      printf("TODO: diagnose that distributed function must be 'async throws'") // FIXME
-//    }
-//
-//    return true;
+/// Check whether the function is a proper distributed function
+///
+/// \param diagnose Whether to emit a diagnostic when a problem is encountered.
+///
+/// \returns \c true if there was a problem with adding the attribute, \c false
+/// otherwise.
+static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
+  if (!func->hasThrows()) {
+    if (diagnose) {
+//      func->diagnose(diag::asynchandler_throws)
+//          .fixItRemove(func->getThrowsLoc());
+      printf("TODO: diagnose that distributed function must be 'async throws'"); // FIXME
+    }
+
+    return true;
+  }
+
+  if (!func->hasAsync()) {
+    if (diagnose) {
+//      func->diagnose(diag::asynchandler_async)
+//          .fixItRemove(func->getAsyncLoc());
+      printf("TODO: diagnose that distributed function must be 'async'"); // FIXME
+    }
+
+    return true;
+  }
+
+  if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) {
+    for (auto param : *func->getParameters()) {
+      if (auto t = param->getInterfaceType()) {
+        // FIXME: Codable parameters checks
+        func->diagnose(
+            diag::distributed_actor_func_param_not_codable,
+            param->getArgumentName().str(),
+            t
+        );
+
+        return true;
+      }
+    }
+  }
+
+//  if (!func->getResultInterfaceType()->isVoid()) {
+//    // FIXME: check that return type conforms to 'Codable'
 //  }
-//
-//  if (!func->hasAsync()) {
-//    if (diagnose) {
-////      func->diagnose(diag::asynchandler_async)
-////          .fixItRemove(func->getAsyncLoc());
-//      printf("TODO: diagnose that distributed function must be 'async'") // FIXME
-//    }
-//
-//    return true;
-//  }
-//
-////  for (auto param : *func->getParameters()) {
-////    printf("TODO: check that distributed function parameters must be 'Codable'") // FIXME
-//////    if (auto fnType = param->getInterfaceType()->getAs<FunctionType>()) {
-//////      // FIXME: Codable parameters checks
-//////
-//////      return true;
-//////    }
-////  }
-//
-////  if (!func->getResultInterfaceType()->isVoid()) {
-////    // FIXME: check that return type conforms to 'Codable'
-////  }
-//
-//// RELATED SNIPPET to check if Codable:
-////     auto target =
-////        conformanceDC->mapTypeIntoContext(it->second->getValueInterfaceType());
-////    if (TypeChecker::conformsToProtocol(target, derived.Protocol, conformanceDC)
-////            .isInvalid()) {
-//
-//  return false;
-//}
+
+// RELATED SNIPPET to check if Codable:
+//     auto target =
+//        conformanceDC->mapTypeIntoContext(it->second->getValueInterfaceType());
+//    if (TypeChecker::conformsToProtocol(target, derived.Protocol, conformanceDC)
+//            .isInvalid()) {
+
+  return false;
+}
 
 void swift::addAsyncNotes(FuncDecl *func) {
   func->diagnose(diag::note_add_async_to_function, func->getName());
@@ -298,8 +304,16 @@ bool IsDistributedActorRequest::evaluate(
 
 bool IsDistributedFuncRequest::evaluate(
     Evaluator &evaluator, FuncDecl *func) const {
-  auto distributedAttr = func->getAttrs().getAttribute<DistributedActorAttr>();
-  return distributedAttr != nullptr;
+  // Check whether the attribute was explicitly specified.
+  if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) {
+    // Check for well-formedness.
+    if (checkDistributedFunc(func, /*diagnose=*/true)) {
+      attr->setInvalid();
+      return false;
+    }
+
+    return true;
+  }
 }
 
 static bool isDeclNotAsAccessibleAsParent(ValueDecl *decl,
