@@ -379,9 +379,6 @@ public func runAsync(_ asyncFun: @escaping () async -> ()) {
   runTask(childTask.0)
 }
 
-//@_silgen_name("swift_task_get_priority") // TODO: not quite this way?
-//public func getTaskPriority(_ task: __owned Builtin.NativeObject) -> JobPriority
-
 struct RawTaskFutureWaitResult {
   let hadErrorResult: Bool
   let storage: UnsafeRawPointer
