@@ -80,7 +80,7 @@ extension Task {
     // 1. Prepare the Group task
     var group = Task.Group<TaskResult>(parentTask: parent)
 
-    let (groupTask, context) =
+    let (groupTask, _) =
       Builtin.createAsyncTaskFuture(groupFlags.bits, parent) { () async throws -> BodyResult in
         await try body(&group)
       }
@@ -116,24 +116,54 @@ extension Task {
   public struct Group<TaskResult> {
     private let parentTask: Builtin.NativeObject
 
-    // TODO: we want groups to be unordered in completion, the counterpart to streams (Series),
-    // as such it feels like we need to keep them like this, because a next() can complete any of them
-    // and then we need to remove it from the pending ones
-    private var pendingTasks: [Int: Handle<TaskResult>] // TODO: make a dict for out of order completions
-    private var nextTaskID: Int = 0
+    // TODO: remove
+    var allTasks: [Int: Handle<TaskResult>] = [:]
 
-    /// If present, the handle on which the `next()` call is awaiting,
-    /// it should be resumed by *any* of the in-flight tasks completing.
-    private var nextHandle: Task.Handle<TaskResult>? = nil
+    let lock: _Mutex
+    final class Storage {
 
-    // private let childTasks: ConcurrentMap<String, String> = .init()
-    private let completions: [Int] = []
+      var tasksToPull: Int = 0 // TODO: instead implement as a status Int?
+
+      var completedTaskQueue: [Int] = []
+
+      /// If present, the handle on which the `next()` call is awaiting,
+      /// it should be resumed by *any* of the in-flight tasks completing.
+      var wakeUpNext: Handle<Void>? = nil
+
+      // TODO: ATOMIC && combined with Status
+      let closed: Bool = false
+
+      init() {
+      }
+
+      func pollCompletedTask() -> Int? {
+        if self.completedTaskQueue.isEmpty {
+          return nil
+        } else {
+          return self.completedTaskQueue.removeFirst()
+        }
+      }
+
+    }
+    let storage: Storage
+
+//    private var nextHandle: Task.Handle<TaskResult>? = nil
 
     /// No public initializers
     init(parentTask: Builtin.NativeObject) {
       self.parentTask = parentTask
-      self.pendingTasks = [:]
+
+      self.lock = _Mutex()
+      self.storage = .init()
     }
+
+    var isClosed: Bool {
+      self.lock.synchronized {
+        self.storage.closed
+      }
+    }
+
+    var nextTaskID: Int = 0
 
     // Swift will statically prevent this type from being copied or moved.
     // For now, that implies that it cannot be used with generics.
@@ -144,8 +174,8 @@ extension Task {
     /// Operations are allowed to `throw`, in which case the `await try next()`
     /// invocation corresponding to the failed task will re-throw the given task.
     ///
-    /// The `add` function will never (re)-throw exceptions from the `operation`,
-    /// the corresponding `next()` call will throw the error when necessary.
+    /// The `add` function will never (re-)throw errors from the `operation`.
+    /// Instead, the corresponding `next()` call will throw the error when necessary.
     ///
     /// - Parameters:
     ///   - overridingPriority: override priority of the operation task
@@ -161,27 +191,61 @@ extension Task {
       flags.isFuture = true
       flags.isChildTask = true
 
-      let (childTask, context) =
-        // TODO: passing the parentTask (instead of nil) here makes the program hang here
-        Builtin.createAsyncTaskFuture(flags.bits, parentTask, operation)
+      let taskID = self.nextTaskID
+      self.nextTaskID += 1
 
-      let handle = Handle<TaskResult>(task: childTask)
+      let lock = self.lock
+      let storage = self.storage
 
-      // runTask(childTask)
-        DispatchQueue.global(priority: .default).async {
-          print(">>> run")
-          handle.run()
+      let storageOperation = { () async throws -> TaskResult in
+        defer {
+          var oldStatus: Int = lock.synchronized {
+            storage.completedTaskQueue.append(taskID)
+
+            // TODO: cas +1 the status, if we activated we perform the wakeup
+            let oldStatus = storage.tasksToPull
+            storage.tasksToPull += 1
+            return oldStatus
+          }
+
+          if oldStatus == 0 {
+            guard let wakeUpNext = storage.wakeUpNext else {
+              fatalError("No wakeUpNextContinuation available! Task ID completed: \(taskID)")
+            }
+            cc.resume(returning: ())
+          } // no need to wake-up
         }
 
-//      _ = DispatchQueue.global(priority: .default).async {
-//          print("run dispatch INSIDE: \(childTask)")
-//          await try operation()
+        let result = await try operation()
+        print("<<< task [\(taskID)] completed: \(result)")
+        return result
+      }
+  
+//      self.lock.synchronized {
+//        if storage.wakeUpNext == nil {
+//          // TODO: TERRIBLE HACK TO INVENT A PROMISE
+//          storage.wakeUpNext = Task.runDetached {
+//            await Task.withUnsafeContinuation { cc in
+//              // PURPOSEFULLY DO NOT COMPLETE; TERRIBLE HACK, to abuse this
+//              // handle as a promise, that we will unlock when a child task
+//              // completes and by doing so, we'll awaken the next() caller.
+//            }
+//          }
 //        }
+//      }
 
-      // FIXME: need to store? self.pendingTasks[ObjectIdentifier(childTask)] = childTask
+      let (childTask, _) =
+        Builtin.createAsyncTaskFuture(flags.bits, parentTask, storageOperation)
+      let handle = Handle<TaskResult>(task: childTask)
 
-      defer { nextTaskID += 1 }
-      self.pendingTasks[nextTaskID] = handle
+      // we must store the handle before starting its task
+      self.allTasks[taskID] = handle
+
+      // FIXME: use executors or something else to launch the task
+      DispatchQueue.global(priority: .default).async {
+        print(">>> run")
+        handle.run()
+      }
 
       return handle
     }
@@ -192,19 +256,27 @@ extension Task {
     /// Order of completions is *not* guaranteed to be same as submission order,
     /// rather the order of `next()` calls completing is by completion order of
     /// the tasks. This differentiates task groups from streams (
-    public mutating func next(file: String = #file, line: UInt = #line) async throws -> TaskResult? {
-      // FIXME: this implementation is wrong and naive; we instead need to maintain a dict of handles,
-      //        and return them as they complete in that order; so likely a queue of "which one completed"
-      //        this will allow building "collect first N results" APIs easily;
-      //        APIs which need order can implement on top of this, or we provide a different API for it
-      let handle = self.pendingTasks.removeValue(forKey: 0) ??
-        self.pendingTasks.removeValue(forKey: 1)
+    public mutating func next() async throws -> TaskResult? {
+      let maybeWakeUpNext = self.lock.synchronized { self.storage.wakeUpNext }
 
-      if let handle = handle {
-        let got = await try handle.get()
-        return got
-      } else {
+      guard let wakeUpHandle = maybeWakeUpNext else {
+        // no tasks in flight, so we return immediately
         return nil
+      }
+
+      // wait until _any_ task completes
+      await try wakeUpHandle.get()
+
+      // TODO: optimize by yielding the result right there right away?
+
+      guard let completedTaskID: Int = self.lock.synchronized({ storage.pollCompletedTask() }) else {
+        fatalError("Nothing was completed yet we were woken up")
+      }
+
+      if let completedHandle = self.allTasks.removeValue(forKey: completedTaskID) {
+        return await try completedHandle.get()
+      } else {
+        fatalError("Completion for task ID \(completedTaskID) not present in allTasks: \(self.allTasks)!")
       }
     }
 
@@ -216,7 +288,7 @@ extension Task {
     ///
     /// - Returns: `true` if the group has no pending tasks, `false` otherwise.
     public var isEmpty: Bool {
-      return self.pendingTasks.isEmpty
+      fatalError("\(#function) not implemented yet") // TODO: implement via a Status property
     }
 
     /// Cancel all the remaining tasks in the group.
@@ -228,10 +300,13 @@ extension Task {
     ///
     /// - SeeAlso: `Task.addCancellationHandler`
     public mutating func cancelAll(file: String = #file, line: UInt = #line) {
-      for (id, handle) in self.pendingTasks {
-        handle.cancel()
-      }
-      self.pendingTasks = [:]
+//      // TODO: implement this
+//      fatalError("\(#function) not implemented yet")
+
+//      for (id, handle) in self.pendingTasks {
+//        handle.cancel()
+//      }
+//      self.pendingTasks = [:]
     }
   }
 }

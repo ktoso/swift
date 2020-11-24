@@ -31,7 +31,7 @@ public struct UnsafeContinuation<T> {
   ///
   /// This is appropriate when the caller is something "busy", like an event
   /// loop, and doesn't want to be potentially delayed by arbitrary work.
-  public func resume(_: __owned T) { }
+  public func resume(returning _: __owned T) { }
 }
 
 @frozen
@@ -45,7 +45,7 @@ public struct UnsafeThrowingContinuation<T> {
   ///
   /// This is appropriate when the caller is something "busy", like an event
   /// loop, and doesn't want to be potentially delayed by arbitrary work.
-  public func resume(_: __owned T) { }
+  public func resume(returning _: __owned T) { }
 
   /// Resume the continuation with an error and make the task schedulable.
   ///
@@ -54,20 +54,19 @@ public struct UnsafeThrowingContinuation<T> {
   ///
   /// This is appropriate when the caller is something "busy", like an event
   /// loop, and doesn't want to be potentially delayed by arbitrary work.
-  public func fail(_: __owned Error) { }
+  public func resume(throwing _: __owned Error) { }
 }
 
 #if _runtime(_ObjC)
 
-// Intrinsics used by SILGen to resume or fail continuations
-// for
+// Intrinsics used by SILGen to resume continuations
 @_alwaysEmitIntoClient
 @usableFromInline
 internal func _resumeUnsafeContinuation<T>(
   _ continuation: UnsafeContinuation<T>,
   _ value: __owned T
 ) {
-  continuation.resume(value)
+  continuation.resume(returning: value)
 }
 
 @_alwaysEmitIntoClient
@@ -76,7 +75,7 @@ internal func _resumeUnsafeThrowingContinuation<T>(
   _ continuation: UnsafeThrowingContinuation<T>,
   _ value: __owned T
 ) {
-  continuation.resume(value)
+  continuation.resume(returning: value)
 }
 
 @_alwaysEmitIntoClient
@@ -85,7 +84,7 @@ internal func _resumeUnsafeThrowingContinuationWithError<T>(
   _ continuation: UnsafeThrowingContinuation<T>,
   _ error: __owned Error
 ) {
-  continuation.fail(error)
+  continuation.resume(throwing: error)
 }
 
 #endif

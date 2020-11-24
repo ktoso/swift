@@ -103,7 +103,7 @@ public:
 
 }
 
-/// Run the given task, privoding it with the result of the future.
+/// Run the given task, providing it with the result of the future.
 static void runTaskWithFutureResult(
     AsyncTask *waitingTask, ExecutorRef executor,
     FutureFragment *futureFragment, bool hadErrorResult) {

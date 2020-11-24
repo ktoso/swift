@@ -337,7 +337,6 @@ public func runTask(_ task: __owned Builtin.NativeObject)
 @_silgen_name("swift_task_getJobFlags")
 func getJobFlags(_ task: Builtin.NativeObject) -> Task.JobFlags
 
-
 @_silgen_name("swift_task_isCancelled")
 func isTaskCancelled(_ task: Builtin.NativeObject) -> Bool
 
