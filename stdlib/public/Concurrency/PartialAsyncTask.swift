@@ -24,6 +24,13 @@ public struct PartialAsyncTask {
 public struct UnsafeContinuation<T> {
   private var context: UnsafeRawPointer
 
+  /// Return a value into the continuation and make the task schedulable.
+  ///
+  /// The task will never run synchronously, even if the task does not
+  /// need to be resumed on a specific executor.
+  ///
+  /// This is appropriate when the caller is something "busy", like an event
+  /// loop, and doesn't want to be potentially delayed by arbitrary work.
   public func resume(_: __owned T) { }
 }
 
@@ -31,7 +38,22 @@ public struct UnsafeContinuation<T> {
 public struct UnsafeThrowingContinuation<T> {
   private var context: UnsafeRawPointer
 
+  /// Return a value into the continuation and make the task schedulable.
+  ///
+  /// The task will never run synchronously, even if the task does not
+  /// need to be resumed on a specific executor.
+  ///
+  /// This is appropriate when the caller is something "busy", like an event
+  /// loop, and doesn't want to be potentially delayed by arbitrary work.
   public func resume(_: __owned T) { }
+
+  /// Resume the continuation with an error and make the task schedulable.
+  ///
+  /// The task will never run synchronously, even if the task does not
+  /// need to be resumed on a specific executor.
+  ///
+  /// This is appropriate when the caller is something "busy", like an event
+  /// loop, and doesn't want to be potentially delayed by arbitrary work.
   public func fail(_: __owned Error) { }
 }
 
