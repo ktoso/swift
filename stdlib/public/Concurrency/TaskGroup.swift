@@ -128,8 +128,9 @@ extension Task {
 
       /// If present, the handle on which the `next()` call is awaiting,
       /// it should be resumed by *any* of the in-flight tasks completing.
-      var wakeUpNext: Handle<Void>? = nil
-
+      // var wakeUpNext: Handle<Void>? = nil // FIXME: use this
+      var wakeUpNext: BlockingReceptacle<Void>? = nil // FIXME: use this
+      
       // TODO: ATOMIC && combined with Status
       let closed: Bool = false
 
@@ -205,14 +206,26 @@ extension Task {
             // TODO: cas +1 the status, if we activated we perform the wakeup
             let oldStatus = storage.tasksToPull
             storage.tasksToPull += 1
+
+            print("    << completed: taskID:\(taskID); oldStatus:\(oldStatus)")
             return oldStatus
           }
 
           if oldStatus == 0 {
-            guard let wakeUpNext = storage.wakeUpNext else {
-              fatalError("No wakeUpNextContinuation available! Task ID completed: \(taskID)")
+            let wakeUpNext = lock.synchronized {
+              storage.wakeUpNext
             }
-            cc.resume(returning: ())
+
+            if let wakeUpNext = wakeUpNext {
+              wakeUpNext.offerOnce(())
+            }
+
+//            guard let wakeUpNext = wakeUpNext else {
+//              fatalError("No wakeUpNextContinuation available! Task ID completed: \(taskID)")
+//            }
+//
+//            let task = await Builtin.getConcurrentAsyncTask()
+//            _completeFuture()
           } // no need to wake-up
         }
 
@@ -220,6 +233,13 @@ extension Task {
         print("<<< task [\(taskID)] completed: \(result)")
         return result
       }
+
+      let wakeUpNext = lock.synchronized {
+        if storage.wakeUpNext == nil {
+          storage.wakeUpNext = BlockingReceptacle()
+        }
+      }
+
   
 //      self.lock.synchronized {
 //        if storage.wakeUpNext == nil {
@@ -265,18 +285,24 @@ extension Task {
       }
 
       // wait until _any_ task completes
-      await try wakeUpHandle.get()
+      // await try wakeUpHandle.get()
+      try wakeUpHandle.wait()
+      self.lock.synchronized {
+        print("\(#function) woken up! \(storage.completedTaskQueue)")
+      }
 
       // TODO: optimize by yielding the result right there right away?
 
       guard let completedTaskID: Int = self.lock.synchronized({ storage.pollCompletedTask() }) else {
-        fatalError("Nothing was completed yet we were woken up")
+        print("ERROR: Nothing was completed yet we were woken up: \(storage.completedTaskQueue)")
+        return nil
       }
 
       if let completedHandle = self.allTasks.removeValue(forKey: completedTaskID) {
         return await try completedHandle.get()
       } else {
-        fatalError("Completion for task ID \(completedTaskID) not present in allTasks: \(self.allTasks)!")
+        print("ERROR: Completion for task ID \(completedTaskID) not present in allTasks: \(self.allTasks)!")
+        return nil
       }
     }
 
