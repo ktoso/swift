@@ -224,11 +224,21 @@ internal final class BlockingReceptacle<Value> {
   ///           make sure to always correctly only offer a single value to the receptacle.
   func offerOnce(_ value: Value) {
     self.lock.synchronized {
-      if self._value != nil {
+      guard self._value == nil else {
         fatalError(
           "BlockingReceptacle can only be offered once. Already was offered [\(String(reflecting: self._value))] before, " +
             "and can not accept new offer: [\(value)]!"
         )
+      }
+      self._value = value
+      self.notEmpty.signalAll()
+    }
+  }
+
+  func offer(_ value: Value) {
+    self.lock.synchronized {
+      guard self._value == nil else {
+        return
       }
       self._value = value
       self.notEmpty.signalAll()

@@ -116,6 +116,8 @@ extension Task {
   public struct Group<TaskResult> {
     private let parentTask: Builtin.NativeObject
 
+    private let queue: Builtin.NativeObject
+
     // TODO: remove
     var allTasks: [Int: Handle<TaskResult>] = [:]
 
@@ -148,14 +150,16 @@ extension Task {
     }
     let storage: Storage
 
-//    private var nextHandle: Task.Handle<TaskResult>? = nil
-
     /// No public initializers
     init(parentTask: Builtin.NativeObject) {
       self.parentTask = parentTask
 
       self.lock = _Mutex()
       self.storage = .init()
+
+      let wakeUpNext = lock.synchronized {
+        self.storage.wakeUpNext = BlockingReceptacle()
+      }
     }
 
     var isClosed: Bool {
@@ -217,7 +221,7 @@ extension Task {
             }
 
             if let wakeUpNext = wakeUpNext {
-              wakeUpNext.offerOnce(())
+              wakeUpNext.offer(())
             }
 
 //            guard let wakeUpNext = wakeUpNext else {
@@ -234,11 +238,11 @@ extension Task {
         return result
       }
 
-      let wakeUpNext = lock.synchronized {
-        if storage.wakeUpNext == nil {
-          storage.wakeUpNext = BlockingReceptacle()
-        }
-      }
+//      let wakeUpNext = lock.synchronized {
+//        if self.storage.wakeUpNext == nil {
+//          self.storage.wakeUpNext = BlockingReceptacle()
+//        }
+//      }
 
   
 //      self.lock.synchronized {
@@ -288,7 +292,14 @@ extension Task {
       // await try wakeUpHandle.get()
       try wakeUpHandle.wait()
       self.lock.synchronized {
-        print("\(#function) woken up! \(storage.completedTaskQueue)")
+        print("\(#function) woken up! \(storage.completedTaskQueue);")
+        self.storage.tasksToPull -= 1
+        if self.storage.tasksToPull == 0 {
+          print("\(#function) woken up, no completed tasks remaining to pull, resetting wakeUpNext")
+//          self.storage.wakeUpNext = BlockingReceptacle()
+        } else {
+          print("\(#function) woken up, still \(self.storage.tasksToPull) completed tasks remaining to pull, not resetting wakeUpNext")
+        }
       }
 
       // TODO: optimize by yielding the result right there right away?
