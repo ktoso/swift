@@ -12,7 +12,16 @@
 
 import Swift
 @_implementationOnly import _SwiftConcurrencyShims
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif os(Windows)
+import CRT
+#else
+#error("Unsupported platform")
+#endif
+
 
 // ==== Task -------------------------------------------------------------------
 
@@ -398,7 +407,6 @@ public func _runChildTask<T>(
   flags.priority = getJobFlags(currentTask).priority
   flags.isFuture = true
   flags.isChildTask = true
-  flags.hasLocalValues = true // _taskHasTaskLocalValues(currentTask)
 
   // Create the asynchronous task future.
   let (task, _) = Builtin.createAsyncTaskFuture(
@@ -448,7 +456,6 @@ public func _prepareChildTask<T>(
   flags.priority = priorityOverride ?? getJobFlags(currentTask).priority
   flags.isFuture = true
   flags.isChildTask = true
-  flags.hasLocalValues = true // hasLocalValues || _taskHasTaskLocalValues(currentTask)
 
   // Create the asynchronous task future.
   let (task, _) = Builtin.createAsyncTaskFuture(
