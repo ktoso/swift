@@ -4296,7 +4296,8 @@ Optional<SILValue> SILGenFunction::emitLoadActorExecutorForCallee(
       case ActorIsolation::IndependentUnsafe:
         break;
 
-      case ActorIsolation::ActorInstance: {
+      case ActorIsolation::ActorInstance:
+      case ActorIsolation::DistributedActorInstance: {
         assert(args.size() > 0 && "no self argument for actor-instance call?");
         auto calleeSelf = args.back();
         return calleeSelf.borrow(*this, F.getLocation()).getValue();

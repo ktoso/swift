@@ -95,6 +95,10 @@ public:
     /// Referneces to this entity are allowed from anywhere, but doing so may
     /// cross an actor bounder if it is not from the same global actor.
     CrossGlobalActor,
+
+    /// References to declarations that are part of a distributed actor are
+    /// only permitted if they are async.
+    DistributedActor, // TODO: not sure if we need this one
   };
 
 private:
@@ -125,7 +129,9 @@ public:
 
   /// Retrieve the actor class that the declaration is within.
   ClassDecl *getActorClass() const {
-    assert(kind == ActorSelf || kind == CrossActorSelf);
+    assert(kind == ActorSelf || 
+           kind == CrossActorSelf || 
+           kind == DistributedActor); // TODO: is this right?
     return data.actorClass;
   }
 
@@ -158,6 +164,14 @@ public:
   static ActorIsolationRestriction forLocalCapture(DeclContext *dc) {
     ActorIsolationRestriction result(LocalCapture);
     result.data.localContext = dc;
+    return result;
+  }
+
+  /// Accesses to the given declaration can only be made via the 'self' of
+  /// the current actor.
+  static ActorIsolationRestriction forDistributedActorSelf(ClassDecl *actorClass) {
+    ActorIsolationRestriction result(DistributedActor);
+    result.data.actorClass = actorClass;
     return result;
   }
 

@@ -4230,6 +4230,10 @@ ERROR(actor_isolated_non_self_reference,none,
         "actor-isolated %0 %1 can only be referenced "
         "%select{inside the actor|on 'self'}2",
         (DescriptiveDeclKind, DeclName, bool))
+ERROR(distributed_actor_isolated_non_self_reference,none,
+      "distributed actor-isolated %0 %1 can only be referenced "
+      "inside the distributed actor",
+      (DescriptiveDeclKind, DeclName))
 ERROR(actor_isolated_self_independent_context,none,
         "actor-isolated %0 %1 can not be referenced from an "
         "'@actorIndependent' context",
@@ -4285,6 +4289,12 @@ NOTE(actor_isolated_sync_func,none,
      "calls to %0 %1 from outside of its actor context are "
      "implicitly asynchronous",
      (DescriptiveDeclKind, DeclName))
+ERROR(distributed_actor_isolated_method,none,
+      "only @distributed asynchronous methods can be used outside the distributed actor instance; "
+      "do you want to add '@distributed'?", ())
+ERROR(distributed_actor_func_param_not_codable,none,
+      "@distributed function parameter '%0' type %1 must conform to 'Codable'",
+      (StringRef, Type))
 NOTE(actor_mutable_state,none,
      "mutable state is only available within the actor instance", ())
 WARNING(shared_mutable_state_access,none,
@@ -4365,6 +4375,33 @@ ERROR(actorindependent_mutable_storage,none,
       ())
 ERROR(actorindependent_local_var,none,
       "'@actorIndependent' can not be applied to local variables",
+      ())
+
+ERROR(distributedactor_local_var,none,
+      "'@distributed' can not be applied to local variables",
+      ())
+ERROR(distributedactor_let,none,
+      "'@distributed' can not be applied to local properties",
+      ())
+ERROR(distributedactor_storage,none,
+      "'@distributed' can not be applied to actor properties; "
+      "Only async functions can be '@distributed'",
+      ())
+ERROR(distributedactor_not_actor,none,
+      "'@distributed' can only be applied to 'actor class' definitions, "
+      "and distributed actor isolated async functions",
+      ())
+ERROR(distributedactor_not_actor_func,none,
+      "'@distributed' can only be applied to @distributed actor async functions",
+      ())
+ERROR(distributedactor_func_not_async_throws,none,
+      "'@distributed' actor-isolated function must be 'async throws'",
+      ())
+ERROR(distributedactor_func_static,none,
+      "'@distributed' actor-isolated functions cannot be 'static'",
+      ())
+ERROR(distributedactor_func_not_in_distributed_actor,none,
+      "'@distributed' function can only be declared within '@distributed actor class'",
       ())
 
 ERROR(concurrency_lib_missing,none,
