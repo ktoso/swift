@@ -2665,7 +2665,8 @@ bool ConformanceChecker::checkActorIsolation(
   Type witnessGlobalActor;
   switch (auto witnessRestriction =
               ActorIsolationRestriction::forDeclaration(witness)) {
-  case ActorIsolationRestriction::ActorSelf: {
+  case ActorIsolationRestriction::ActorSelf:
+  case ActorIsolationRestriction::DistributedActor: {
     // Actor-isolated witnesses cannot conform to protocol requirements.
     witness->diagnose(diag::actor_isolated_witness,
                       witness->getDescriptiveKind(),
@@ -2717,6 +2718,7 @@ bool ConformanceChecker::checkActorIsolation(
   Type requirementGlobalActor;
   switch (auto requirementIsolation = getActorIsolation(requirement)) {
   case ActorIsolation::ActorInstance:
+  case ActorIsolation::DistributedActorInstance:
     llvm_unreachable("There are not actor protocols");
 
   case ActorIsolation::GlobalActor: {

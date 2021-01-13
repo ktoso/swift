@@ -250,7 +250,7 @@ extension MyActor {
     _ = super[0] // expected-error{{actor-isolated subscript 'subscript(_:)' can not be referenced from context of global actor 'SomeGlobalActor'}}
 
     // Accesses on other actors can only reference immutable data or
-    // call asychronous methods
+    // call asynchronous methods
     _ = otherActor.immutable // okay
     _ = otherActor.synchronous() // expected-error{{call is 'async' but is not marked with 'await'}}
     _ = otherActor.synchronous  // expected-error{{actor-isolated instance method 'synchronous()' can only be referenced on 'self'}}

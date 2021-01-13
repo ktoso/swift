@@ -4189,6 +4189,13 @@ bool ClassDecl::isDefaultActor() const {
                            false);
 }
 
+bool ClassDecl::isDistributedActor() const {
+  auto mutableThis = const_cast<ClassDecl *>(this);
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsDistributedActorRequest{mutableThis},
+                           false);
+}
+
 bool ClassDecl::hasMissingDesignatedInitializers() const {
   return evaluateOrDefault(
       getASTContext().evaluator,
@@ -6793,6 +6800,17 @@ FunctionRethrowingKind AbstractFunctionDecl::getRethrowingKind() const {
   return evaluateOrDefault(getASTContext().evaluator,
     FunctionRethrowingKindRequest{const_cast<AbstractFunctionDecl *>(this)}, 
     FunctionRethrowingKind::Invalid);
+}
+
+bool AbstractFunctionDecl::isDistributed() const {
+  auto func = dyn_cast<FuncDecl>(this);
+  if (!func)
+    return false;
+
+  auto mutableFunc = const_cast<FuncDecl *>(func);
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsDistributedFuncRequest{mutableFunc},
+                           false);
 }
 
 BraceStmt *AbstractFunctionDecl::getBody(bool canSynthesize) const {
