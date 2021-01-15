@@ -143,7 +143,6 @@ static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
   if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) {
     for (auto param : *func->getParameters()) {
       if (auto t = param->getInterfaceType()) {
-        // FIXME: Codable parameters checks
         func->diagnose(
             diag::distributed_actor_func_param_not_codable,
             param->getArgumentName().str(),

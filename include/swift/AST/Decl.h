@@ -5803,7 +5803,6 @@ public:
   FunctionRethrowingKind getRethrowingKind() const;
 
   /// Returns 'true' if the function is distributed.
-  // TODO: now we also check that it is a well formed distributed (i.e. also async, should we just check the annotation presence?)
   bool isDistributed() const;
 
   // FIXME: Hack that provides names with keyword arguments for accessors.
