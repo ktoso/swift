@@ -166,8 +166,6 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
   // Synthesize properties
   auto var = dyn_cast<VarDecl>(requirement);
   if (var) {
-    requirement->dump();
-
     if (VarDecl::isDistributedActorTransportName(Context, var->getName())) {
       fprintf(stderr, "[%s:%d] >> (%s)  \n", __FILE__, __LINE__, __FUNCTION__);
       return deriveDistributedActor_actorTransport(*this);

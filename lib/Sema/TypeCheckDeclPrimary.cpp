@@ -1342,13 +1342,6 @@ static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 
 void TypeChecker::checkParameterList(ParameterList *params,
                                      DeclContext *owner) {
-//  auto isDistributedFunction = false;
-//  if (auto func = dyn_cast<FuncDecl*>(owner)) {
-//    isDistributedFunction = func->();
-//  }
-  bool isDistributed = isa<FuncDecl>(owner) &&
-    cast<FuncDecl>(owner)->isDistributed();
-
   for (auto param: *params) {
     checkDeclAttributes(param);
 
@@ -1361,19 +1354,6 @@ void TypeChecker::checkParameterList(ParameterList *params,
           param->diagnose(diag::async_autoclosure_nonasync_function);
           if (auto func = dyn_cast<FuncDecl>(owner))
             addAsyncNotes(func);
-        }
-      }
-    }
-
-    // distributed function parameters must be codable
-    if (isDistributed) {
-      auto encodable = conformsToProtocol(param->getInterfaceType(),
-        owner->getASTContext().getProtocol(KnownProtocolKind::Encodable), owner);
-      if (encodable) {
-        auto decodable = conformsToProtocol(param->getInterfaceType(),
-          owner->getASTContext().getProtocol(KnownProtocolKind::Decodable), owner);
-        if (!decodable) {
-          assert(false && "MUST BE CODABLE");
         }
       }
     }
