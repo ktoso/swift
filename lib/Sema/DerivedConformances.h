@@ -301,6 +301,14 @@ public:
   /// \returns the derived member, which will also be added to the type.
   ValueDecl *deriveActor(ValueDecl *requirement);
 
+  /// Whether we can derive the given DistributedActor requirement in the given context.
+  static bool canDeriveDistributedActor(NominalTypeDecl *nominal, DeclContext *dc);
+
+//  /// Derive a DistributedActor requirement for an distributed actor class.
+//  ///
+//  /// \returns the derived member, which will also be added to the type.
+  ValueDecl *deriveDistributedActor(ValueDecl *requirement); // TODO
+
   /// Declare a read-only property.
   std::pair<VarDecl *, PatternBindingDecl *>
   declareDerivedProperty(Identifier name, Type propertyInterfaceType,
