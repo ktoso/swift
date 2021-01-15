@@ -37,7 +37,7 @@ distributed actor class DistributedActor_1 {
     int
   }
 
-  distributed func dist(notCodable: NotCodableParameter) async throws { }
+  distributed func dist(notCodable: NotCodableParameter) async throws { } // expected-error{{distributed function parameter 'notCodable' type 'NotCodableParameter' must conform to 'Codable'}}
 
   func test() async throws {
     _ = self.name
@@ -69,5 +69,5 @@ func test_params(
 ) async throws {
   _ = try await distributed.distInt() // ok
   _ = try await distributed.distInt(int: 42) // ok
-  _ = try await distributed.dist(notCodable: .init()) // expected-error{{distributed function parameter 'notCodable' type 'NotCodableParameter' must conform to 'Codable'}}
+  _ = try await distributed.dist(notCodable: .init())
 }

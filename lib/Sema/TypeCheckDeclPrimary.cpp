@@ -1403,7 +1403,12 @@ static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 
 void TypeChecker::checkParameterList(ParameterList *params,
                                      DeclContext *owner) {
-//  auto isDistributedActor = owner->isDistributed()->;
+//  auto isDistributedFunction = false;
+//  if (auto func = dyn_cast<FuncDecl*>(owner)) {
+//    isDistributedFunction = func->();
+//  }
+  bool isDistributed = isa<FuncDecl>(owner) &&
+    cast<FuncDecl>(owner)->isDistributed();
 
   for (auto param: *params) {
     checkDeclAttributes(param);
@@ -1422,7 +1427,17 @@ void TypeChecker::checkParameterList(ParameterList *params,
     }
 
     // distributed function parameters must be codable
-//    if (owner->)
+    if (isDistributed) {
+      auto encodable = conformsToProtocol(param->getInterfaceType(),
+        owner->getASTContext().getProtocol(KnownProtocolKind::Encodable), owner);
+      if (encodable) {
+        auto decodable = conformsToProtocol(param->getInterfaceType(),
+          owner->getASTContext().getProtocol(KnownProtocolKind::Decodable), owner);
+        if (!decodable) {
+          assert(false && "MUST BE CODABLE");
+        }
+      }
+    }
   }
 
   // For source compatibility, allow duplicate internal parameter names
@@ -1434,6 +1449,28 @@ void TypeChecker::checkParameterList(ParameterList *params,
     // Check for duplicate parameter names.
     diagnoseDuplicateDecls(*params);
   }
+}
+
+void TypeChecker::checkResultType(Type resultType,
+                                  DeclContext *owner) {
+//  // Only distributed functions have special requirements on return types.
+//  if (!owner->isDistributed())
+//    return;
+//
+//  auto conformanceDC = owner->getConformanceContext();
+//
+//  // Result type of distributed functions must be Codable.
+//  auto target =
+//      conformanceDC->mapTypeIntoContext(it->second->getValueInterfaceType());
+//  if (TypeChecker::conformsToProtocol(target, derived.Protocol, conformanceDC)
+//      .isInvalid()) {
+//    TypeLoc typeLoc = {
+//        it->second->getTypeReprOrParentPatternTypeRepr(),
+//        it->second->getType(),
+//    };
+//    it->second->diagnose(diag::codable_non_conforming_property_here,
+//                         derived.getProtocolType(), typeLoc);
+//    propertiesAreValid = false;
 }
 
 void TypeChecker::diagnoseDuplicateBoundVars(Pattern *pattern) {
@@ -2574,6 +2611,7 @@ public:
       checkAccessControl(FD);
 
       TypeChecker::checkParameterList(FD->getParameters(), FD);
+      TypeChecker::checkResultType(FD->getResultInterfaceType(), FD);
     }
 
     TypeChecker::checkDeclAttributes(FD);
