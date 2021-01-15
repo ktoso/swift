@@ -121,6 +121,7 @@ static bool checkAsyncHandler(FuncDecl *func, bool diagnose) {
 /// \returns \c true if there was a problem with adding the attribute, \c false
 /// otherwise.
 static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
+  // 1. Distributed functions must be throwing
   if (!func->hasThrows()) {
     if (diagnose) {
 //      func->diagnose(diag::asynchandler_throws)
@@ -131,6 +132,9 @@ static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
     return true;
   }
 
+  /// TODO: the latest actors proposal states that functions dont need to be async
+  /// but they will be transparently called as async from outside; so we can remove
+  /// this requirement here.
   if (!func->hasAsync()) {
     if (diagnose) {
 //      func->diagnose(diag::asynchandler_async)
@@ -141,29 +145,63 @@ static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
     return true;
   }
 
-  if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) {
-    for (auto param : *func->getParameters()) {
-      if (auto t = param->getInterfaceType()) {
+  // All parameters and the result type must be Codable
+
+//  if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) { // TODO: can we remove this here since it's checked earlier already?
+//  if (checkDistributedFuncParamAndResultTypes(func, diagnose)) return true;
+//  }
+  auto encodableType = func->getASTContext().getProtocol(KnownProtocolKind::Encodable);
+  auto decodableType = func->getASTContext().getProtocol(KnownProtocolKind::Decodable);
+
+  /// Check parameters for 'Codable' conformance
+  for (auto param : *func->getParameters()) {
+    auto paramType = param->getInterfaceType();
+    if (!TypeChecker::conformsToProtocol(paramType, encodableType, func)) {
+      if (diagnose)
         func->diagnose(
             diag::distributed_actor_func_param_not_codable,
             param->getArgumentName().str(),
-            t
+            paramType
         );
+      // TODO: suggest a fixit to add Codable to the type?
+      return true;
+    }
 
-        return true;
-      }
+    if (!TypeChecker::conformsToProtocol(paramType, decodableType, func)) {
+      if (diagnose)
+        func->diagnose(
+            diag::distributed_actor_func_param_not_codable,
+            param->getArgumentName().str(),
+            paramType
+        );
+      // TODO: suggest a fixit to add Codable to the type?
+      return true;
     }
   }
 
-  //  if (!func->getResultInterfaceType()->isVoid()) {
-  //    // FIXME: check that return type conforms to 'Codable'
-  //  }
+  // Result type must be either void or a codable type
+  // TODO: In the future we can also support AsyncSequence of Codable values
+  auto resultType = func->getResultInterfaceType();
+  llvm::errs() << "   RESULT TYPE:";
+  llvm::errs() << resultType;
+  llvm::errs() << "\n";
 
-  // RELATED SNIPPET to check if Codable:
-  //     auto target =
-  //        conformanceDC->mapTypeIntoContext(it->second->getValueInterfaceType());
-  //    if (TypeChecker::conformsToProtocol(target, derived.Protocol, conformanceDC)
-  //            .isInvalid()) {
+  if (!resultType->isVoid()) {
+    if (!TypeChecker::conformsToProtocol(resultType, decodableType, func) ||
+        !TypeChecker::conformsToProtocol(resultType, encodableType, func)) {
+      llvm::errs() << "   CODABLE:";
+      llvm::errs() << resultType;
+      llvm::errs() << "\n";
+
+      if (diagnose)
+        func->diagnose(
+            diag::distributed_actor_func_result_not_codable,
+            resultType
+        );
+      // TODO: suggest a fixit to add Codable to the type?
+      return true;
+    }
+  }
 
   return false;
 }
@@ -346,7 +384,12 @@ bool IsDistributedActorRequest::evaluate(
 bool IsDistributedFuncRequest::evaluate(
     Evaluator &evaluator, FuncDecl *func) const {
   // Check whether the attribute was explicitly specified.
+
   if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) {
+    llvm::errs() << "   FUNC DIST CHECK:";
+    func->dump();
+    llvm::errs() << "\n";
+
     // Check for well-formedness.
     if (checkDistributedFunc(func, /*diagnose=*/true)) {
       attr->setInvalid();
@@ -649,7 +692,15 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
 
     // A function that provides an asynchronous context has no restrictions
     // on its access.
-    if (auto func = dyn_cast<AbstractFunctionDecl>(decl)) {
+    if (auto func = dyn_cast<FuncDecl>(decl)) {
+      if (func->isDistributed()) { // TODO: this causes all check, should instead just be a quick is/is-not?
+        if (auto classDecl = dyn_cast<ClassDecl>(decl->getDeclContext())) {
+          return forDistributedActorSelf(classDecl);
+        } else {
+          assert(false && "distributed functions must be declared within an distributed actor, yet no enclosing actor context was available?");
+        }
+      }
+
       if (func->isAsyncContext())
         isAccessibleAcrossActors = true;
     }
@@ -657,15 +708,6 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
     // Local captures can only be referenced in their local context or a
     // context that is guaranteed not to run concurrently with it.
     if (cast<ValueDecl>(decl)->isLocalCapture()) {
-      // printf("analysis  2: %s\n", decl->printRef().c_str());
-      if (auto func = dyn_cast<AbstractFunctionDecl>(decl)) {
-        if (func->isDistributed()) {
-          if (auto classDecl = dyn_cast<ClassDecl>(decl->getDeclContext())) {
-            return forDistributedActorSelf(classDecl);
-          }
-        }
-      }
-
       // Local functions are safe to capture; their bodies are checked based on
       // where that capture is used.
       if (isa<FuncDecl>(decl))
@@ -1168,22 +1210,22 @@ namespace {
     }
 
     /// Searches the applyStack from back to front for the inner-most CallExpr
-    /// and marks that CallExpr as implicitly async. 
+    /// and marks that CallExpr as implicitly async.
     ///
     /// NOTE: Crashes if no CallExpr was found.
-    /// 
+    ///
     /// For example, for global actor function `curryAdd`, if we have:
     ///     ((curryAdd 1) 2)
     /// then we want to mark the inner-most CallExpr, `(curryAdd 1)`.
     ///
     /// The same goes for calls to member functions, such as calc.add(1, 2),
     /// aka ((add calc) 1 2), looks like this:
-    /// 
+    ///
     ///  (call_expr
     ///    (dot_syntax_call_expr
     ///      (declref_expr add)
     ///      (declref_expr calc))
-    ///    (tuple_expr 
+    ///    (tuple_expr
     ///      ...))
     ///
     /// and we reach up to mark the CallExpr.
@@ -1259,7 +1301,7 @@ namespace {
         if (auto partialApply = decomposePartialApplyThunk(
                 apply, Parent.getAsExpr())) {
           if (auto memberRef = findMemberReference(partialApply->fn)) {
-            // NOTE: partially-applied thunks are never annotated as 
+            // NOTE: partially-applied thunks are never annotated as
             // implicitly async, regardless of whether they are escaping.
             checkMemberReference(
                 partialApply->base, memberRef->first, memberRef->second,
@@ -1372,7 +1414,7 @@ namespace {
       // FIXME: Make this diagnostic more sensitive to the isolation context
       // of the declaration.
       if (auto func = dyn_cast<AbstractFunctionDecl>(decl)) {
-        func->diagnose(diag::actor_isolated_sync_func, 
+        func->diagnose(diag::actor_isolated_sync_func,
           decl->getDescriptiveKind(),
           decl->getName());
       } else if (isa<VarDecl>(decl)) {
@@ -1674,7 +1716,7 @@ namespace {
             return didEmitDiagnostic; // definitely an OK reference.
 
           // otherwise, there's something wrong.
-          
+
           // if it's an implicitly-async call in a non-async context,
           // then we know later type-checking will raise an error,
           // so we just emit a note pointing out that callee of the call is
@@ -1687,12 +1729,12 @@ namespace {
           // since this function is not associated with an actor.
           if (isa<FuncDecl>(fn) && !isAsyncContext) {
             didEmitDiagnostic = true;
-            fn->diagnose(diag::note_add_globalactor_to_function, 
+            fn->diagnose(diag::note_add_globalactor_to_function,
                 globalActor->getWithoutParens().getString(),
                 fn->getDescriptiveKind(),
                 fn->getName(),
                 globalActor)
-              .fixItInsert(fn->getAttributeInsertionLoc(false), 
+              .fixItInsert(fn->getAttributeInsertionLoc(false),
                 diag::insert_globalactor_attr, globalActor);
           }
 
@@ -1837,7 +1879,7 @@ namespace {
     /// in an invalid or unsafe way such that a diagnostic was emitted.
     bool checkMemberReference(
         Expr *base, ConcreteDeclRef memberRef, SourceLoc memberLoc,
-        bool isEscapingPartialApply = false, 
+        bool isEscapingPartialApply = false,
         bool maybeImplicitAsync = false) {
       if (!base || !memberRef)
         return false;
