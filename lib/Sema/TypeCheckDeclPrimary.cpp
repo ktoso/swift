@@ -1403,6 +1403,8 @@ static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 
 void TypeChecker::checkParameterList(ParameterList *params,
                                      DeclContext *owner) {
+//  auto isDistributedActor = owner->isDistributed()->;
+
   for (auto param: *params) {
     checkDeclAttributes(param);
 
@@ -1418,9 +1420,12 @@ void TypeChecker::checkParameterList(ParameterList *params,
         }
       }
     }
+
+    // distributed function parameters must be codable
+//    if (owner->)
   }
 
-  // For source compatibilty, allow duplicate internal parameter names
+  // For source compatibility, allow duplicate internal parameter names
   // on protocol requirements.
   //
   // FIXME: Consider turning this into a warning or error if we do

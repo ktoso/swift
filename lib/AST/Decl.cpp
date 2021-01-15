@@ -5087,6 +5087,8 @@ Optional<KnownDerivableProtocolKind>
     return KnownDerivableProtocolKind::Differentiable;
   case KnownProtocolKind::Actor:
     return KnownDerivableProtocolKind::Actor;
+  case KnownProtocolKind::DistributedActor:
+    return KnownDerivableProtocolKind::DistributedActor;
   default: return None;
   }
 }
@@ -7592,6 +7594,16 @@ bool FuncDecl::isActorEnqueuePartialTaskWitness() const {
   }
 
   return false;
+}
+
+bool VarDecl::isDistributedActorAddressName(ASTContext &ctx, DeclName name) {
+  assert(name.getArgumentNames().size() == 0);
+  return name.getBaseName() == ctx.Id_actorAddress;
+}
+
+bool VarDecl::isDistributedActorTransportName(ASTContext &ctx, DeclName name) {
+  assert(name.getArgumentNames().size() == 0);
+  return name.getBaseName() == ctx.Id_actorTransport;
 }
 
 ConstructorDecl::ConstructorDecl(DeclName Name, SourceLoc ConstructorLoc,

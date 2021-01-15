@@ -951,7 +951,7 @@ public:
     bool isCached() const { return true; }
 };
 
-/// Determine whether the given func is @distributed.
+/// Determine whether the given func is distributed.
 class IsDistributedFuncRequest :
     public SimpleRequest<IsDistributedFuncRequest,
         bool(FuncDecl *),
