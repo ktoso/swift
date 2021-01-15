@@ -1730,7 +1730,7 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
       break;
     }
 
-    // We do not (yet) support any additional options for @distributed.
+    // We do not (yet) support any additional options for distributed.
     return false;
   }
 

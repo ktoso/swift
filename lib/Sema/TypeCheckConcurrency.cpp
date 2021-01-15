@@ -329,7 +329,7 @@ bool IsDistributedActorRequest::evaluate(
   auto distributedAttr = classDecl->getAttrs()
       .getAttribute<DistributedActorAttr>();
 
-  // NOTE: that we DO NOT infer @distributed even if the parent class was distributed.
+  // NOTE: that we DO NOT infer distributed even if the parent class was distributed.
 
   return distributedAttr != nullptr;
 }
@@ -345,6 +345,8 @@ bool IsDistributedFuncRequest::evaluate(
     }
 
     return true;
+  } else {
+    return false;
   }
 }
 
@@ -596,7 +598,7 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
 
   case DeclKind::Param:
   case DeclKind::Var:
-    printf("analysis 1 var: %s\n", decl->printRef().c_str());
+    // printf("analysis 1 var: %s\n", decl->printRef().c_str());
     switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
       case ActorIsolation::DistributedActorInstance:
         // Accessing properties on a distributed actor is only allowed when
@@ -629,7 +631,7 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
     // Local captures can only be referenced in their local context or a
     // context that is guaranteed not to run concurrently with it.
     if (cast<ValueDecl>(decl)->isLocalCapture()) {
-      printf("analysis  2: %s\n", decl->printRef().c_str());
+      // printf("analysis  2: %s\n", decl->printRef().c_str());
       if (auto func = dyn_cast<AbstractFunctionDecl>(decl)) {
         if (func->isDistributed()) {
           if (auto classDecl = dyn_cast<ClassDecl>(decl->getDeclContext())) {
@@ -1394,7 +1396,7 @@ namespace {
         // Must reference distributed actor-isolated state on 'self'.
         auto *selfDC = getSelfReferenceContext(base);
         if (!selfDC) {
-          // invocation on not-'self', is only okey if this is a @distributed func
+          // invocation on not-'self', is only okey if this is a distributed func
           if (auto func = dyn_cast<FuncDecl>(member)) {
             if (!func->isDistributed()) {
               ctx.Diags.diagnose(memberLoc, diag::distributed_actor_isolated_method);
@@ -1958,9 +1960,7 @@ ActorIsolation ActorIsolationRequest::evaluate(
   // actor-isolated state.
   auto classDecl = value->getDeclContext()->getSelfClassDecl();
   if (classDecl && classDecl->isActor() && value->isInstanceMember()) {
-    printf(">> class + actor + is instance member\n");
     if (classDecl->isDistributedActor()) {
-      printf(">> distributed !!!\n");
       // It is distributed, so we must apply slightly stronger isolation.
       defaultIsolation = ActorIsolation::forDistributedActorInstance(classDecl);
     } else {
