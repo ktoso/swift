@@ -40,7 +40,7 @@ distributed actor class DistributedActor_1 {
     // expected-error@-1 {{distributed function parameter 'notCodable' type 'NotCodableValue' does not conform to 'Codable'}}
   }
   distributed func distBadReturn(int: Int) async throws -> NotCodableValue {
-    // expected-error@-1 {{distributed function result type 'NotCodableValue' must be 'Void' or conform to 'Codable'}}
+    // expected-error@-1 {{distributed function result type 'NotCodableValue' does not conform to 'Codable'}}
     fatalError()
   }
 
