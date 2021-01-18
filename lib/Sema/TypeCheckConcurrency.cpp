@@ -384,17 +384,12 @@ bool IsDistributedActorRequest::evaluate(
 bool IsDistributedFuncRequest::evaluate(
     Evaluator &evaluator, FuncDecl *func) const {
   // Check whether the attribute was explicitly specified.
-
   if (auto attr = func->getAttrs().getAttribute<DistributedActorAttr>()) {
-    llvm::errs() << "   FUNC DIST CHECK:";
-    func->dump();
-    llvm::errs() << "\n";
-
-    // Check for well-formedness.
-    if (checkDistributedFunc(func, /*diagnose=*/true)) {
-      attr->setInvalid();
-      return false;
-    }
+//    // Check for well-formedness.
+//    if (checkDistributedFunc(func, /*diagnose=*/true)) {
+//      attr->setInvalid();
+//      return false;
+//    }
 
     return true;
   } else {
@@ -2076,9 +2071,15 @@ void swift::checkFunctionActorIsolation(AbstractFunctionDecl *decl) {
   if (auto body = decl->getBody()) {
     body->walk(checker);
   }
-  if (auto ctor = dyn_cast<ConstructorDecl>(decl))
+  if (auto ctor = dyn_cast<ConstructorDecl>(decl)) {
     if (auto superInit = ctor->getSuperInitCall())
       superInit->walk(checker);
+  }
+  if (auto attr = decl->getAttrs().getAttribute<DistributedActorAttr>()) {
+    if (auto func = dyn_cast<FuncDecl>(decl)) {
+      checkDistributedFunc(func, /*diagnose=*/true);
+    }
+  }
 }
 
 void swift::checkInitializerActorIsolation(Initializer *init, Expr *expr) {
