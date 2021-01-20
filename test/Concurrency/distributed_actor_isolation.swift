@@ -9,6 +9,9 @@ actor class LocalActor_1 {
 struct NotCodableValue { }
 
 distributed actor class DistributedActor_1 {
+
+  let actorTransport: ActorTransport // TODO: synthesize instead
+
   let name: String = "alice" // expected-note{{mutable state is only available within the actor instance}}
   var mutable: String = "alice" // expected -note{{mutable-state is only available within the actor instance}}
   var computedMutable: String {
