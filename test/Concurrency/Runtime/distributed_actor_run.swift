@@ -13,10 +13,16 @@ import Glibc
 #endif
 
 distributed actor class DistributedActor_1 {
-  required init(resolve address: ActorAddress, using transport: ActorTransport) {
-    self.actorAddress = address
-    self.actorTransport = transport
-  }
+//  // @derived
+//  required init(transport: ActorTransport) {
+//    self.actorTransport = transport
+//    self.actorAddress = ActorAddress(parse: "xxx")
+//  }
+//  // @derived
+//  required init(resolve address: ActorAddress, using transport: ActorTransport) {
+//    self.actorAddress = address
+//    self.actorTransport = transport
+//  }
 
   distributed func hello() async throws {
     print("hello from \(self.actorAddress)")
@@ -38,7 +44,6 @@ struct FakeTransport: ActorTransport {
   func request<Request, Reply>(replyType: Reply.Type, _ request: Request, from recipient: ActorAddress) async throws where Request : Decodable, Request : Encodable, Reply : Decodable, Reply : Encodable {
     fatalError()
   }
-
 }
 
 // ==== Execute ----------------------------------------------------------------
