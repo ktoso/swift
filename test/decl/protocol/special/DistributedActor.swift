@@ -15,7 +15,7 @@ distributed actor class D1 {
 
 //  required init(transport: ActorTransport) {
 //     self.actorTransport = transport
-//     self.actorAddress = transport.makeAddress(forType: Self.self)
+//     self.actorAddress = transport.assignAddress(self)
 //     transport.register(self)
 //  }
 

@@ -26,7 +26,22 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// Upon initialization, the `actorAddress` field is populated by the transport,
   /// with an address assigned to this actor.
+  ///
+  /// - Parameter transport:
   init(transport: ActorTransport)
+
+  /// Resolves the passed in `address` against the `transport`,
+  /// returning either a local or remote actor reference.
+  ///
+  /// The transport will be asked to `resolve` the address and return either
+  /// a local instance or determine that a proxy instance should be created
+  /// for this address. A proxy actor will forward all invocations through
+  /// the transport, allowing it to take over the remote messaging with the
+  /// remote actor instance.
+  ///
+  /// - Parameter address:
+  /// - Parameter transport:
+  init(resolve address: ActorAddress, using transport: ActorTransport)
 
 //  /// Decode an actor (remote or local) reference using the transport stored
 //  /// within the passed decoder. The transport's `resolve` function is called to
@@ -52,6 +67,12 @@ public protocol DistributedActor: Actor, Codable {
   /// An address is always uniquely pointing at a specific actor instance
   @actorIndependent
   var actorAddress: ActorAddress { get }
+}
+
+// ==== Codable conformance ----------------------------------------------------
+
+extension CodingUserInfoKey {
+  static let actorTransport = CodingUserInfoKey(rawValue: "$dist_act_trans")!
 }
 
 extension DistributedActor {
@@ -98,17 +119,19 @@ public protocol ActorTransport {
   /// E.g. if an actor is created under address `addr1` then immediately invoking
   /// `transport.resolve(address: addr1, as: Greeter.self)` MUST return a reference
   /// to the same actor.
-  func makeAddress<Act>(
+  func assignAddress<Act>(
     forType: Act.Type,
     onActorCreated: (Act) -> ()
   ) -> ActorAddress
     where Act: DistributedActor
 
+  // TODO: remove?
   func send<Message>(
     _ message: Message,
     to recipient: ActorAddress
   ) async throws where Message: Codable
 
+  // TODO: remove?
   func request<Request, Reply>(
     replyType: Reply.Type,
     _ request: Request,
@@ -116,19 +139,29 @@ public protocol ActorTransport {
   ) async throws where Request: Codable, Reply: Codable
 }
 
-public protocol ActorAddress: Codable {
+public struct ActorAddress: Equatable, Codable {
   /// Uniquely specifies the actor transport and the protocol used by it.
   ///
   /// E.g. "xpc", "specific-clustering-protocol" etc.
-  static var `protocol`: String { get }
-  // TODO: node etc
+  var `protocol`: String
 
-  var host: String? { get }
-  var port: Int? { get }
+  var host: String?
+  var port: Int?
+  var nodeID: UInt64?
+  var path: Int?
 
   /// Unique Identifier of this actor.
-  var uid: UInt64 { get }
+  var uid: UInt64 // TODO: should we remove this
 }
 
-struct DistributedActorDecodingError: Error {
+/// Error protocol to which errors thrown by any `ActorTransport` should conform.
+public protocol ActorTransportError: Error {}
+
+public struct DistributedActorDecodingError: ActorTransportError {
+  let message: String
+
+  static func missingTransportUserInfo<Act>(_ actorType: Act.Type) -> DistributedActorDecodingError
+    where Act: DistributedActor {
+    .init(message: "Missing ActorTransport userInfo while decoding")
+  }
 }
