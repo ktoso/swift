@@ -49,8 +49,45 @@ static bool canSynthesizeInitializer(DerivedConformance &derived, ValueDecl *req
 /// \param initDecl The function decl whose body to synthesize.
 static std::pair<BraceStmt *, bool>
 deriveBodyDistributedActor_init_resolve(AbstractFunctionDecl *initDecl, void *) {
-  assert(false);
-}
+  // distributed actor class Greeter {
+  //   // Already derived by this point if possible.
+  //   @derived let actorTransport: ActorTransport
+  //   @derived let actorAddress: ActorAddress
+  //
+  //   @derived init(resolve address: ActorAddress, using transport: ActorTransport) throws {
+  //     // TODO: implement calling the transport
+  //     // switch try transport.resolve(address: address, as: Self.self) {
+  //     // case .instance(let instance):
+  //     //   self = instance
+  //     // case .makeProxy:
+  //     // TODO: use RebindSelfInConstructorExpr here?
+  //     //   self = <<MAGIC MAKE PROXY>>(address, transport) // TODO: implement this
+  //     // }
+  //   }
+  // }
+
+  // The enclosing type decl.
+  auto conformanceDC = initDecl->getDeclContext();
+  auto *targetDecl = conformanceDC->getSelfNominalTypeDecl();
+
+  auto *funcDC = cast<DeclContext>(initDecl);
+  auto &C = funcDC->getASTContext();
+
+  SmallVector<ASTNode, 5> statements; // TODO: how many?
+
+  auto addressParam = initDecl->getParameters()->get(0);
+  auto *addressExpr = new (C) DeclRefExpr(ConcreteDeclRef(addressParam),
+                                            DeclNameLoc(), /*Implicit=*/true);
+
+  auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
+
+  auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
+      /*implicit=*/true);
+
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT transport BODY:");
+  initDecl->dump();
+
+  return { body, /*isTypeChecked=*/false };}
 
 /// Derive the declaration of Actor's resolve initializer.
 ///
@@ -59,9 +96,110 @@ deriveBodyDistributedActor_init_resolve(AbstractFunctionDecl *initDecl, void *) 
 ///   init(resolve address: ActorAddress, using transport: ActorTransport) throws
 /// ```
 static ValueDecl *deriveDistributedActor_init_resolve(DerivedConformance &derived) {
-  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "TODO IMPLEMENT THIS SYNTHESIS");
+  ASTContext &C = derived.Context;
 
-  return nullptr;
+  auto classDecl = dyn_cast<ClassDecl>(derived.Nominal);
+  auto conformanceDC = derived.getConformanceContext();
+
+  // Expected type: (Self) -> (ActorAddress, ActorTransport) -> (Self)
+  //
+  // Param: (resolve actorAddress: ActorAddress)
+  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+  auto *addressParamDecl = new (C) ParamDecl(
+      SourceLoc(), SourceLoc(), C.Id_resolve,
+      SourceLoc(), C.Id_actorAddress, conformanceDC);
+  addressParamDecl->setImplicit();
+  addressParamDecl->setSpecifier(ParamSpecifier::Default);
+  addressParamDecl->setInterfaceType(addressType);
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "param 1 prepared");
+
+  // Param: (using actorTransport: ActorTransport)
+  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+  auto *transportParamDecl = new (C) ParamDecl(
+      SourceLoc(), SourceLoc(), C.Id_using,
+      SourceLoc(), C.Id_actorTransport, conformanceDC);
+  transportParamDecl->setImplicit();
+  transportParamDecl->setSpecifier(ParamSpecifier::Default);
+  transportParamDecl->setInterfaceType(transportType);
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "param 2 prepared");
+
+  auto *paramList = ParameterList::create(
+      C,
+      /*LParenLoc=*/SourceLoc(),
+      /*params=*/{addressParamDecl, transportParamDecl},
+      /*RParenLoc=*/SourceLoc()
+  );
+
+  // Func name: init(resolve:using:)
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "init func");
+  DeclName name(C, DeclBaseName::createConstructor(), paramList);
+
+  auto *initDecl =
+      new (C) ConstructorDecl(name, SourceLoc(),
+          /*Failable=*/false, SourceLoc(),
+          /*Throws=*/false, SourceLoc(), paramList, // TODO: make it throws?
+          /*GenericParams=*/nullptr, conformanceDC);
+  initDecl->setImplicit();
+  initDecl->setSynthesized(); // TODO: consider making throwing
+  initDecl->setBodySynthesizer(&deriveBodyDistributedActor_init_resolve);
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "init func prepared");
+
+  // This constructor is 'required', all distributed actors MUST invoke it.
+  // TODO: this makes sense I guess, and we should ban defining such constructor at all.
+  auto *reqAttr = new (C) RequiredAttr(/*IsImplicit*/true);
+  initDecl->getAttrs().add(reqAttr);
+
+  initDecl->copyFormalAccessFrom(derived.Nominal,
+      /*sourceIsParentContext=*/true);
+  derived.addMembersToConformanceContext({initDecl});
+
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT DECL:");
+  initDecl->dump();
+
+  return initDecl;
+}
+
+/// Creates a new \c CallExpr representing
+///
+///     transport.assignAddress(Self.self)
+///
+/// \param C The AST context to create the expression in.
+///
+/// \param DC The \c DeclContext to create any decls in.
+///
+/// \param base The base expression to make the call on.
+///
+/// \param returnType The return type of the call.
+///
+/// \param param The parameter to the call.
+static CallExpr *createTransportAssignAddressCall(ASTContext &C,
+                                                  DeclContext *DC,
+                                                  Expr *base, Type returnType,
+                                                  Type param) {
+  // (_ actorType:)
+  auto *paramDecl = new (C) ParamDecl(SourceLoc(),
+                                      SourceLoc(), Identifier(),
+                                      SourceLoc(), C.Id_actorType, DC);
+  paramDecl->setImplicit();
+  paramDecl->setSpecifier(ParamSpecifier::Default);
+  paramDecl->setInterfaceType(returnType);
+
+  // transport.assignAddress(_:) expr
+  auto *paramList = ParameterList::createWithoutLoc(paramDecl);
+  auto *unboundCall = UnresolvedDotExpr::createImplicit(C, base,
+                                                        C.Id_assignAddress,
+                                                        paramList);
+
+  // DC->mapTypeIntoContext(param->getInterfaceType());
+  auto *selfTypeExpr = TypeExpr::createImplicit(param, C);
+  auto *dotSelfTypeExpr = new (C) DotSelfExpr(selfTypeExpr, SourceLoc(),
+                                              SourceLoc(), param);
+
+  // Full bound self.assignAddress(Self.self) call
+  Expr *args[1] = {dotSelfTypeExpr};
+  Identifier argLabels[1] = {Identifier()};
+  return CallExpr::createImplicit(C, unboundCall, C.AllocateCopy(args),
+                                  C.AllocateCopy(argLabels));
 }
 
 /// Synthesizes the body for
@@ -76,20 +214,19 @@ deriveBodyDistributedActor_init_transport(AbstractFunctionDecl *initDecl, void *
   // distributed actor class Greeter {
   //   // Already derived by this point if possible.
   //   @derived let actorTransport: ActorTransport
-  //   @derived let address: ActorAddress
+  //   @derived let actorAddress: ActorAddress
   //
-  //   @derived init(transport: ActorTransport) throws { // TODO: make it throwing?
+  //   @derived init(transport: ActorTransport) {
   //     self.actorTransport = transport
-  //     // self.address = try transport.allocateAddress(self)// TODO: implement this
+  //     self.actorAddress = try transport.assignAddress(Self.self)
   //   }
   // }
 
   // The enclosing type decl.
   auto conformanceDC = initDecl->getDeclContext();
-  auto *targetDecl = conformanceDC->getSelfNominalTypeDecl();
 
   auto *funcDC = cast<DeclContext>(initDecl);
-  auto &C = funcDC->getASTContext();
+  ASTContext &C = funcDC->getASTContext();
 
   SmallVector<ASTNode, 2> statements;
 
@@ -99,23 +236,49 @@ deriveBodyDistributedActor_init_transport(AbstractFunctionDecl *initDecl, void *
 
   auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
 
-  // `self.actorTransport = transport`
+  // ==== `self.actorTransport = transport`
   auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
                                                              C.Id_actorTransport);
   auto *assignTransportExpr = new (C) AssignExpr(
       varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
   statements.push_back(assignTransportExpr);
 
-  // `self.actorAddress = transport.assignAddress(Self.self)`
-//  auto *assignAddressExpr = new (C) AssignExpr(
-//      varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
-//  statements.push_back(assignTransportExpr);
+  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
+  // self.actorAddress
+  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+                                                           C.Id_actorAddress);
+  // Bound transport.assignAddress(Self.self) call
+  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+  auto *targetDecl = conformanceDC->getSelfNominalTypeDecl(); // TODO: maybe this instead of self type?
+  auto *callExpr = createTransportAssignAddressCall(C, funcDC,
+                                                    /*base=*/transportExpr,
+                                                    /*returnType=*/addressType,
+                                                    /*param=*/selfType
+                                                    );
+
+
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT transport BODY: call expr");
+  callExpr->dump();
+
+//  // Full `self.actorAddress = transport.assignAddress(Self.self)` binding.
+//  auto *addressPattern = NamedPattern::createImplicit(C, containerDecl);
+//  auto *bindingDecl = PatternBindingDecl::createImplicit(
+//      C, StaticSpellingKind::None, containerPattern, callExpr, funcDC);
+//  statements.push_back(bindingDecl);
+//  statements.push_back(containerDecl);
+
+  auto *assignAddressExpr = new (C) AssignExpr(
+      varAddressExpr, SourceLoc(), callExpr, /*Implicit=*/true);
+  statements.push_back(assignAddressExpr);
 
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
 
-  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT transport BODY:");
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT transport BODY: init decl");
   initDecl->dump();
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT transport BODY: assign body");
+  body->dump();
 
   return { body, /*isTypeChecked=*/false };
 }
@@ -174,13 +337,6 @@ static ValueDecl *deriveDistributedActor_init_transport(DerivedConformance &deri
   initDecl->dump();
 
   return initDecl;
-
-//  fprintf(stderr, "[%s:%d] >> TODO: SYNTHESIZE (%s)  \n", __FILE__, __LINE__, __FUNCTION__);
-//  // TODO: synthesize the initializer accepting the transport,
-//  // - store the transport as actorTransport
-//  // - invoke the transport to allocate an address, store it as actorAddress
-//
-//  return nullptr;
 }
 
 // ==== Properties -------------------------------------------------------------
@@ -205,7 +361,6 @@ static ValueDecl *deriveDistributedActor_actorTransport(DerivedConformance &deri
 
   return varDecl;
 }
-
 
 static std::pair<BraceStmt *, bool>
 deriveBodyDistributedActor_property_getter_address(AbstractFunctionDecl *varDecl, void *) {
@@ -244,30 +399,44 @@ static ValueDecl *deriveDistributedActor_actorAddress(DerivedConformance &derive
   auto classDecl = dyn_cast<ClassDecl>(derived.Nominal);
   auto conformanceDC = derived.getConformanceContext();
 
-  auto type = C.getActorAddressDecl()->getDeclaredInterfaceType();
+  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+  VarDecl *varDecl = new (C) VarDecl(/*IsStatic*/false, VarDecl::Introducer::Let,
+                                                 SourceLoc(), C.Id_actorAddress, conformanceDC);
+  varDecl->setInterfaceType(addressType);
+  varDecl->setImplicit();
 
-  VarDecl *propDecl;
-  PatternBindingDecl *pbDecl;
-  std::tie(propDecl, pbDecl) =
-      derived.declareDerivedProperty(C.Id_actorAddress, type, type,
-                                     /*isStatic=*/false, /*isFinal=*/false);
-  // Define the getter.
-  auto *getterDecl = derived.addGetterToReadOnlyDerivedProperty(propDecl, type);
+  derived.addMembersToConformanceContext({varDecl});
 
-  // TODO: doing this causes a crash, do we need this though?
-  // propDecl->setImplInfo(StorageImplInfo::getSimpleStored(StorageIsNotMutable));
+  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "VAR DECL (actorAddress):");
+  varDecl->dump();
 
-  // Synthesize the body.
-  getterDecl->setBodySynthesizer(&deriveBodyDistributedActor_property_getter_address);
+  return varDecl;
 
-  derived.addMembersToConformanceContext({propDecl, pbDecl});
-
-  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "PROP DECL (actorAddress):");
-  propDecl->dump();
-  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "PB DECL (actorAddress):");
-  pbDecl->dump();
-
-  return propDecl;
+  // TODO: the below was another implementation but that made the property immutable since was a get only computed one
+  // so we could not even set it in the constructor.
+//
+//  VarDecl *propDecl;
+//  PatternBindingDecl *pbDecl;
+//  std::tie(propDecl, pbDecl) =
+//      derived.declareDerivedProperty(C.Id_actorAddress, addressType, addressType,
+//                                     /*isStatic=*/false, /*isFinal=*/false);
+//  // Define the getter.
+//  auto *getterDecl = derived.addGetterToReadOnlyDerivedProperty(propDecl, addressType);
+//
+//  // TODO: doing this causes a crash, do we need this though?
+//  // propDecl->setImplInfo(StorageImplInfo::getSimpleStored(StorageIsNotMutable));
+//
+//  // Synthesize the body.
+//  getterDecl->setBodySynthesizer(&deriveBodyDistributedActor_property_getter_address);
+//
+//  derived.addMembersToConformanceContext({propDecl, pbDecl});
+//
+//  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "PROP DECL (actorAddress):");
+//  propDecl->dump();
+//  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "PB DECL (actorAddress):");
+//  pbDecl->dump();
+//
+//  return propDecl;
 }
 
 // ==== ------------------------------------------------------------------------

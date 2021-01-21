@@ -107,7 +107,7 @@ public protocol ActorTransport {
   /// Resolve a local or remote actor address to a real actor instance, or throw if unable to.
   /// The returned value is either a local actor or proxy to a remote actor.
   func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
-    throws -> Act where Act: DistributedActor
+    throws -> ActorResolved<Act> where Act: DistributedActor
 
   /// Create an `ActorAddress` for the passed actor type.
   ///
@@ -119,7 +119,11 @@ public protocol ActorTransport {
   /// E.g. if an actor is created under address `addr1` then immediately invoking
   /// `transport.resolve(address: addr1, as: Greeter.self)` MUST return a reference
   /// to the same actor.
-  func assignAddress<Act>(forType: Act.Type, onActorCreated: (Act) -> ()) -> ActorAddress
+  func assignAddress<Act>(
+    _ actorType: Act.Type
+//    ,
+//    onActorCreated: (Act) -> ()
+  ) -> ActorAddress
     where Act: DistributedActor
 
   // TODO: remove?
@@ -158,6 +162,12 @@ public struct ActorAddress: Equatable, Codable {
     self.path = "/example"
     self.uid = 123123
   }
+}
+
+@frozen
+public enum ActorResolved<Act: DistributedActor> {
+  case resolved(Act)
+  case makeProxy
 }
 
 /// Error protocol to which errors thrown by any `ActorTransport` should conform.
