@@ -32,10 +32,15 @@ distributed actor class DistributedActor_1 {
 // ==== Fake Transport ---------------------------------------------------------
 
 struct FakeTransport: ActorTransport {
-  func resolve<Act>(address: ActorAddress, as actorType: Act.Type) throws -> Act where Act : DistributedActor {
+  func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
+    throws -> ActorResolved<Act> where Act: DistributedActor {
     fatalError()
   }
-  func assignAddress<Act>(forType: Act.Type, onActorCreated: (Act) -> ()) -> ActorAddress where Act : DistributedActor {
+  func assignAddress<Act>(
+    _ actorType: Act.Type
+//    ,
+//    onActorCreated: (Act) -> ()
+  ) -> ActorAddress where Act : DistributedActor {
     fatalError()
   }
   func send<Message>(_ message: Message, to recipient: ActorAddress) async throws where Message : Decodable, Message : Encodable {
