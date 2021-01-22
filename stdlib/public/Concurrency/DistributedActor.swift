@@ -41,7 +41,7 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// - Parameter address:
   /// - Parameter transport:
-  init(resolve address: ActorAddress, using transport: ActorTransport) // TODO: async
+  init(resolve address: ActorAddress, using transport: ActorTransport)
 
 //  /// Decode an actor (remote or local) reference using the transport stored
 //  /// within the passed decoder. The transport's `resolve` function is called to
