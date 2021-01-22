@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift(-Xfrontend -enable-experimental-concurrency  %import-libdispatch)
+// RUN: %target-run-simple-swift(-Xfrontend -enable-experimental-concurrency  %import-libdispatch -emit-sil)
 
 // REQUIRES: executable_test
 // REQUIRES: concurrency
@@ -12,7 +12,7 @@ import Darwin
 import Glibc
 #endif
 
-distributed actor class DistributedActor_1 {
+distributed actor class SomeSpecificDistributedActor {
 //  // @derived
 //  required init(transport: ActorTransport) {
 //    self.actorTransport = transport
@@ -55,7 +55,8 @@ struct FakeTransport: ActorTransport {
 
 func run() async {
   let address = ActorAddress(parse: "")
-  let actor = DistributedActor_1(resolve: address, using: FakeTransport())
+  let x = SomeSpecificDistributedActor(transport: FakeTransport())
+  let actor = SomeSpecificDistributedActor(resolve: address, using: FakeTransport())
 
   print("before")
 //  try! await actor.hello() // CHECK: hell
