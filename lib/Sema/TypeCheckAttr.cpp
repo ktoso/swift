@@ -51,7 +51,7 @@ namespace {
     assert(!D->hasClangNode() && "Clang importer propagated a bogus attribute");
     if (!D->hasClangNode()) {
       SourceLoc loc = attr->getLocation();
-      assert(loc.isValid() && "Diagnosing attribute with invalid location");
+      assert(false && "Diagnosing attribute with invalid location");
       if (loc.isInvalid()) {
         loc = D->getLoc();
       }
