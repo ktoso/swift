@@ -20,7 +20,7 @@ import Swift
 /// which involves enqueuing new partial tasks to be executed at some
 /// point. Actor classes implicitly conform to this protocol as part of their
 /// primary class definition.
-public protocol DistributedActor: Actor, Codable {
+public protocol DistributedActor: Actor {
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
@@ -59,13 +59,13 @@ public protocol DistributedActor: Actor, Codable {
 //  //    func encode(to encoder: Encoder) throws
 //  //         ^
 
-  @actorIndependent
+  // @actorIndependent
   var actorTransport: ActorTransport { get }
 
   /// Logical address which this distributed actor represents.
   ///
-  /// An address is always uniquely pointing at a specific actor instance
-  @actorIndependent
+  /// An address is always uniquely pointing at a specific actor instance.
+  // @actorIndependent
   var actorAddress: ActorAddress { get }
 }
 
@@ -126,20 +126,13 @@ public protocol ActorTransport {
   ) -> ActorAddress
     where Act: DistributedActor
 
-  // TODO: remove?
-  func send<Message>(
-    _ message: Message,
-    to recipient: ActorAddress
-  ) async throws where Message: Codable
-
-  // TODO: remove?
-  func request<Request, Reply>(
-    replyType: Reply.Type,
-    _ request: Request,
-    from recipient: ActorAddress
-  ) async throws where Request: Codable, Reply: Codable
+  // FIXME: call from deinit
+//  func resignAddress(address: ActorAddress)
+//    from recipient: ActorAddress
+//  ) async throws where Request: Codable, Reply: Codable
 }
 
+// TODO: make into a protocol
 public struct ActorAddress: Equatable, Codable {
   /// Uniquely specifies the actor transport and the protocol used by it.
   ///
