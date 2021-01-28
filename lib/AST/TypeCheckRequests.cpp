@@ -1081,6 +1081,9 @@ void swift::simple_display(llvm::raw_ostream &out,
   case ImplicitMemberAction::ResolveDecodable:
     out << "resolve Decodable.init(from:)";
     break;
+  case ImplicitMemberAction::ResolveDistributedActor:
+    out << "resolve DistributedActor[init(transport:), init(resolve:using:)";
+    break;
   }
 }
 
