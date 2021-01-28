@@ -59,7 +59,7 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// Conformance to this requirement is synthesized automatically for any
   /// `distributed actor` declaration.
-  @actorIndependent
+  // @actorIndependent // FIXME
   var actorAddress: ActorAddress { get }
 }
 
