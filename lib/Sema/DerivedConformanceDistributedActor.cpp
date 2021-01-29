@@ -29,17 +29,6 @@ bool DerivedConformance::canDeriveDistributedActor(
   return classDecl && classDecl->isDistributedActor() && dc == nominal;
 }
 
-/// Returns whether the given type is valid for synthesizing the transport
-/// initializer.
-///
-/// Checks to see whether the given type has has already defined such initializer,
-/// and if not attempts to synthesize it.
-///
-/// \param requirement The requirement we want to synthesize.
-static bool canSynthesizeInitializer(DerivedConformance &derived, ValueDecl *requirement) {
-  return true; // TODO: replace with real impl
-}
-
 // ==== Initializers -----------------------------------------------------------
 
 /// Synthesizes the body for

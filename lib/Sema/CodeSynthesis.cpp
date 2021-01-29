@@ -227,6 +227,16 @@ static ConstructorDecl *createImplicitConstructor(NominalTypeDecl *decl,
                                                   ASTContext &ctx) {
   assert(!decl->hasClangNode());
 
+  // Don't synthesize for distributed actors, they're a bit special.
+  // 
+  // They have their special inits, and should not get the usual
+  // default/implicit constructor (i.e. `init()` is illegal for them, as they
+  // always must have an associated transport - via `init(transport:)` or
+  // `init(resolve:using:)`).
+  if (auto clazz = dyn_cast<ClassDecl>(decl))
+    if (clazz->isDistributedActor())
+      return nullptr;
+
   SourceLoc Loc = decl->getLoc();
   auto accessLevel = AccessLevel::Internal;
 
@@ -1691,16 +1701,20 @@ SynthesizeDefaultInitRequest::evaluate(Evaluator &evaluator,
                                   decl);
 
   // Create the default constructor.
-  auto ctor = createImplicitConstructor(decl,
+  if (auto ctor = createImplicitConstructor(decl,
                                         ImplicitConstructorKind::Default,
-                                        ctx);
+                                        ctx)) {
 
-  // Add the constructor.
-  decl->addMember(ctor);
+    // Add the constructor.
+    decl->addMember(ctor);
 
-  // Lazily synthesize an empty body for the default constructor.
-  ctor->setBodySynthesizer(synthesizeSingleReturnFunctionBody);
-  return ctor;
+    // Lazily synthesize an empty body for the default constructor.
+    ctor->setBodySynthesizer(synthesizeSingleReturnFunctionBody);
+    return ctor;
+  }
+
+  // no default init was synthesized
+  return nullptr;
 }
 
 ValueDecl *swift::getProtocolRequirement(ProtocolDecl *protocol,
