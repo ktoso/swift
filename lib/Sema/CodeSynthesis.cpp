@@ -223,7 +223,7 @@ static ConstructorDecl *createImplicitConstructor(NominalTypeDecl *decl,
   assert(!decl->hasClangNode());
 
   // Don't synthesize for distributed actors, they're a bit special.
-  // 
+  //
   // They have their special inits, and should not get the usual
   // default/implicit constructor (i.e. `init()` is illegal for them, as they
   // always must have an associated transport - via `init(transport:)` or
@@ -1312,41 +1312,6 @@ static void addImplicitDistributedActorConstructorsToClass(ClassDecl *decl) {
   for (auto *daCtor : nonOverridenCtors) {
     fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "NON OVERIDEN CONSTRUCTOR");
     daCtor->dump();
-
-//    // Diagnose a missing override of a required initializer.
-//    if (daCtor->isRequired() && !inheritDesignatedInits) {
-//      diagnoseMissingRequiredInitializer(decl, daCtor, ctx);
-//      continue;
-//    }
-
-    // A designated or required initializer has not been overridden.
-
-//    bool alreadyDeclared = false;
-//    for (auto *member : decl->getMembers()) {
-//      if (auto ctor = dyn_cast<ConstructorDecl>(member)) {
-//        // Skip any invalid constructors.
-//        if (ctor->isInvalid())
-//          continue;
-//
-//        auto type = swift::getMemberTypeForComparison(ctor, nullptr);
-//        auto parentType = swift::getMemberTypeForComparison(daCtor, ctor);
-//
-//        if (isOverrideBasedOnType(ctor, type, daCtor, parentType)) {
-//          alreadyDeclared = true;
-//          break;
-//        }
-//      }
-//    }
-//
-//    // If we have already introduced an initializer with this parameter type,
-//    // don't add one now.
-//    if (alreadyDeclared)
-//      continue;
-
-//    // If we're inheriting initializers, create an override delegating
-//    // to 'super.init'. Otherwise, create a stub which traps at runtime.
-//    auto kind = inheritDesignatedInits ? DesignatedInitKind::Chaining
-//                                       : DesignatedInitKind::Stub;
 
     if (auto ctor = createDistributedActorInit(decl, daCtor, ctx)) {
       decl->addMember(ctor);
