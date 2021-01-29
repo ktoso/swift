@@ -1842,6 +1842,8 @@ namespace decls_block {
     DistributedActor_DECL_ATTR,
     BCFixed<1>  // default flag
   >;
+  using DistributedActorIndependentDeclAttrLayout
+    = BCRecordLayout<DistributedActor_DECL_ATTR>;
 
   using OptimizeDeclAttrLayout = BCRecordLayout<
     Optimize_DECL_ATTR,
