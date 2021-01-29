@@ -154,8 +154,8 @@ static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
   // Check parameters for 'Codable' conformance
   for (auto param : *func->getParameters()) {
     auto paramType = func->mapTypeIntoContext(param->getInterfaceType()); // TODO: getDeclaredInterfaceType instead?
-    if (TypeChecker::containsProtocol(paramType, encodableType, func).isInvalid() ||
-        TypeChecker::containsProtocol(paramType, decodableType, func).isInvalid()) {
+    if (TypeChecker::conformsToProtocol(paramType, encodableType, func).isInvalid() ||
+        TypeChecker::conformsToProtocol(paramType, decodableType, func).isInvalid()) {
       if (diagnose)
         func->diagnose(
             diag::distributed_actor_func_param_not_codable,
@@ -171,8 +171,8 @@ static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
   // TODO: In the future we can also support AsyncSequence of Codable values
   auto resultType = func->mapTypeIntoContext(func->getResultInterfaceType()); // TODO: getDeclaredInterfaceType instead?
   if (!resultType->isVoid()) {
-    if (TypeChecker::containsProtocol(resultType, decodableType, func).isInvalid() ||
-        TypeChecker::containsProtocol(resultType, encodableType, func).isInvalid()) {
+    if (TypeChecker::conformsToProtocol(resultType, decodableType, func).isInvalid() ||
+        TypeChecker::conformsToProtocol(resultType, encodableType, func).isInvalid()) {
       if (diagnose)
         func->diagnose(
             diag::distributed_actor_func_result_not_codable,
