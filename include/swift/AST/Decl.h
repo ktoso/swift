@@ -3688,7 +3688,7 @@ public:
   bool isRootDefaultActor() const;
 
   /// Whether the class is an distributed actor.
-  bool isDistributedActor() const;
+  bool isDistributedActor() const; // TODO: define it on NominalType instead?
 
   /// Does this class explicitly declare any of the methods that
   /// would prevent it from being a default actor?
