@@ -776,15 +776,38 @@ createDesignatedInitOverride(ClassDecl *classDecl,
   return ctor;
 }
 
+std::pair<VarDecl *, PatternBindingDecl *>
+createStoredProperty(ClassDecl *classDecl, ASTContext &ctx,
+                     VarDecl::Introducer introducer, Identifier name,
+                     Type propertyInterfaceType, Type propertyContextType,
+                     bool isStatic, bool isFinal) {
+  auto parentDC = classDecl;
+
+  VarDecl *propDecl = new (ctx)
+      VarDecl(/*IsStatic*/ isStatic, introducer,
+                           SourceLoc(), name, parentDC);
+  propDecl->setImplicit();
+  propDecl->setSynthesized();
+  propDecl->copyFormalAccessFrom(classDecl, /*sourceIsParentContext*/ true);
+  propDecl->setInterfaceType(propertyInterfaceType);
+
+  Pattern *propPat = NamedPattern::createImplicit(ctx, propDecl);
+  propPat->setType(propertyContextType);
+
+  propPat = TypedPattern::createImplicit(ctx, propPat, propertyContextType);
+  propPat->setType(propertyContextType);
+
+  auto *pbDecl = PatternBindingDecl::createImplicit(
+      ctx, StaticSpellingKind::None, propPat, /*InitExpr*/ nullptr,
+      parentDC);
+  return {propDecl, pbDecl};
+}
 
 static ConstructorDecl *
 createDistributedActorResolveInit(ClassDecl *classDecl,
                                   ASTContext &ctx) {
-  // FIXME: DUPLICATED FROM deriveDistributedActor_init_resolve !!!!!!!!!!!!!!!!
-
   auto &C = ctx;
 
-  // auto conformanceDC = derived.getConformanceContext();
   auto conformanceDC = classDecl;
 
   // Expected type: (Self) -> (ActorAddress, ActorTransport) -> (Self)
@@ -833,9 +856,6 @@ createDistributedActorResolveInit(ClassDecl *classDecl,
   initDecl->getAttrs().add(reqAttr);
 
   initDecl->copyFormalAccessFrom(classDecl, /*sourceIsParentContext=*/true);
-//  initDecl->copyFormalAccessFrom(derived.Nominal,
-//      /*sourceIsParentContext=*/true);
-  // derived.addMembersToConformanceContext({initDecl});
 
   return initDecl;
 }
@@ -843,8 +863,6 @@ createDistributedActorResolveInit(ClassDecl *classDecl,
 static ConstructorDecl *
 createDistributedActorLocalInit(ClassDecl *classDecl,
                                 ASTContext &ctx) {
-  // FIXME: DUPLICATED FROM deriveDistributedActor_init_transport !!!!!!!!!!!!!!!!
-
   auto &C = ctx;
 
 //  auto conformanceDC = derived.getConformanceContext();
@@ -885,9 +903,6 @@ createDistributedActorLocalInit(ClassDecl *classDecl,
 //  initDecl->getAttrs().add(reqAttr);
 
   initDecl->copyFormalAccessFrom(classDecl, /*sourceIsParentContext=*/true);
-//  initDecl->copyFormalAccessFrom(derived.Nominal,
-//      /*sourceIsParentContext=*/true);
-  // derived.addMembersToConformanceContext({initDecl});
 
 //  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "INIT DECL:");
 //  initDecl->dump();
@@ -915,7 +930,7 @@ createDistributedActorInit(ClassDecl *classDecl,
   } else {
     requirement->dump();
     fprintf(stderr, "[%s:%d] >> (%s) %s \n", __FILE__, __LINE__, __FUNCTION__, "unrecognized constructor requirement for DistributedActor");
-    return nullptr;
+    assert(false);
   }
 }
 
@@ -1275,7 +1290,7 @@ static void addImplicitInheritedConstructorsToClass(ClassDecl *decl) {
 /// For a distributed actor class, automatically define initializers
 /// that match the DistributedActor requirements.
 // TODO: inheritance is tricky here?
-static void addImplicitDistributedActorConstructorsToClass(ClassDecl *decl) {
+static void addImplicitDistributedActorConstructors(ClassDecl *decl) {
   // Bail out if not a distributed actor definition.
   if (!decl->isDistributedActor())
     return;
@@ -1317,6 +1332,70 @@ static void addImplicitDistributedActorConstructorsToClass(ClassDecl *decl) {
       decl->addMember(ctor);
     }
   }
+}
+
+/// Adds the following, fairly special, properties to each distributed actor:
+/// - actorTransport
+/// - actorAddress
+static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
+  assert(decl->isDistributedActor());
+
+  auto &C = decl->getASTContext();
+
+  // ==== @_distributedActorIndependent
+  // ==== let actorAddress: ActorAddress
+  // (no need for @actorIndependent because it is an immutable let)
+  {
+    auto propertyType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+
+    VarDecl *propDecl;
+    PatternBindingDecl *pbDecl;
+    std::tie(propDecl, pbDecl) = createStoredProperty(
+        decl, C,
+        VarDecl::Introducer::Let, C.Id_actorAddress,
+        propertyType, propertyType,
+        /*isStatic=*/false, /*isFinal=*/true);
+
+    auto independentAttr = new (C)
+        DistributedActorIndependentAttr(/*IsImplicit=*/true);
+    propDecl->getAttrs().add(independentAttr);
+
+    decl->addMember(propDecl);
+    decl->addMember(pbDecl);
+  }
+
+  // ==== let actorTransport: ActorTransport
+  {
+    auto propertyType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+
+    VarDecl *propDecl;
+    PatternBindingDecl *pbDecl;
+    std::tie(propDecl, pbDecl) = createStoredProperty(
+        decl, C,
+        VarDecl::Introducer::Let, C.Id_actorTransport,
+        propertyType, propertyType,
+        /*isStatic=*/false, /*isFinal=*/true);
+
+    // the transport may never be accessed externally.
+    auto independentAttr = new (C)
+        DistributedActorIndependentAttr(DistributedActorIndependentKind::Never,
+                                        /*IsImplicit=*/true);
+    propDecl->getAttrs().add(independentAttr);
+
+
+    decl->addMember(propDecl);
+    decl->addMember(pbDecl);
+  }
+}
+
+/// Entry point for adding all computed members to a distributed actor decl.
+static void addImplicitDistributedActorMembersToClass(ClassDecl *decl) {
+  // Bail out if not a distributed actor definition.
+  if (!decl->isDistributedActor())
+    return;
+
+  addImplicitDistributedActorConstructors(decl);
+  addImplicitDistributedActorStoredProperties(decl);
 }
 
 bool
@@ -1373,7 +1452,7 @@ void TypeChecker::addImplicitConstructors(NominalTypeDecl *decl) {
   // If we already added implicit initializers, we're done.
   if (decl->addedImplicitInitializers())
     return;
-  
+
   if (!shouldAttemptInitializerSynthesis(decl)) {
     decl->setAddedImplicitInitializers();
     return;
@@ -1381,7 +1460,7 @@ void TypeChecker::addImplicitConstructors(NominalTypeDecl *decl) {
 
   if (auto *classDecl = dyn_cast<ClassDecl>(decl)) {
     addImplicitInheritedConstructorsToClass(classDecl);
-    addImplicitDistributedActorConstructorsToClass(classDecl);
+    addImplicitDistributedActorMembersToClass(classDecl);
   }
 
   // Force the memberwise and default initializers if the type has them.
@@ -1464,7 +1543,8 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     (void)evaluateTargetConformanceTo(decodableProto);
   }
     break;
-  case ImplicitMemberAction::ResolveDistributedActor: {
+  case ImplicitMemberAction::ResolveDistributedActor:
+  case ImplicitMemberAction::ResolveDistributedActorAddress: {
     // init(transport:) and init(resolve:using:) may be synthesized as part of
     // derived conformance to the DistributedActor protocol.
     // If the target should conform to the DistributedActor protocol, check the

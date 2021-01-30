@@ -53,7 +53,6 @@ deriveBodyDistributedActor_init_resolve(AbstractFunctionDecl *initDecl, void *) 
 
   // The enclosing type decl.
   auto conformanceDC = initDecl->getDeclContext();
-  auto *targetDecl = conformanceDC->getSelfNominalTypeDecl();
 
   auto *funcDC = cast<DeclContext>(initDecl);
   auto &C = funcDC->getASTContext();
@@ -95,63 +94,6 @@ deriveBodyDistributedActor_init_resolve(AbstractFunctionDecl *initDecl, void *) 
 //  initDecl->dump();
 
   return { body, /*isTypeChecked=*/false };}
-
-/// Derive the declaration of Actor's resolve initializer.
-///
-/// Swift signature:
-/// ```
-///   init(resolve address: ActorAddress, using transport: ActorTransport) throws
-/// ```
-static ValueDecl *deriveDistributedActor_init_resolve(DerivedConformance &derived) {
-  ASTContext &C = derived.Context;
-
-  auto classDecl = dyn_cast<ClassDecl>(derived.Nominal);
-  auto conformanceDC = derived.getConformanceContext();
-
-  // Expected type: (Self) -> (ActorAddress, ActorTransport) -> (Self)
-  //
-  // Param: (resolve address: ActorAddress)
-  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
-  auto *addressParamDecl = new (C) ParamDecl(
-      SourceLoc(), SourceLoc(), C.Id_resolve,
-      SourceLoc(), C.Id_address, conformanceDC);
-  addressParamDecl->setImplicit();
-  addressParamDecl->setSpecifier(ParamSpecifier::Default);
-  addressParamDecl->setInterfaceType(addressType);
-
-  // Param: (using transport: ActorTransport)
-  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
-  auto *transportParamDecl = new (C) ParamDecl(
-      SourceLoc(), SourceLoc(), C.Id_using,
-      SourceLoc(), C.Id_transport, conformanceDC);
-  transportParamDecl->setImplicit();
-  transportParamDecl->setSpecifier(ParamSpecifier::Default);
-  transportParamDecl->setInterfaceType(transportType);
-
-  auto *paramList = ParameterList::create(
-      C,
-      /*LParenLoc=*/SourceLoc(),
-      /*params=*/{addressParamDecl, transportParamDecl},
-      /*RParenLoc=*/SourceLoc()
-  );
-
-  // Func name: init(resolve:using:)
-  DeclName name(C, DeclBaseName::createConstructor(), paramList);
-
-  auto *initDecl =
-      new (C) ConstructorDecl(name, SourceLoc(),
-          /*Failable=*/false, SourceLoc(),
-          /*Throws=*/false, SourceLoc(), paramList, // TODO: make throws.
-          /*GenericParams=*/nullptr, conformanceDC);
-  initDecl->setImplicit();
-  initDecl->setSynthesized();
-  initDecl->setBodySynthesizer(&deriveBodyDistributedActor_init_resolve);
-
-  initDecl->copyFormalAccessFrom(derived.Nominal,
-                                 /*sourceIsParentContext=*/true);
-  derived.addMembersToConformanceContext({initDecl});
-  return initDecl;
-}
 
 /// Creates a new \c CallExpr representing
 ///
@@ -238,7 +180,6 @@ deriveBodyDistributedActor_init_transport(AbstractFunctionDecl *initDecl, void *
   // Bound transport.assignAddress(Self.self) call
   auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
   auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
-  auto *targetDecl = conformanceDC->getSelfNominalTypeDecl(); // TODO: maybe this instead of self type?
   auto *callExpr = createTransportAssignAddressCall(C, funcDC,
                                                     /*base=*/transportExpr,
                                                     /*returnType=*/addressType,
@@ -253,181 +194,14 @@ deriveBodyDistributedActor_init_transport(AbstractFunctionDecl *initDecl, void *
   return { body, /*isTypeChecked=*/false };
 }
 
-
-/// Derive the declaration of Actor's local initializer.
-/// Swift signature:
-/// ```
-///   init(transport actorTransport: ActorTransport) { ... }
-/// ```
-static ValueDecl *deriveDistributedActor_init_transport(DerivedConformance &derived) {
-  ASTContext &C = derived.Context;
-
-  auto classDecl = dyn_cast<ClassDecl>(derived.Nominal);
-  auto conformanceDC = derived.getConformanceContext();
-
-  // Expected type: (Self) -> (ActorTransport) -> (Self)
-  //
-  // Params: (transport transport: ActorTransport)
-  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
-  auto *transportParamDecl = new (C) ParamDecl(
-      SourceLoc(), SourceLoc(), C.Id_transport,
-      SourceLoc(), C.Id_transport, conformanceDC);
-  transportParamDecl->setImplicit();
-  transportParamDecl->setSpecifier(ParamSpecifier::Default);
-  transportParamDecl->setInterfaceType(transportType);
-
-  auto *paramList = ParameterList::createWithoutLoc(transportParamDecl);
-
-  // Func name: init(transport:)
-  DeclName name(C, DeclBaseName::createConstructor(), paramList);
-
-  auto *initDecl =
-      new (C) ConstructorDecl(name, SourceLoc(),
-                              /*Failable=*/false, SourceLoc(),
-                              /*Throws=*/false, SourceLoc(), paramList, // TODO: make it throws?
-                              /*GenericParams=*/nullptr, conformanceDC);
-  initDecl->setImplicit();
-  initDecl->setSynthesized();
-  initDecl->setBodySynthesizer(&deriveBodyDistributedActor_init_transport);
-
-//  // This constructor is 'required', all distributed actors MUST invoke it.
-//  // TODO: this makes sense I guess, and we should ban defining such constructor at all.
-//  auto *reqAttr = new (C) RequiredAttr(/*IsImplicit*/true);
-//  initDecl->getAttrs().add(reqAttr);
-
-  initDecl->copyFormalAccessFrom(derived.Nominal,
-                                 /*sourceIsParentContext=*/true);
-
-  derived.addMembersToConformanceContext({initDecl});
-  return initDecl;
-}
-
-/******************************************************************************/
-/***************************** PROPERTIES *************************************/
-/******************************************************************************/
-
-// ==== Property: actorTransport -----------------------------------------------
-
-static std::pair<BraceStmt *, bool>
-deriveBodyDistributedActor_property_getter_actorTransport(AbstractFunctionDecl *funcDecl, void *) {
-  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "TRY actorTransport getter BODY:");
-
-  auto *parentDC = funcDecl->getDeclContext();
-  auto &C = parentDC->getASTContext();
-
-  auto *selfRef = DerivedConformance::createSelfDeclRef(funcDecl);
-  auto *memberRef =
-      UnresolvedDotExpr::createImplicit(C, selfRef, C.Id_actorTransport);
-//  auto *targetExpr = new (C) DotSelfExpr(memberRef, SourceLoc(),
-//                                         SourceLoc());
-
-  auto *returnStmt = new (C) ReturnStmt(SourceLoc(), memberRef);
-//  auto *returnStmt = new (C) ReturnStmt(SourceLoc(), targetExpr);
-  auto *body = BraceStmt::create(C, SourceLoc(), ASTNode(returnStmt),
-                                 SourceLoc());
-  return { body, /*isTypeChecked=*/false };
-}
-
-/// Derive the declaration of Actor's actorTransport.
-static ValueDecl *deriveDistributedActor_actorTransport(DerivedConformance &derived) {
-  ASTContext &C = derived.Context;
-
-  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
-
-  // Defined the property.
-  VarDecl *propDecl;
-  PatternBindingDecl *pbDecl;
-  std::tie(propDecl, pbDecl) = derived.declareDerivedConstantProperty(
-      C.Id_actorTransport, transportType, transportType,
-      /*isStatic*/ false, /*isFinal*/ true);
-
-//  propDecl->setImplInfo(StorageImplInfo::getSimpleStored(StorageIsNotMutable));
-
-//  // Define the getter.
-//  auto *getterDecl =
-//      derived.addGetterToReadOnlyDerivedProperty(propDecl, transportType);
-//  getterDecl->setBodySynthesizer(deriveBodyDistributedActor_property_getter_actorTransport, nullptr);
-//  // ^^^^^^
-//  // if we do this (it's kind of wrong, we end up crashing in SIL:
-////  The field decl for a struct_extract, struct_element_addr, or ref_element_addr must be an accessible stored property of the operand type
-////  UNREACHABLE executed at /Users/ktoso/code/swift-project-distributed/swift/lib/SIL/IR/SILInstructions.cpp:1336!
-////      Please submit a bug report (https://swift.org/contributing/#reporting-bugs) and include the project and the crash backtrace.
-////  Stack dump:
-////  0.	Program arguments: /Users/ktoso/code/swift-project-distributed/build/Ninja-RelWithDebInfoAssert/swift-macosx-x86_64/bin/swift-frontend -frontend -c -primary-file /Users/ktoso/code/swift-project-distributed/swift/test/Concurrency/Runtime/distributed_actor_run.swift -target x86_64-apple-macosx10.9 -enable-objc-interop -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX11.0.sdk -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -F /Users/ktoso/code/swift-project-distributed/build/Ninja-RelWithDebInfoAssert/swift-macosx-x86_64/lib -module-cache-path /Users/ktoso/code/swift-project-distributed/build/Ninja-RelWithDebInfoAssert/swift-macosx-x86_64/swift-test-results/x86_64-apple-macosx10.9/clang-module-cache -swift-version 4 -ignore-module-source-info -enable-experimental-concurrency -target-sdk-version 11.0 -module-name main -o /var/folders/w1/hmg_v8p532d800g08jtqtddc0000gn/T/distributed_actor_run-07e09c.o
-////  1.	Swift version 5.4-dev (LLVM 67722b8904ff3f1, Swift 582e334794ce6b6)
-////  2.	While evaluating request ASTLoweringRequest(Lowering AST to SIL for file "/Users/ktoso/code/swift-project-distributed/swift/test/Concurrency/Runtime/distributed_actor_run.swift")
-////  3.	While silgen emitFunction SIL function "@$s4main28SomeSpecificDistributedActorC14actorTransport12_Concurrency0eG0_pvg".
-////  for getter for actorTransport (in module 'main')
-////  4.	While verifying SIL function "@$s4main28SomeSpecificDistributedActorC14actorTransport12_Concurrency0eG0_pvg".
-////  for getter for actorTransport (in module 'main')
-////  0  swift-frontend           0x0000000108fca1a5 llvm::sys::PrintStackTrace(llvm::raw_ostream&) + 37
-////  1  swift-frontend           0x0000000108fc9475 llvm::sys::RunSignalHandlers() + 85
-////  2  swift-frontend           0x0000000108fca776 SignalHandler(int) + 262
-////  3  libsystem_platform.dylib 0x00007fff2038fd7d _sigtramp + 29
-////  4  libsystem_platform.dylib 0x000000011f1ef223 _sigtramp + 18446603344792646851
-////  5  libsystem_c.dylib        0x00007fff2029e720 abort + 120
-////  6  swift-frontend           0x0000000108f38372 llvm::llvm_unreachable_internal(char const*, char const*, unsigned int) + 482
-////  7  swift-frontend           0x00000001053db599 swift::getFieldIndex(swift::NominalTypeDecl*, swift::VarDecl*) + 153
-////  8  swift-frontend           0x00000001054b643c swift::FieldIndexCacheBase<swift::SingleValueInstruction>::cacheFieldIndex() + 124
-////  9  swift-frontend           0x00000001054a9b00 swift::SILInstructionVisitor<(anonymous namespace)::SILVerifier, void>::visit(swift::SILInstruction*) + 74032
-////  10 swift-frontend           0x0000000105496cd4 (anonymous namespace)::SILVerifier::visitSILBasicBlock(swift::SILBasicBlock*) + 1364
-////  11 swift-frontend           0x00000001054953ec (anonymous namespace)::SILVerifier::visitSILFunction(swift::SILFunction*) + 9052
-////  12 swift-frontend           0x000000010548e875 swift::SILFunction::verify(bool) const + 69
-
-
-  derived.addMembersToConformanceContext({propDecl, pbDecl});
-  return propDecl;
-}
-
-// ==== Property: actorAddress -------------------------------------------------
-
-static std::pair<BraceStmt *, bool>
-deriveBodyDistributedActor_property_getter_actorAddress(AbstractFunctionDecl *funcDecl, void *) {
-  fprintf(stderr, "[%s:%d] >> (%s) %s  \n", __FILE__, __LINE__, __FUNCTION__, "TRY actorAddress getter BODY:");
-
-  auto *parentDC = funcDecl->getDeclContext();
-  auto &C = parentDC->getASTContext();
-
-  auto *selfRef = DerivedConformance::createSelfDeclRef(funcDecl);
-  auto *memberRef =
-      UnresolvedDotExpr::createImplicit(C, selfRef, C.Id_actorAddress);
-
-  auto *returnStmt = new (C) ReturnStmt(SourceLoc(), memberRef);
-  auto *body = BraceStmt::create(C, SourceLoc(), ASTNode(returnStmt),
-                                 SourceLoc());
-  return { body, /*isTypeChecked=*/false };
-}
-
-/// Derive the declaration of Actor's actorAddress.
-static ValueDecl *deriveDistributedActor_actorAddress(DerivedConformance &derived) {
-  ASTContext &C = derived.Context;
-
-  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
-
-  // Defined the property.
-  VarDecl *propDecl;
-  PatternBindingDecl *pbDecl;
-  std::tie(propDecl, pbDecl) = derived.declareDerivedConstantProperty(
-      C.Id_actorAddress, addressType, addressType,
-      /*isStatic*/ false, /*isFinal*/ true);
-
-//  // Define the getter.
-//  auto *getterDecl =
-//      derived.addGetterToReadOnlyDerivedProperty(propDecl, addressType);
-//  getterDecl->setBodySynthesizer(deriveBodyDistributedActor_property_getter_actorAddress, nullptr);
-
-  derived.addMembersToConformanceContext({propDecl, pbDecl});
-  return propDecl;
-}
-
 // ==== ------------------------------------------------------------------------
 
 ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
-  ASTContext &C = ConformanceDecl->getASTContext();
-
-  const auto name = requirement->getName();
-  fprintf(stderr, "[%s:%d] >> (%s) TRY %s \n", __FILE__, __LINE__, __FUNCTION__, name);
-
+//  ASTContext &C = ConformanceDecl->getASTContext();
+//
+//  const auto name = requirement->getName();
+//  fprintf(stderr, "[%s:%d] >> (%s) TRY %s \n", __FILE__, __LINE__, __FUNCTION__, name);
+//
   // Synthesize initializers // TODO: this is actually now done earlier, no need to do here?
 //  if (dyn_cast<ConstructorDecl>(requirement)) {
 //    const auto name = requirement->getName();
@@ -445,27 +219,14 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
 //      return deriveDistributedActor_init_resolve(*this);
 //    }
 //  }
-
-  // Synthesize properties
-  if (isa<VarDecl>(requirement)) {
-    if (VarDecl::isDistributedActorTransportName(Context, name)) {
-      fprintf(stderr, "[%s:%d] >> (%s) %s \n", __FILE__, __LINE__, __FUNCTION__, "actorTransport");
-      return deriveDistributedActor_actorTransport(*this);
-    }
-
-    if (VarDecl::isDistributedActorAddressName(Context, name)) {
-      fprintf(stderr, "[%s:%d] >> (%s) %s \n", __FILE__, __LINE__, __FUNCTION__, "actorAddress");
-      return deriveDistributedActor_actorAddress(*this);
-    }
-  }
-
-  // Synthesize functions
-  auto func = dyn_cast<FuncDecl>(requirement);
-  if (func) {
-    fprintf(stderr, "[%s:%d] >> (%s) function .... \n", __FILE__, __LINE__, __FUNCTION__);
-    // TODO: derive encode impl
-    return nullptr;
-  }
+//
+//  // Synthesize functions
+//  auto func = dyn_cast<FuncDecl>(requirement);
+//  if (func) {
+//    fprintf(stderr, "[%s:%d] >> (%s) function .... \n", __FILE__, __LINE__, __FUNCTION__);
+//    // TODO: derive encode impl
+//    return nullptr;
+//  }
 
  return nullptr;
 }

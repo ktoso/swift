@@ -592,7 +592,6 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
 
   case DeclKind::Param:
   case DeclKind::Var:
-    // printf("analysis 1 var: %s\n", decl->printRef().c_str());
     switch (auto isolation = getActorIsolation(cast<ValueDecl>(decl))) {
       case ActorIsolation::DistributedActorInstance:
         // Accessing properties on a distributed actor is only allowed when
@@ -1011,6 +1010,18 @@ namespace {
           decl->getDescriptiveKind(),
           decl->getName());
       } else if (isa<VarDecl>(decl)) {
+//      } else if (VarDecl varDecl = dyn_cast<VarDecl>(decl)) {
+//        // if the property is _distributedActorIndependent(never) we emit
+//        // a better error message.
+//        //
+//        // TODO: Once the TODO above about "contextual" info here is solved,
+//        //       we don't need this anymore; and we'll simply check if enclosing actor
+//        //       is distributed, and then diagnose the error.
+//        if (auto *attr = varDecl->getAttrs().getAttribute<DistributedActorIndependentAttr>())
+//          if (attr->getKind() == DistributedActorIndependentKind::Never)
+//            decl->diagnose(diag::distributedactor_isolated_property);
+//
+//        // else, normal actor isolation rules apply
         decl->diagnose(diag::actor_mutable_state);
       } else {
         decl->diagnose(diag::kind_declared_here, decl->getDescriptiveKind());
@@ -1392,22 +1403,25 @@ namespace {
           // invocation on not-'self', is only okey if this is a distributed func
           if (auto func = dyn_cast<FuncDecl>(member)) {
             if (!func->isDistributed()) {
+              // distributed func, excellent
+              return false;
+            } else {
               ctx.Diags.diagnose(memberLoc, diag::distributed_actor_isolated_method);
               noteIsolatedActorMember(member);
               return true;
-            } else {
-              // distributed func, excellent
-              return false;
             }
           }
 
-          // no property except actorAddress may be accessed directly on distributed actor
-          if (auto decl = dyn_cast<VarDecl>(member))
-            if (decl->isLet() &&
-                member->getName() == member->getASTContext().Id_actorAddress)
-              // the actorAddress field is special, and guaranteed to be present
-              // always, regardless is local or remote actor.
+          // @_distributedActorIndependent decls are accessible always,
+          // regardless of distributed actor-isolation; e.g. actorAddress
+          if (auto attr = member->getAttrs().getAttribute<DistributedActorIndependentAttr>())
+            switch (attr->getKind()) {
+            case DistributedActorIndependentKind::Default:
               return false;
+            case DistributedActorIndependentKind::Never:
+              // continue checking
+              break;
+            }
 
           ctx.Diags.diagnose(
               memberLoc, diag::distributed_actor_isolated_non_self_reference,
