@@ -4063,6 +4063,13 @@ ConstructorDecl *NominalTypeDecl::getDefaultInitializer() const {
                            SynthesizeDefaultInitRequest{mutableThis}, nullptr);
 }
 
+bool NominalTypeDecl::hasDistributedActorLocalInitializer() const {
+  auto &ctx = getASTContext();
+  auto *mutableThis = const_cast<NominalTypeDecl *>(this);
+  return evaluateOrDefault(ctx.evaluator, HasDistributedActorLocalInitRequest{mutableThis},
+                           false);
+}
+
 void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
   // Silently break cycles here because we can't be sure when and where a
   // request to synthesize will come from yet.
@@ -7668,6 +7675,25 @@ bool ConstructorDecl::isObjCZeroParameterWithLongSelector() const {
 
   return params->get(0)->getInterfaceType()->isVoid();
 }
+
+/// Checks if the initializer is a `init(transport: ActorTransport)`.
+bool ConstructorDecl::isDistributedActorLocalInit() const {
+  auto name = getName();
+  auto argumentNames = name.getArgumentNames();
+
+  if (argumentNames.size() != 1)
+    return false;
+
+  auto *params = getParameters();
+  if (params->size() != 1)
+    return false;
+
+  auto &C = getASTContext();
+  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+
+  return params->get(0)->getInterfaceType()->isEqual(transportType);
+}
+
 
 DestructorDecl::DestructorDecl(SourceLoc DestructorLoc, DeclContext *Parent)
   : AbstractFunctionDecl(DeclKind::Destructor, Parent,

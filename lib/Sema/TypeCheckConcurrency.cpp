@@ -1372,7 +1372,7 @@ namespace {
           decl->getName());
       } else if (isa<VarDecl>(decl)) {
         if (distributedActor)
-          decl->diagnose(diag::distributedactor_isolated_property);
+          decl->diagnose(diag::distributed_actor_isolated_property);
 
         // else, normal actor isolation rules apply
         decl->diagnose(diag::actor_mutable_state);
@@ -2092,7 +2092,49 @@ void swift::checkFunctionActorIsolation(AbstractFunctionDecl *decl) {
   }
 }
 
+/// Some actor constructors are special, so we need to check rules about them.
+void swift::checkConstructorActorIsolation(ClassDecl *decl, ConstructorDecl *ctor) {
+  // bail out unless distributed actor, only those have special rules to check here
+  if (!decl->isDistributedActor())
+    return;
+
+  // the only initializer that is allowed to be designated is init(transport:)
+  // which we synthesize on behalf of a distributed actor.
+  //
+  // All user defined initializers must be 'convenience'
+  if (ctor->isDesignatedInit() && !ctor->isSynthesized()) {
+    decl->diagnose(diag::distributed_actor_user_defined_init_not_convenience,
+                   ctor->getName())
+        .fixItInsert(ctor->getConstructorLoc(), "convenience ");
+    return;
+  }
+
+  auto &C = decl->getASTContext();
+  auto name = ctor->getName();
+  auto argumentNames = name.getArgumentNames();
+
+  if (argumentNames.size() == 0) {
+//    auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+    decl->diagnose(diag::distributed_actor_parameterless_init, ctor->getName())
+    .fixItInsertAfter(decl->getStartLoc(), "transport: ActorTransport");
+    return;
+        // TODO: can we use types instead of hardcoded strings here?
+//        .fixItInsertAfter(decl->getStartLoc(), "%0: %1", {
+//            C.Id_transport.str(),
+//            transportType.getName()
+//        })
+  }
+
+  if (argumentNames.size() == 1) {
+    if (argumentNames[0] == C.Id_transport) { // TODO also check type
+      // FIXME: we need to inject our special transport interactions here???
+    }
+  }
+
+}
+
 void swift::checkInitializerActorIsolation(Initializer *init, Expr *expr) {
+
   ActorIsolationChecker checker(init);
   expr->walk(checker);
 }
