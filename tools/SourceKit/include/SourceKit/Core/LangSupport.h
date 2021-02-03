@@ -504,6 +504,7 @@ struct DocEntityInfo {
   unsigned Length = 0;
   bool IsUnavailable = false;
   bool IsDeprecated = false;
+  bool IsDistributed = false;
   bool IsOptional = false;
   bool IsAsync = false;
   swift::Type Ty;

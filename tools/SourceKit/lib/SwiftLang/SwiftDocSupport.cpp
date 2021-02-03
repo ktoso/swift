@@ -428,6 +428,9 @@ static bool initDocEntityInfo(const Decl *D,
   Info.IsOptional = D->getAttrs().hasAttribute<OptionalAttr>();
   if (auto *AFD = dyn_cast<AbstractFunctionDecl>(D)) {
     Info.IsAsync = AFD->hasAsync();
+    Info.IsDistributed = AFD->isDistributed();
+  } else if (auto *CD = dyn_cast<ClassDecl>(D)) {
+    Info.IsDistributed = CD->isDistributedActor();
   }
 
   if (!IsRef) {

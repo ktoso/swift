@@ -1600,6 +1600,8 @@ void SKDocConsumer::addDocEntityInfoToDict(const DocEntityInfo &Info,
     Elem.set(KeyDocFullAsXML, Info.DocComment);
   if (!Info.FullyAnnotatedDecl.empty())
     Elem.set(KeyFullyAnnotatedDecl, Info.FullyAnnotatedDecl);
+  if (Info.IsDistributed)
+    Elem.set(KeyIsDistributed, Info.IsDistributed);
   if (!Info.FullyAnnotatedGenericSig.empty())
     Elem.set(KeyFullyAnnotatedGenericSignature, Info.FullyAnnotatedGenericSig);
   if (!Info.LocalizationKey.empty())
