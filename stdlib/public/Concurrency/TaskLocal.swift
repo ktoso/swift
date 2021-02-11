@@ -54,12 +54,12 @@ public protocol TaskLocalKey {
 }
 
 extension TaskLocalKey {
-  static var inherit: TaskLocalInheritance { .default }
+  public static var inherit: TaskLocalInheritance { .default }
 }
 
-///
+/// Determines task local value behavior in child tasks.
 // TODO: should likely remain extensible
-public enum TaskLocalInheritance: Int {
+public enum TaskLocalInheritance: UInt8, Equatable {
   /// The default inheritance strategy.
   ///
   /// Task local values whose keys are `default` inherited are available to the
@@ -83,7 +83,8 @@ extension Task {
     async -> Key.Value where Key: TaskLocalKey {
     let task = Builtin.getCurrentAsyncTask()
 
-    guard let rawValue = _taskLocalValueGet(task, keyType: Key.self) else {
+    let value = _taskLocalValueGet(task, keyType: Key.self, inheritance: Key.inherit.rawValue)
+    guard let rawValue = value else {
       return Key.defaultValue
     }
 
@@ -169,20 +170,21 @@ extension AnyTaskLocalKey: Hashable {
 
 // ==== ------------------------------------------------------------------------
 
-@_silgen_name("swift_task_local_value_push")
+@_silgen_name("swift_task_localValuePush")
 public func _taskLocalValuePush<Value>(
   _ task: Builtin.NativeObject,
   keyType: Any.Type/*Key.Type*/,
   value: __owned Value
 ) // where Key: TaskLocalKey
 
-@_silgen_name("swift_task_local_value_pop")
+@_silgen_name("swift_task_localValuePop")
 public func _taskLocalValuePop(
   _ task: Builtin.NativeObject
 )
 
-@_silgen_name("swift_task_local_value_get")
+@_silgen_name("swift_task_localValueGet")
 public func _taskLocalValueGet(
   _ task: Builtin.NativeObject,
-  keyType: Any.Type/*Key.Type*/
+  keyType: Any.Type/*Key.Type*/,
+  inheritance: UInt8/*TaskLocalInheritance*/
 ) -> UnsafeMutableRawPointer? // where Key: TaskLocalKey
