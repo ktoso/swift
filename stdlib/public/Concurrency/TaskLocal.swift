@@ -105,7 +105,7 @@ extension Task {
   public static func withLocal<Key, BodyResult>(
     _ keyPath: KeyPath<TaskLocalValues, Key>,
     boundTo value: Key.Value,
-    body: @escaping () async -> BodyResult
+    body: () async -> BodyResult
   ) async -> BodyResult where Key: TaskLocalKey {
     let task = Builtin.getCurrentAsyncTask()
 
@@ -130,7 +130,7 @@ extension Task {
   public static func withLocal<Key, BodyResult>(
     _ keyPath: KeyPath<TaskLocalValues, Key>,
     boundTo value: Key.Value,
-    body: @escaping () async throws -> BodyResult
+    body: () async throws -> BodyResult
   ) async throws -> BodyResult where Key: TaskLocalKey {
     let task = Builtin.getCurrentAsyncTask()
 

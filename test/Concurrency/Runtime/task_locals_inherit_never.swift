@@ -5,7 +5,6 @@
 // REQUIRES: libdispatch
 
 import Dispatch
-import Foundation
 
 #if canImport(Darwin)
 import Darwin

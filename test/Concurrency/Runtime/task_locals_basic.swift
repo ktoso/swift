@@ -5,7 +5,6 @@
 // REQUIRES: libdispatch
 
 import Dispatch
-import Foundation
 
 #if canImport(Darwin)
 import Darwin
@@ -136,8 +135,12 @@ func nested_3_onlyTopContributes() async {
   try! await printTaskLocal(\.string) // CHECK-NEXT: StringKey: <undefined> {{.*}}
 }
 
-runAsyncAndBlock(simple)
-runAsyncAndBlock(simple_deinit)
-runAsyncAndBlock(nested)
-runAsyncAndBlock(nested_allContribute)
-runAsyncAndBlock(nested_3_onlyTopContributes)
+@main struct Main {
+  static func main() async {
+    await simple()
+    await simple_deinit()
+    await nested()
+    await nested_allContribute()
+    await nested_3_onlyTopContributes()
+  }
+}
