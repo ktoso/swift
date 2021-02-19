@@ -978,35 +978,35 @@ struct Oven {
 // ==== ------------------------------------------------------------------------
 
 func demo2() async {
-  await Task.withProgressObserver(totalUnitCount: 10) { progress in
-    print("Progress: \(progress.asciiProgressBar)      // details: \(progress)")
+  await Task.withProgressObserver(totalUnitCount: 10) { progressValue in
+    print("Progress: \(progressValue.asciiProgressBar)      // details: \(progressValue)")
   } operation: {
-
-    await Task.aggregateProgress(pending: 10) { progress in
-
-      print("Child 1")
-      await progress.of(units: 2) {
-        await Task.reportProgress(pending: 6) { progress in
-          for i in 1...6 {
-            pprint("INCREMENT: \(i)/\(6)")
-            print("INCREMENT: \(i)/\(6)")
-            progress.increment()
-          } // 6/6 -> 2/2 -> 2/10
-        }
-      } // end of child 1
-
-      print("Child 2")
-      await progress.of(units: 8) {
-        await Task.reportProgress(pending: 20) { progress in
-          for i in 1...20 {
-            pprint("INCREMENT: \(i)/\(20)")
-            print("INCREMENT: \(i)/\(20)")
-            progress.increment()
-          } // 6/6 -> 2/2 -> 2/10
-        }
-      } // end of child 1
-    } // end of aggregate
+    demo2_observedWork()
   }
+}
+
+func demo2_observedWork() async {
+  let progress = await Task.aggregateProgress(pending: 10)
+
+  print("Child 1")
+  await progress.of(units: 2) {
+    let report = await Task.reportProgress(pending: 6)
+    for i in 1...6 {
+      pprint("INCREMENT: \(i)/\(6)")
+      print("INCREMENT: \(i)/\(6)")
+      report.increment()
+    } // 6/6 -> 2/2 -> 2/10
+  } // end of child 1
+
+  print("Child 2")
+  await progress.of(units: 8) {
+    let report = await Task.reportProgress(pending: 20)
+    for i in 1...20 {
+      pprint("INCREMENT: \(i)/\(20)")
+      print("INCREMENT: \(i)/\(20)")
+      progress.increment()
+    } // 6/6 -> 2/2 -> 2/10
+  } // end of child 1
 }
 
 // ==== ------------------------------------------------------------------------
