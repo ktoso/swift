@@ -613,10 +613,7 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
       case ActorIsolation::Independent:
       case ActorIsolation::IndependentUnsafe:
       case ActorIsolation::GlobalActor:
-        // for local actors 'let' declarations are immutable,
-        // so there are no restrictions on their access.
-        if (cast<VarDecl>(decl)->isLet())
-          return forUnrestricted();
+        // Continue checking normal local actor isolation rules
         LLVM_FALLTHROUGH;
     }
 
@@ -629,11 +626,6 @@ ActorIsolationRestriction ActorIsolationRestriction::forDeclaration(
       return forLocalCapture(decl->getDeclContext());
     }
 
-      case ActorIsolation::ActorInstance:
-      case ActorIsolation::Unspecified:
-      case ActorIsolation::Independent:
-      case ActorIsolation::IndependentUnsafe:
-      case ActorIsolation::GlobalActor:
     // local 'let' declarations are immutable, so they can be accessed across
     // actors.
     bool isAccessibleAcrossActors = false;
@@ -1869,8 +1861,8 @@ namespace {
         // we do not allow any property access, or synchronous access at all.
 
         // Must reference distributed actor-isolated state on 'self'.
-        auto *selfDC = getSelfReferenceContext(base);
-        if (!selfDC) {
+        auto *selfVar = getReferencedSelf(base);
+        if (!selfVar) {
           // invocation on not-'self', is only okey if this is a distributed func
           if (auto func = dyn_cast<FuncDecl>(member)) {
             if (!func->isDistributed()) {
@@ -2416,12 +2408,14 @@ ActorIsolation ActorIsolationRequest::evaluate(
   // Check for instance members and initializers of actor classes,
   // which are part of actor-isolated state.
   auto classDecl = value->getDeclContext()->getSelfClassDecl();
-  if (classDecl && classDecl->isActor())
-    if (value->isInstanceMember() && classDecl->isDistributedActor()) {
-      defaultIsolation = ActorIsolation::forDistributedActorInstance(classDecl);
-    } if (value->isInstanceMember() || isa<ConstructorDecl>(value)) else { 
+  if (classDecl && classDecl->isActor()) {
+    if (value->isInstanceMember()) {
+      defaultIsolation = classDecl->isDistributedActor() ?
+                         ActorIsolation::forDistributedActorInstance(classDecl) :
+                         ActorIsolation::forActorInstance(classDecl);
+    } else if (isa<ConstructorDecl>(value)) {
       defaultIsolation = ActorIsolation::forActorInstance(classDecl);
-     }
+    }
   }
 
   // Function used when returning an inferred isolation.
