@@ -13,7 +13,7 @@ distributed actor SomeSpecificDistributedActor {
 
 struct FakeTransport: ActorTransport {
   func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
-    throws -> ActorResolved<Act> where Act: DistributedActor {
+    throws -> ResolvedDistributedActor<Act> where Act: DistributedActor {
     return .makeProxy
   }
 

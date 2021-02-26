@@ -215,6 +215,12 @@ struct ASTContext::Implementation {
   /// The declaration of Swift.Optional<T>.None.
   EnumElementDecl *OptionalNoneDecl = nullptr;
 
+//  /// The declaration of _Concurrency.ResolvedDistributedActor<Act>.resolved
+//  EnumElementDecl *ResolvedDistributedActorResolvedDecl = nullptr;
+//
+//  /// The declaration of _Concurrency.ResolvedDistributedActor<Act>.makeProxy
+//  EnumElementDecl *ResolvedDistributedActorMakeProxyDecl = nullptr;
+
   /// The declaration of Swift.UnsafeMutableRawPointer.memory.
   VarDecl *UnsafeMutableRawPointerMemoryDecl = nullptr;
 
@@ -840,9 +846,23 @@ EnumElementDecl *ASTContext::getOptionalSomeDecl() const {
 
 EnumElementDecl *ASTContext::getOptionalNoneDecl() const {
   if (!getImpl().OptionalNoneDecl)
-    getImpl().OptionalNoneDecl =getOptionalDecl()->getUniqueElement(/*hasVal*/false);
+    getImpl().OptionalNoneDecl = getOptionalDecl()->getUniqueElement(/*hasVal*/false);
   return getImpl().OptionalNoneDecl;
 }
+
+//EnumElementDecl *ASTContext::getResolvedDistributedActorResolvedDecl() const {
+//  if (!getImpl().ResolvedDistributedActorResolvedDecl)
+//    getImpl().ResolvedDistributedActorResolvedDecl =
+//        getResolvedDistributedActorDecl()->getUniqueElement(/*hasVal*/true);
+//  return getImpl().ResolvedDistributedActorResolvedDecl;
+//}
+//
+//EnumElementDecl *ASTContext::getResolvedDistributedActorMakeProxyDecl() const {
+//  if (!getImpl().ResolvedDistributedActorMakeProxyDecl)
+//    getImpl().ResolvedDistributedActorMakeProxyDecl =
+//        getResolvedDistributedActorDecl()->getUniqueElement(/*hasVal*/false);
+//  return getImpl().ResolvedDistributedActorMakeProxyDecl;
+//}
 
 static VarDecl *getPointeeProperty(VarDecl *&cache,
                            NominalTypeDecl *(ASTContext::*getNominal)() const,

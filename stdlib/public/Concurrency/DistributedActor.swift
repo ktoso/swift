@@ -13,6 +13,9 @@
 import Swift
 @_implementationOnly import _SwiftConcurrencyShims
 
+// ==== ========================================================================
+// MARK: Distributed Actor
+
 /// Common protocol to which all distributed actors conform.
 ///
 /// The \c DistributedActor protocol provides the core functionality of any
@@ -20,7 +23,11 @@ import Swift
 /// which involves enqueuing new partial tasks to be executed at some
 /// point. Actor classes implicitly conform to this protocol as part of their
 /// primary class definition.
-public protocol DistributedActor: Actor, Codable {
+public protocol DistributedActor: Actor, Codable, CustomStringConvertible {
+
+  // TODO: allow overriding the DistributedMessageRequirement rather than
+  //       just enforcing Codable on all parameters? Consider DistributedValue
+  // associatedtype DistributedMessageRequirement = ConcurrentValue & Codable
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
@@ -28,7 +35,7 @@ public protocol DistributedActor: Actor, Codable {
   /// with an address assigned to this actor.
   ///
   /// - Parameter transport:
-  init(transport: ActorTransport)
+  init(transport: ActorTransport) // TODO: can it be throwing?
 
   /// Resolves the passed in `address` against the `transport`,
   /// returning either a local or remote actor reference.
@@ -62,7 +69,8 @@ public protocol DistributedActor: Actor, Codable {
   var actorAddress: ActorAddress { get }
 }
 
-// ==== Codable conformance ----------------------------------------------------
+// ==== ------------------------------------------------------------------------
+// MARK: Codable conformance
 
 extension CodingUserInfoKey {
   static let actorTransportKey = CodingUserInfoKey(rawValue: "$dist_act_trans")!
@@ -87,15 +95,26 @@ extension DistributedActor {
     try container.encode(self.actorAddress)
   }
 }
-/******************************************************************************/
-/***************************** Actor Transport ********************************/
-/******************************************************************************/
+
+// ==== ------------------------------------------------------------------------
+// MARK: CustomStringConvertible conformance
+
+// TODO: synthesize this by default?
+extension DistributedActor {
+  @actorIndependent(unsafe)
+  public var description: String {
+    "\(Self.self)(\(self.actorAddress))"
+  }
+}
+
+// ==== ========================================================================
+// MARK: Actor Transport
 
 public protocol ActorTransport {
   /// Resolve a local or remote actor address to a real actor instance, or throw if unable to.
   /// The returned value is either a local actor or proxy to a remote actor.
   func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
-    throws -> ActorResolved<Act> where Act: DistributedActor
+    throws -> ResolvedDistributedActor<Act> where Act: DistributedActor
 
   /// Create an `ActorAddress` for the passed actor type.
   ///
@@ -111,7 +130,7 @@ public protocol ActorTransport {
     _ actorType: Act.Type
 //    ,
 //    onActorCreated: (Act) -> ()
-  ) -> ActorAddress
+  ) throws -> ActorAddress
     where Act: DistributedActor
 
   // FIXME: call from deinit
@@ -120,16 +139,15 @@ public protocol ActorTransport {
 //  ) async throws where Request: Codable, Reply: Codable
 }
 
-public enum ActorResolved<Act: DistributedActor> {
+public enum ResolvedDistributedActor<Act: DistributedActor> {
   case resolved(Act)
   case makeProxy
 }
 
-/******************************************************************************/
-/***************************** Actor Address **********************************/
-/******************************************************************************/
+// ==== ========================================================================
+// MARK: Actor Address
 
-// TODO: make into a protocol
+// TODO: do we need to consider this more, given other transport requirements etc?
 public struct ActorAddress: Equatable, Codable {
   /// Uniquely specifies the actor transport and the protocol used by it.
   ///
@@ -152,11 +170,16 @@ public struct ActorAddress: Equatable, Codable {
     self.path = "/example"
     self.uid = 123123
   }
+
+  public static var random: ActorAddress {
+    var a = ActorAddress(parse: "x")
+    a.uid = .random(in: 1...9999999)
+    return a
+  }
 }
 
-/******************************************************************************/
-/******************************** Misc ****************************************/
-/******************************************************************************/
+// ==== ========================================================================
+// MARK: Misc
 
 /// Error protocol to which errors thrown by any `ActorTransport` should conform.
 public protocol ActorTransportError: Error {}

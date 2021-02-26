@@ -27,7 +27,7 @@ distributed actor SomeSpecificDistributedActor {
 //  // @derived
 //  required init(transport: ActorTransport) {
 //    self.actorTransport = transport
-//    self.actorAddress = ActorAddress(parse: "xxx")
+//    self.actorAddress = transport.assignAddress(Self.self)
 //  }
 //  // @derived
 //  required init(resolve address: ActorAddress, using transport: ActorTransport) {
@@ -44,13 +44,27 @@ distributed actor SomeSpecificDistributedActor {
 
 struct FakeTransport: ActorTransport {
   func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
-    throws -> ActorResolved<Act> where Act: DistributedActor {
-    fatalError()
+    throws -> ResolvedDistributedActor<Act> where Act: DistributedActor {
+    fatalError("resolve is not implemented yet.")
   }
+
   func assignAddress<Act>(
     _ actorType: Act.Type
 //    ,
 //    onActorCreated: (Act) -> ()
+  ) -> ActorAddress where Act : DistributedActor {
+    let mock = ActorAddress.random
+    return mock
+  }
+}
+
+struct ResolveAsSpecificTransport: ActorTransport {
+  func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
+    throws -> ResolvedDistributedActor<Act> where Act: DistributedActor {
+    fatalError("resolve is not implemented yet.")
+  }
+  func assignAddress<Act>(
+    _ actorType: Act.Type
   ) -> ActorAddress where Act : DistributedActor {
     fatalError()
   }
@@ -60,9 +74,14 @@ struct FakeTransport: ActorTransport {
 let address = ActorAddress(parse: "")
 let transport = FakeTransport()
 
-func test_initializers() {
-  _ = SomeSpecificDistributedActor(transport: transport)
-  _ = try! SomeSpecificDistributedActor(resolve: address, using: transport)
+func test_init_local() {
+  let local = SomeSpecificDistributedActor(transport: transport)
+  print("local.actorAddress: \(local.actorAddress)")
+
+}
+func test_init_resolve() {
+  let remote = try! SomeSpecificDistributedActor(resolve: address, using: transport)
+  print(remote)
 }
 
 func test_address() {
@@ -78,6 +97,11 @@ func test_run() async {
 
 @main struct Main {
   static func main() async {
+    test_init_local()
+
+    test_init_resolve()
     await test_run()
+
+    // CHECK: fail
   }
 }
