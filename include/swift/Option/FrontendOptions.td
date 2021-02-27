@@ -226,6 +226,10 @@ def enable_experimental_flow_sensitive_concurrent_captures :
   Flag<["-"], "enable-experimental-flow-sensitive-concurrent-captures">,
   HelpText<"Enable flow-sensitive concurrent captures">;
 
+def enable_experimental_distributed :
+  Flag<["-"], "enable-experimental-distributed">,
+  HelpText<"Enable experimental 'distributed' actors and functions">;
+
 def enable_resilience : Flag<["-"], "enable-resilience">,
      HelpText<"Deprecated, use -enable-library-evolution instead">;
 }
