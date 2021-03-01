@@ -19,6 +19,7 @@
 #include "swift/ABI/Metadata.h"
 #include "swift/Runtime/Mutex.h"
 #include "swift/Runtime/HeapObject.h"
+#include "TaskGroupPrivate.h"
 #include "TaskPrivate.h"
 #include "AsyncCall.h"
 #include "Debug.h"
@@ -31,7 +32,6 @@
 
 using namespace swift;
 using FutureFragment = AsyncTask::FutureFragment;
-using TaskGroup = swift::TaskGroup;
 using TaskLocalValuesFragment = AsyncTask::TaskLocalValuesFragment;
 using TaskLocalInheritance = AsyncTask::TaskLocalValuesFragment::TaskLocalInheritance;
 
