@@ -26,17 +26,17 @@ distributed actor SomeSpecificDistributedActor {
 
 //  // @derived
 //  required init(transport: ActorTransport) {
-//    self.actorTransport = transport
-//    self.actorAddress = ActorAddress(parse: "xxx")
+//    self.$transport = transport
+//    self.$address = ActorAddress(parse: "xxx")
 //  }
 //  // @derived
 //  required init(resolve address: ActorAddress, using transport: ActorTransport) {
-//    self.actorAddress = address
-//    self.actorTransport = transport
+//    self.$address = address
+//    self.$transport = transport
 //  }
 
 //  distributed func hello() async throws {
-//    // print("hello from \(self.actorAddress)")
+//    // print("hello from \(self.$address)")
 //  }
 }
 
@@ -67,7 +67,7 @@ func test_initializers() {
 
 func test_address() {
   let actor = SomeSpecificDistributedActor(transport: transport)
-  _ = actor.actorAddress
+  _ = actor.$address
 }
 
 func test_run() async {

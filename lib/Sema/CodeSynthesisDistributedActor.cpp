@@ -84,8 +84,8 @@ createCall_DistributedActor_transport_assignAddress(ASTContext &C,
 ///
 /// ```
 /// init(transport: ActorTransport)
-///   self.actorTransport = transport
-///   self.actorAddress = try transport.assignAddress(Self.self)
+///   self.$transport = transport
+///   self.$address = try transport.assignAddress(Self.self)
 /// }
 /// ```
 ///
@@ -104,17 +104,17 @@ createBody_DistributedActor_init_transport(AbstractFunctionDecl *initDecl, void 
 
   auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
 
-  // ==== `self.actorTransport = transport`
+  // ==== `self.$transport = transport`
   auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                             C.Id_actorTransport);
+                                                             C.Id_s_transport);
   auto *assignTransportExpr = new (C) AssignExpr(
       varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
   statements.push_back(assignTransportExpr);
 
-  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
+  // ==== `self.$address = transport.assignAddress<Self>(Self.self)`
   // self.actorAddress
   auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                           C.Id_actorAddress);
+                                                           C.Id_s_address);
   // Bound transport.assignAddress(Self.self) call
   auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
   auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
@@ -219,15 +219,15 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 
   // ==== `self.actorTransport = transport`
   auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                             C.Id_actorTransport);
+                                                             C.Id_s_transport);
   auto *assignTransportExpr = new (C) AssignExpr(
       varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
   statements.push_back(assignTransportExpr);
 
-  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
+  // ==== `self.$address = transport.assignAddress<Self>(Self.self)`
   // self.actorAddress
   auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                           C.Id_actorAddress);
+                                                           C.Id_s_address);
   // TODO implement calling the transport with the address and Self.self
   // FIXME: this must be checking with the transport instead
   auto *assignAddressExpr = new (C) AssignExpr(
@@ -471,7 +471,7 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
     PatternBindingDecl *pbDecl;
     std::tie(propDecl, pbDecl) = createStoredProperty(
         decl, C,
-        VarDecl::Introducer::Let, C.Id_actorAddress,
+        VarDecl::Introducer::Let, C.Id_s_address,
         propertyType, propertyType,
         /*isStatic=*/false, /*isFinal=*/true);
 
@@ -495,7 +495,7 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
     PatternBindingDecl *pbDecl;
     std::tie(propDecl, pbDecl) = createStoredProperty(
         decl, C,
-        VarDecl::Introducer::Let, C.Id_actorTransport,
+        VarDecl::Introducer::Let, C.Id_s_transport,
         propertyType, propertyType,
         /*isStatic=*/false, /*isFinal=*/true);
 

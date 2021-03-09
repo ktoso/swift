@@ -3,10 +3,10 @@
 // REQUIRES: executable_test
 // REQUIRES: concurrency
 
-import Dispatch
 import _Concurrency
 
-distributed actor SomeSpecificDistributedActor {
+distributed actor DA {
+  let name = "name"
 }
 
 // ==== Fake Transport ---------------------------------------------------------
@@ -14,15 +14,14 @@ distributed actor SomeSpecificDistributedActor {
 struct FakeTransport: ActorTransport {
   func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
     throws -> ActorResolved<Act> where Act: DistributedActor {
-    return .makeProxy
+    fatalError()
   }
-
   func assignAddress<Act>(
     _ actorType: Act.Type
 //    ,
 //    onActorCreated: (Act) -> ()
   ) -> ActorAddress where Act : DistributedActor {
-    ActorAddress(parse: "")
+    fatalError()
   }
 }
 
@@ -30,22 +29,24 @@ struct FakeTransport: ActorTransport {
 let address = ActorAddress(parse: "")
 let transport = FakeTransport()
 
-func test_remote() async {
-  let local = SomeSpecificDistributedActor(transport: transport)
-  _ = local.$address
-  assert(__isLocalActor(local) == true, "should be local")
-  assert(__isRemoteActor(local) == false, "should be local")
+func test_initializers() {
+  _ = DA(transport: transport)
+  _ = try! DA(resolve: address, using: transport)
+}
 
-  // assume it always makes a remote one
-  let remote = try! SomeSpecificDistributedActor(resolve: address, using: transport)
-  assert(__isLocalActor(remote) == false, "should be remote")
-  assert(__isRemoteActor(remote) == true, "should be remote")
+func test_address() {
+  let actor = DA(transport: transport)
+  _ = actor.$address
+}
 
-  print("done") // CHECK: done
+func test_run() async {
+  print("before") // CHECK: before
+//  try! await actor.hello()
+  print("after") // CHECK: after
 }
 
 @main struct Main {
   static func main() async {
-    await test_remote()
+    await test_run()
   }
 }

@@ -51,7 +51,7 @@ public protocol DistributedActor: Actor, Codable {
   /// `distributed actor` declaration.
   // FIXME: don't express it as a protocol requirement, since there never
   //        is a reason to reach into it externally?
-  var actorTransport: ActorTransport { get }
+  var $transport: ActorTransport { get }
 
   /// Logical address which this distributed actor represents.
   ///
@@ -59,7 +59,7 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// Conformance to this requirement is synthesized automatically for any
   /// `distributed actor` declaration.
-  var actorAddress: ActorAddress { get }
+  var $address: ActorAddress { get }
 }
 
 // ==== Codable conformance ----------------------------------------------------
