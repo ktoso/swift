@@ -264,10 +264,10 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
   assert(actorType);
   auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
       C, funcDC, actorType);
-  auto castProxyExpr = ForcedCheckedCastExpr::createImplicit(
-      C, makeProxyCallExpr, actorType);
+//  auto castProxyExpr = ForcedCheckedCastExpr::createImplicit(
+//      C, makeProxyCallExpr, actorType);
   auto *assignSelfProxyExpr = new (C) AssignExpr(
-      selfRef, SourceLoc(), castProxyExpr, /*Implicit=*/true);
+      selfRef, SourceLoc(), makeProxyCallExpr, /*Implicit=*/true);
   statements.push_back(assignSelfProxyExpr);
   // ==== ----------------------------------------------------
 
