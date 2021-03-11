@@ -824,6 +824,7 @@ static Type applyGenericArguments(Type type, TypeResolution resolution,
   SmallVector<Type, 2> args;
   for (auto tyR : genericArgs) {
     // Propagate failure.
+    fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
     Type substTy = genericResolution.resolveType(tyR, silParams);
     if (!substTy || substTy->hasError())
       return ErrorType::get(ctx);
@@ -1890,7 +1891,6 @@ Type TypeResolution::resolveType(TypeRepr *TyR,
                                  GenericParamList *silParams) const {
   auto &ctx = getASTContext();
   assert(TyR);
-  fprintf(stderr, "[%s:%d] (%s) resolve type\n", __FILE__, __LINE__, __FUNCTION__);
   auto Ty =
       evaluateOrDefault(ctx.evaluator,
                         ResolveTypeRequest{this, TyR, silParams}, Type());
