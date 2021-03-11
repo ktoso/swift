@@ -1889,6 +1889,8 @@ namespace {
 Type TypeResolution::resolveType(TypeRepr *TyR,
                                  GenericParamList *silParams) const {
   auto &ctx = getASTContext();
+  assert(TyR);
+  fprintf(stderr, "[%s:%d] (%s) resolve type\n", __FILE__, __LINE__, __FUNCTION__);
   auto Ty =
       evaluateOrDefault(ctx.evaluator,
                         ResolveTypeRequest{this, TyR, silParams}, Type());

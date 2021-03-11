@@ -1305,7 +1305,9 @@ enum {
 // TODO: make it accept the metatype?
 //void *swift::swift_distributedActor_createProxy(Metadata const *actorType) {
 void *swift::swift_distributedActor_createProxy() {
-  // Figure out the size of the header.
+  fprintf(stderr, "[%s:%d] (%s) creating proxy...\n", __FILE__, __LINE__, __FUNCTION__);
+  // Figure out the size to allocate.
+  // TODO: this is likely slightly wrong?
   size_t headerSize = sizeof(DefaultActor);
   headerSize += DISTRIBUTED_ACTOR_ADDRESS_SIZE; // must be the size of `ActorAddress`
   headerSize += sizeof(uintptr_t); // size of pointer to `ActorTransport`
@@ -1317,9 +1319,11 @@ void *swift::swift_distributedActor_createProxy() {
 
   void *allocation = malloc(amountToAllocate);
 
-  AsyncContext *initialContext =
-      reinterpret_cast<AsyncContext*>(
-          reinterpret_cast<char*>(allocation) + headerSize);
+//  AsyncContext *initialContext =
+//      reinterpret_cast<AsyncContext*>(
+//          reinterpret_cast<char*>(allocation) + headerSize);
+
+  return allocation;
 }
 
 // TODO: most likely where we'd need to create the "proxy instance" instead?
