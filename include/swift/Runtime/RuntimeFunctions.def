@@ -1564,6 +1564,16 @@ FUNCTION(DefaultActorDestroy,
          ARGS(RefCountedPtrTy),
          ATTRS(NoUnwind))
 
+// TODO: maybe void* swift_distributedActor_createProxy(Metadata const *type);
+// void* swift_distributedActor_createProxy();
+FUNCTION(DistributedActorCreateProxy,
+         swift_distributedActor_createProxy, SwiftCC,
+         ConcurrencyAvailability,
+         RETURNS(Int8PtrTy),
+//         ARGS(TypeMetadataPtrTy),
+         ARGS(),
+         ATTRS(NoUnwind))
+
 // void swift_distributedActor_remote_initialize(DefaultActor *actor);
 FUNCTION(DistributedActorInitializeRemote,
          swift_distributedActor_remote_initialize, SwiftCC,

@@ -805,6 +805,7 @@ void LifetimeChecker::doIt() {
 
     case DIUseKind::IndirectIn:
     case DIUseKind::Load:
+      fprintf(stderr, "[%s:%d] (%s) calling handleLoadUse(Use)\n", __FILE__, __LINE__, __FUNCTION__);
       handleLoadUse(Use);
       break;
     case DIUseKind::InOutArgument:
@@ -867,6 +868,7 @@ void LifetimeChecker::doIt() {
 void LifetimeChecker::handleLoadUse(const DIMemoryUse &Use) {
   bool IsSuperInitComplete, FailedSelfUse;
   // If the value is not definitively initialized, emit an error.
+  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (!isInitializedAtUse(Use, &IsSuperInitComplete, &FailedSelfUse))
     return handleLoadUseFailure(Use, IsSuperInitComplete, FailedSelfUse);
 }
@@ -1365,6 +1367,8 @@ void LifetimeChecker::handleEscapeUse(const DIMemoryUse &Use) {
                          &FullyUninitialized)) {
     return;
   }
+  fprintf(stderr, "[%s:%d] (%s) SuperInitDone=%d FailedSelfUse=%d FullyUninitialized=%d\n", __FILE__, __LINE__, __FUNCTION__,
+          SuperInitDone, FailedSelfUse, FullyUninitialized);
 
   auto Inst = Use.Inst;
 
@@ -1413,7 +1417,9 @@ void LifetimeChecker::handleEscapeUse(const DIMemoryUse &Use) {
     }
 
     if (TheMemory.isDelegatingInit()) {
+      fprintf(stderr, "[%s:%d] (%s) is delegating init\n", __FILE__, __LINE__, __FUNCTION__);
       if (TheMemory.isClassInitSelf()) {
+        fprintf(stderr, "[%s:%d] (%s) class init self\n", __FILE__, __LINE__, __FUNCTION__);
         diagnose(Module, Inst->getLoc(), diag::self_before_selfinit);
       } else {
         diagnose(Module, Inst->getLoc(), diag::self_before_selfinit_value_type);
@@ -1466,18 +1472,24 @@ void LifetimeChecker::handleEscapeUse(const DIMemoryUse &Use) {
   Diag<StringRef, bool> DiagMessage;
   if (isa<MarkFunctionEscapeInst>(Inst)) {
     if (Inst->getLoc().isASTNode<AbstractClosureExpr>()) {
+      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
       DiagMessage = diag::variable_closure_use_uninit;
     } else if (Inst->getLoc().isASTNode<DeferStmt>()) {
+      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
       DiagMessage = diag::variable_defer_use_uninit;
     } else {
+      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
       DiagMessage = diag::variable_function_use_uninit;
     }
   } else if (isa<UncheckedTakeEnumDataAddrInst>(Inst)) {
+    fprintf(stderr, "[%s:%d] (%s) DiagMessage = use before initialized\n", __FILE__, __LINE__, __FUNCTION__);
     DiagMessage = diag::variable_used_before_initialized;
   } else {
+    fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
     DiagMessage = diag::variable_closure_use_uninit;
   }
 
+  fprintf(stderr, "[%s:%d] (%s) diagnose DiagMessage\n", __FILE__, __LINE__, __FUNCTION__);
   diagnoseInitError(Use, DiagMessage);
 }
 
@@ -1730,6 +1742,7 @@ bool LifetimeChecker::diagnoseReturnWithoutInitializingStoredProperties(
     assert(theStruct);
 
     bool fullyUnitialized;
+    fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
     (void)isInitializedAtUse(Use, nullptr, nullptr, &fullyUnitialized);
 
     diagnose(Module, loc,
@@ -1883,8 +1896,10 @@ void LifetimeChecker::handleLoadUseFailure(const DIMemoryUse &Use,
   if ((isa<LoadInst>(Inst) || isa<LoadBorrowInst>(Inst)) &&
       Inst->getLoc().isASTNode<AbstractClosureExpr>())
     diagnoseInitError(Use, diag::variable_closure_use_uninit);
-  else
+  else {
+    fprintf(stderr, "[%s:%d] (%s) issue error, Use use before initialized\n", __FILE__, __LINE__, __FUNCTION__);
     diagnoseInitError(Use, diag::variable_used_before_initialized);
+  }
 }
 
 /// handleSelfInitUse - When processing a 'self' argument on a class, this is
@@ -3092,8 +3107,10 @@ bool LifetimeChecker::isInitializedAtUse(const DIMemoryUse &Use,
     if (FullyUninitialized && Liveness.get(i) != DIKind::No)
       *FullyUninitialized = false;
   }
-  if (!isFullyInitialized)
+  if (!isFullyInitialized) {
+    fprintf(stderr, "[%s:%d] (%s) is NOT fully initialized\n", __FILE__, __LINE__, __FUNCTION__);
     return false;
+  }
 
   // If the self.init() or super.init() call threw an error and
   // we caught it, self is no longer available.

@@ -381,6 +381,10 @@ static StringRef getCtorInitializerKindString(CtorInitializerKind value) {
     case CtorInitializerKind::Convenience: return "convenience";
     case CtorInitializerKind::ConvenienceFactory: return "convenience_factory";
     case CtorInitializerKind::Factory: return "factory";
+    case CtorInitializerKind::DesignatedDistributedLocal:
+      return "designated_distributed_local";
+    case CtorInitializerKind::DistributedResolve:
+      return "distributed_resolve";
   }
 
   llvm_unreachable("Unhandled CtorInitializerKind in switch.");

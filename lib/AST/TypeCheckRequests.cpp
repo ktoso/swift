@@ -539,6 +539,10 @@ void swift::simple_display(
     out << "convenience_factory"; break;
   case CtorInitializerKind::Factory:
     out << "factory"; break;
+  case CtorInitializerKind::DesignatedDistributedLocal:
+    out << "designated_distributed_local"; break;
+  case CtorInitializerKind::DistributedResolve:
+    out << "distributed_resolve"; break;
   }
   out << " }";
 }

@@ -80,6 +80,40 @@ createCall_DistributedActor_transport_assignAddress(ASTContext &C,
                                   C.AllocateCopy(argLabels));
 }
 
+static CallExpr *
+createCall_DistributedActor_createProxy(ASTContext &C,
+                                      DeclContext *DC
+                                      // Type selfType // TODO: might be useful?
+                                      ) {
+  // (_ actorType:)
+  auto *paramDecl = new (C) ParamDecl(SourceLoc(),
+                                      SourceLoc(), Identifier(),
+                                      SourceLoc(), C.Id_actorType, DC);
+  paramDecl->setImplicit();
+  paramDecl->setSpecifier(ParamSpecifier::Default);
+  // paramDecl->setInterfaceType(returnType); // FIXME: Any?
+
+  // _createDistributedActorProxy(_:) expr
+  auto *paramList = ParameterList::createWithoutLoc(paramDecl);
+//  auto *unboundCall = UnresolvedDotExpr::createImplicit(C, /*base*/nullptr,
+//                                                        C.Id_createDistributedActorProxy,
+//                                                        paramList);
+  auto *declRef = UnresolvedDeclRefExpr::createImplicit(
+      C, C.Id_createDistributedActorProxy);
+
+//  // DC->mapTypeIntoContext(selfType->getInterfaceType());
+//  auto *selfTypeExpr = TypeExpr::createImplicit(selfType, C);
+//  auto *dotSelfTypeExpr = new (C) DotSelfExpr(selfTypeExpr, SourceLoc(),
+//                                              SourceLoc(), selfType);
+
+  // Full bound _createDistributedActorProxy(Self.self) call
+//  Expr *args[1] = {dotSelfTypeExpr};
+//  Identifier argLabels[1] = {Identifier()};
+//  return CallExpr::createImplicit(C, declRef, C.AllocateCopy(args),
+//                                  C.AllocateCopy(argLabels));
+  return CallExpr::createImplicit(C, declRef, {}, {});
+}
+
 /// Synthesizes the body of the `init(transport:)` initializer as:
 ///
 /// ```
@@ -172,7 +206,7 @@ createDistributedActor_init_local(ClassDecl *classDecl,
   initDecl->setSynthesized();
   initDecl->setBodySynthesizer(&createBody_DistributedActor_init_transport);
 
-  // This constructor is 'required', all distributed actors MUST invoke it.
+  // This constructor is 'required', all distributed actors MUST have it.
   auto *reqAttr = new (C) RequiredAttr(/*IsImplicit*/true);
   initDecl->getAttrs().add(reqAttr);
 
@@ -187,7 +221,6 @@ createDistributedActor_init_local(ClassDecl *classDecl,
 ///
 /// ```
 /// init(resolve address: ActorAddress, using transport: ActorTransport) throws {
-///   // TODO: implement calling the transport
 ///   switch try transport.resolve(address: address, as: Self.self) {
 ///   case .instance(let instance):
 ///     self = instance
@@ -217,23 +250,33 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 
   auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
 
-  // ==== `self.actorTransport = transport`
-  auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                             C.Id_actorTransport);
-  auto *assignTransportExpr = new (C) AssignExpr(
-      varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
-  statements.push_back(assignTransportExpr);
+//  // ==== `self.actorTransport = transport`
+//  auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+//                                                             C.Id_actorTransport);
+//  auto *assignTransportExpr = new (C) AssignExpr(
+//      varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
+//  statements.push_back(assignTransportExpr);
+//
+//  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
+//  // self.actorAddress
+//  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+//                                                           C.Id_actorAddress);
+//  // TODO implement calling the transport with the address and Self.self
+//  // FIXME: this must be checking with the transport instead
+//  auto *assignAddressExpr = new (C) AssignExpr(
+//      varAddressExpr, SourceLoc(), addressExpr, /*Implicit=*/true);
+//  statements.push_back(assignAddressExpr);
+//  // end-of-FIXME: this must be checking with the transport instead
 
-  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
-  // self.actorAddress
-  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                           C.Id_actorAddress);
-  // TODO implement calling the transport with the address and Self.self
-  // FIXME: this must be checking with the transport instead
-  auto *assignAddressExpr = new (C) AssignExpr(
-      varAddressExpr, SourceLoc(), addressExpr, /*Implicit=*/true);
-  statements.push_back(assignAddressExpr);
-  // end-of-FIXME: this must be checking with the transport instead
+  // === `self = _createDistributedActorProxy(Self.self)
+  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+  auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
+      C, funcDC
+//      , /*selfType=*/selfType
+  );
+  auto *assignSelfProxyExpr = new (C) AssignExpr(
+      selfRef, SourceLoc(), makeProxyCallExpr, /*Implicit=*/true);
+  statements.push_back(assignSelfProxyExpr);
 
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
@@ -315,25 +358,18 @@ createDistributedActorInit(ClassDecl *classDecl,
 
   switch (argumentNames.size()) {
     case 1: {
-      if (requirement->isDistributedActorLocalInit()) {
+      if (requirement->isDistributedActorLocalInit())
         return createDistributedActor_init_local(classDecl, ctx);
-      }
-
-      if (argumentNames[0] == C.Id_from) {
-        // TODO: do we need to check types of the params here too?
-        // TODO: implement synthesis
-        return nullptr;
-      }
       break;
     }
-    case 2:
-      if (requirement->isDistributedActorResolveInit()) {
+    case 2: {
+      if (requirement->isDistributedActorResolveInit())
         return createDistributedActor_init_resolve(classDecl, ctx);
-      }
       break;
+    }
   }
 
-  return nullptr; // TODO: make it assert(false); after we're done with all
+  return nullptr;
 }
 
 static void collectNonOveriddenDistributedActorInits(

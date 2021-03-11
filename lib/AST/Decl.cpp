@@ -7604,16 +7604,16 @@ bool FuncDecl::isMainTypeMainMethod() const {
          getParameters()->size() == 0;
 }
 
-bool VarDecl::isDistributedActorAddressName(ASTContext &ctx, DeclName name) {
-  assert(name.getArgumentNames().size() == 0);
-  return name.getBaseName() == ctx.Id_actorAddress;
-}
-
-bool VarDecl::isDistributedActorTransportName(ASTContext &ctx, DeclName name) {
-  assert(name.getArgumentNames().size() == 0);
-  return name.getBaseName() == ctx.Id_transport ||
-    name.getBaseName() == ctx.Id_actorTransport;
-}
+//bool VarDecl::isDistributedActorAddressName(ASTContext &ctx, DeclName name) {
+//  assert(name.getArgumentNames().size() == 0);
+//  return name.getBaseName() == ctx.Id_actorAddress;
+//}
+//
+//bool VarDecl::isDistributedActorTransportName(ASTContext &ctx, DeclName name) {
+//  assert(name.getArgumentNames().size() == 0);
+//  return name.getBaseName() == ctx.Id_transport ||
+//    name.getBaseName() == ctx.Id_actorTransport;
+//}
 
 ConstructorDecl::ConstructorDecl(DeclName Name, SourceLoc ConstructorLoc,
                                  bool Failable, SourceLoc FailabilityLoc,
@@ -7666,9 +7666,16 @@ bool ConstructorDecl::isObjCZeroParameterWithLongSelector() const {
 }
 
 bool ConstructorDecl::isDistributedActorLocalInit() const {
+  // Only a `distributed actor` may have its specialized initializers.
+  if (auto clazz = dyn_cast<ClassDecl>(getParent()))
+    if (!clazz->isDistributedActor())
+      return false;
+
   auto name = getName();
   auto argumentNames = name.getArgumentNames();
 
+  // the signature must be:
+  //    init(transport: ActorAddress)
   if (argumentNames.size() != 1)
     return false;
 
@@ -7684,9 +7691,16 @@ bool ConstructorDecl::isDistributedActorLocalInit() const {
 }
 
 bool ConstructorDecl::isDistributedActorResolveInit() const {
+  // Only a `distributed actor` may have its specialized initializers.
+  if (auto clazz = dyn_cast<ClassDecl>(getParent()))
+    if (!clazz->isDistributedActor())
+      return false;
+
   auto name = getName();
   auto argumentNames = name.getArgumentNames();
 
+  // the signature must be:
+  //    init(resolve address: ActorAddress, using transport: ActorTransport) throws
   if (argumentNames.size() != 2)
     return false;
 

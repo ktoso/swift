@@ -515,6 +515,11 @@ void swift_defaultActor_initialize(DefaultActor *actor);
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_defaultActor_destroy(DefaultActor *actor);
 
+/// Allocate proxy appropriate for this actor.
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+// void* swift_distributedActor_createProxy(Metadata const *actorType); // TODO: maybe we want the type?
+void* swift_distributedActor_createProxy();
+
 /// Initialize the runtime storage for a distributed remote actor.
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_distributedActor_remote_initialize(DefaultActor *actor);

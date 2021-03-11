@@ -1298,6 +1298,30 @@ void swift::swift_defaultActor_destroy(DefaultActor *_actor) {
   asImpl(_actor)->destroy();
 }
 
+enum {
+    DISTRIBUTED_ACTOR_ADDRESS_SIZE = 88,
+};
+
+// TODO: make it accept the metatype?
+//void *swift::swift_distributedActor_createProxy(Metadata const *actorType) {
+void *swift::swift_distributedActor_createProxy() {
+  // Figure out the size of the header.
+  size_t headerSize = sizeof(DefaultActor);
+  headerSize += DISTRIBUTED_ACTOR_ADDRESS_SIZE; // must be the size of `ActorAddress`
+  headerSize += sizeof(uintptr_t); // size of pointer to `ActorTransport`
+
+  headerSize = llvm::alignTo(headerSize, llvm::Align(Alignment_DistributedActorProxy));
+  size_t amountToAllocate = headerSize;
+
+  assert(amountToAllocate % MaximumAlignment == 0);
+
+  void *allocation = malloc(amountToAllocate);
+
+  AsyncContext *initialContext =
+      reinterpret_cast<AsyncContext*>(
+          reinterpret_cast<char*>(allocation) + headerSize);
+}
+
 // TODO: most likely where we'd need to create the "proxy instance" instead?
 void swift::swift_distributedActor_remote_initialize(DefaultActor *_actor) {
   auto actor = asImpl(_actor);
