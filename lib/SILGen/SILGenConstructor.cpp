@@ -568,6 +568,9 @@ bool Lowering::usesObjCAllocator(ClassDecl *theClass) {
 void SILGenFunction::emitClassConstructorAllocator(ConstructorDecl *ctor) {
   assert(!ctor->isFactoryInit() && "factories should not be emitted here");
 
+  fprintf(stderr, "[%s:%d] (%s) ctor: %s\n", __FILE__, __LINE__, __FUNCTION__,
+          ctor->getBaseName().userFacingName());
+
   // Emit the prolog. Since we're just going to forward our args directly
   // to the initializer, don't allocate local variables for them.
   RegularLocation Loc(ctor);
@@ -618,6 +621,9 @@ void SILGenFunction::emitClassConstructorAllocator(ConstructorDecl *ctor) {
                                         useObjCAllocation, {}, {});
   } else {
     assert(ctor->isDesignatedInit());
+    fprintf(stderr, "[%s:%d] (%s) init designated ctor allocator [%s]\n", __FILE__, __LINE__, __FUNCTION__,
+            ctor->getBaseName());
+
     // For a designated initializer, we know that the static type being
     // allocated is the type of the class that defines the designated
     // initializer.
@@ -664,7 +670,7 @@ static void emitDefaultActorInitialization(
 static void emitDistributedRemoteActorInitialization(
     SILGenFunction &SGF, SILLocation loc,
     ManagedValue self,
-    bool addressArg, bool transportArg // FIXME: make those real arguments
+    void* addressArg, void* transportArg // FIXME: make those real arguments
     ) {
   auto &ctx = SGF.getASTContext();
   auto builtinName = ctx.getIdentifier(
@@ -676,7 +682,10 @@ static void emitDistributedRemoteActorInitialization(
                       { self.borrow(SGF, loc).getValue() });
 }
 
+// TODO: modify this to handle distributed actor resolve initializer
 void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
+  fprintf(stderr, "[%s:%d] (%s) for %s\n", __FILE__, __LINE__, __FUNCTION__,
+          ctor->getBaseName().userFacingName());
   MagicFunctionName = SILGenModule::getMagicFunctionName(ctor);
 
   assert(ctor->getTypecheckedBody() && "Class constructor without a body?");
@@ -752,10 +761,8 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
 
     if (selfClassDecl->isDistributedActor() &&
         ctor->isDistributedActorResolveInit()) {
-      auto addressArg  = false; // TODO: get the address argument
-      auto transportArg  = false; // TODO: get the transport argument
       emitDistributedRemoteActorInitialization(*this, PrologueLoc,
-          selfArg, addressArg, transportArg);
+          selfArg, /*addressArg=*/nullptr, /*transportArg*/nullptr); // FIXME: actually pass real things?
     } else {
       // is normal (default) actor
       emitDefaultActorInitialization(*this, PrologueLoc, selfArg);

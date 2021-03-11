@@ -80,40 +80,6 @@ createCall_DistributedActor_transport_assignAddress(ASTContext &C,
                                   C.AllocateCopy(argLabels));
 }
 
-static CallExpr *
-createCall_DistributedActor_createProxy(ASTContext &C,
-                                      DeclContext *DC
-                                      // Type selfType // TODO: might be useful?
-                                      ) {
-  // (_ actorType:)
-  auto *paramDecl = new (C) ParamDecl(SourceLoc(),
-                                      SourceLoc(), Identifier(),
-                                      SourceLoc(), C.Id_actorType, DC);
-  paramDecl->setImplicit();
-  paramDecl->setSpecifier(ParamSpecifier::Default);
-  // paramDecl->setInterfaceType(returnType); // FIXME: Any?
-
-  // _createDistributedActorProxy(_:) expr
-  auto *paramList = ParameterList::createWithoutLoc(paramDecl);
-//  auto *unboundCall = UnresolvedDotExpr::createImplicit(C, /*base*/nullptr,
-//                                                        C.Id_createDistributedActorProxy,
-//                                                        paramList);
-  auto *declRef = UnresolvedDeclRefExpr::createImplicit(
-      C, C.Id_createDistributedActorProxy);
-
-//  // DC->mapTypeIntoContext(selfType->getInterfaceType());
-//  auto *selfTypeExpr = TypeExpr::createImplicit(selfType, C);
-//  auto *dotSelfTypeExpr = new (C) DotSelfExpr(selfTypeExpr, SourceLoc(),
-//                                              SourceLoc(), selfType);
-
-  // Full bound _createDistributedActorProxy(Self.self) call
-//  Expr *args[1] = {dotSelfTypeExpr};
-//  Identifier argLabels[1] = {Identifier()};
-//  return CallExpr::createImplicit(C, declRef, C.AllocateCopy(args),
-//                                  C.AllocateCopy(argLabels));
-  return CallExpr::createImplicit(C, declRef, {}, {});
-}
-
 /// Synthesizes the body of the `init(transport:)` initializer as:
 ///
 /// ```
@@ -217,6 +183,41 @@ createDistributedActor_init_local(ClassDecl *classDecl,
 
 // ==== Distributed Actor: Resolve Initializer ---------------------------------
 
+static CallExpr *
+createCall_DistributedActor_createProxy(ASTContext &C,
+                                        DeclContext *DC,
+                                        Type paramActorType) {
+  // (_ actorType:)
+  auto *paramDecl = new (C) ParamDecl(SourceLoc(),
+                                      SourceLoc(), Identifier(),
+                                      SourceLoc(), C.Id_actorType, DC);
+  paramDecl->setImplicit();
+  paramDecl->setSpecifier(ParamSpecifier::Default);
+  paramDecl->setInterfaceType(paramActorType); // FIXME: Any?
+
+  // _createDistributedActorProxy(_:) expr
+  auto *paramList = ParameterList::createWithoutLoc(paramDecl);
+//  auto *unboundCall = UnresolvedDotExpr::createImplicit(C, /*base*/nullptr,
+//                                                        C.Id_createDistributedActorProxy,
+//                                                        paramList);
+  auto *createDeclRef = UnresolvedDeclRefExpr::createImplicit(
+      C, C.getIdentifier("_createDistributedActorProxy"));
+
+//   DC->mapTypeIntoContext(paramActorType->getInterfaceType());
+//  auto *actorTypeExpr = TypeExpr::createImplicit(paramActorType, C);
+//  auto *dotActorTypeExpr = new (C) DotSelfExpr(actorTypeExpr, SourceLoc(),
+//                                              SourceLoc(), paramActorType);
+
+  // Full bound _createDistributedActorProxy(Self.self) call
+//  Expr *args[1] = {dotActorTypeExpr};
+//  Identifier argLabels[1] = {Identifier()};
+//  return CallExpr::createImplicit(C, declRef, C.AllocateCopy(args),
+//                                  C.AllocateCopy(argLabels));
+
+  return CallExpr::createImplicit(C, createDeclRef, {}, {});
+//  return CallExpr::create(C, createDeclRef, {}, {}, {}, false, false, actorType);
+}
+
 /// Synthesizes the body for
 ///
 /// ```
@@ -250,6 +251,27 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 
   auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
 
+  // ==== ----------------------------------------------------
+  // TODO: towards this one...
+  // FIXME: this must be checking with the transport instead
+  // ==== TODO: let result = try transport.resolve(address: address, as: actorType)
+  // ==== TODO: switch result {
+  // ==== TODO: case .resolved(let instance):
+  // ==== TODO:   self = instance
+  // ==== TODO: case .makeProxy:
+  // ==== `self = _createDistributedActorProxy(Self.self)
+  auto actorType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+  assert(actorType);
+  auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
+      C, funcDC, actorType);
+  auto castProxyExpr = ForcedCheckedCastExpr::createImplicit(
+      C, makeProxyCallExpr, actorType);
+  auto *assignSelfProxyExpr = new (C) AssignExpr(
+      selfRef, SourceLoc(), castProxyExpr, /*Implicit=*/true);
+  statements.push_back(assignSelfProxyExpr);
+  // ==== ----------------------------------------------------
+
+//  // ==== ----------------------------------------------------
 //  // ==== `self.actorTransport = transport`
 //  auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
 //                                                             C.Id_actorTransport);
@@ -261,22 +283,17 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 //  // self.actorAddress
 //  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
 //                                                           C.Id_actorAddress);
-//  // TODO implement calling the transport with the address and Self.self
-//  // FIXME: this must be checking with the transport instead
+//  // Bound transport.assignAddress(Self.self) call
+//  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+//  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+//  auto *callExpr = createCall_DistributedActor_transport_assignAddress(C, funcDC,
+//      /*base=*/transportExpr,
+//      /*returnType=*/addressType,
+//      /*param=*/selfType);
 //  auto *assignAddressExpr = new (C) AssignExpr(
-//      varAddressExpr, SourceLoc(), addressExpr, /*Implicit=*/true);
+//      varAddressExpr, SourceLoc(), callExpr, /*Implicit=*/true);
 //  statements.push_back(assignAddressExpr);
-//  // end-of-FIXME: this must be checking with the transport instead
-
-  // === `self = _createDistributedActorProxy(Self.self)
-  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
-  auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
-      C, funcDC
-//      , /*selfType=*/selfType
-  );
-  auto *assignSelfProxyExpr = new (C) AssignExpr(
-      selfRef, SourceLoc(), makeProxyCallExpr, /*Implicit=*/true);
-  statements.push_back(assignSelfProxyExpr);
+//  // ==== ----------------------------------------------------
 
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
@@ -293,7 +310,7 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 /// resolve initializer.
 static ConstructorDecl *
 createDistributedActor_init_resolve(ClassDecl *classDecl,
-                                  ASTContext &ctx) {
+                                    ASTContext &ctx) {
   auto &C = ctx;
 
   auto conformanceDC = classDecl;

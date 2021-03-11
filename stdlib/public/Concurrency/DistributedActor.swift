@@ -185,15 +185,15 @@ public func __isLocalActor(_ actor: AnyObject) -> Bool {
 
 // ==== Proxy Actor lifecycle --------------------------------------------------
 
+/// Called to create a proxy instance.
+@_silgen_name("swift_distributedActor_createProxy")
+public func _createDistributedActorProxy(_ actorType: Any.Type) -> Any
+
 /// Called to initialize the distributed-remote actor 'proxy' instance in an actor.
 /// The implementation will call this within the actor's initializer.
 @_silgen_name("swift_distributedActor_remote_initialize")
 public func _distributedActorRemoteInitialize(_ actor: AnyObject)
 
-/// Called to initialize the distributed-remote actor 'proxy' instance in an actor.
-/// The implementation will call this within the actor's initializer.
-@_silgen_name("swift_distributedActor_createProxy")
-public func _createDistributedActorProxy(_ actorType: Any.Type) -> Any
 
 /// Called to destroy the default actor instance in an actor.
 /// The implementation will call this within the actor's deinit.

@@ -4,7 +4,7 @@
 import _Concurrency
 
 distributed actor DA1 {
-  let name = "Charlie"
+//  let name = "Charlie"
 //  let two: Int
 //
 //  init(number: Int, transport: ActorTransport) {
@@ -12,9 +12,9 @@ distributed actor DA1 {
 //    self.two = number
 //  }
 
-  distributed func hello() async -> String {
-    return "Hello \(name)"
-  }
+//  distributed func hello() async -> String {
+//    return "Hello \(name)"
+//  }
 }
 
 //distributed actor DA2 {

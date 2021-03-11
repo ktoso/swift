@@ -736,6 +736,7 @@ static Type validateTypedPattern(TypedPattern *TP, TypeResolution resolution) {
     return named->getDecl()->getDeclContext()->mapTypeIntoContext(opaqueTy);
   }
 
+  fprintf(stderr, "[%s:%d] (%s) here\n", __FILE__, __LINE__, __FUNCTION__);
   auto ty = resolution.resolveType(Repr);
   if (ty->hasError()) {
     return ErrorType::get(Context);
