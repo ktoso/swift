@@ -567,6 +567,8 @@ protected:
 
     /// Set when the class represents an actor
     IsActor : 1
+
+    // TODO: do we need distributed actor marker here?
   );
 
   SWIFT_INLINE_BITFIELD(
@@ -5074,6 +5076,8 @@ public:
   /// backing property will be treated as the member-initialized property.
   bool isMemberwiseInitialized(bool preferDeclaredProperties) const;
 
+  bool isPretendInitialized(bool pretendAsIfInitialized) const;
+
   /// Return the range of semantics attributes attached to this VarDecl.
   auto getSemanticsAttrs() const
       -> decltype(getAttrs().getAttributes<SemanticsAttr>()) {
@@ -5087,12 +5091,6 @@ public:
       return attrValue.equals(attr->Value);
     });
   }
-
-  /// Whether the given name is actorAddress, which is used for distributed actors.
-  static bool isDistributedActorAddressName(ASTContext &ctx, DeclName name);
-
-  /// Whether the given name is actorTransport, which is used for distributed actors.
-  static bool isDistributedActorTransportName(ASTContext &ctx, DeclName name);
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { 
@@ -5778,7 +5776,7 @@ public:
   /// Returns if the function is 'rethrows' or 'reasync'.
   bool hasPolymorphicEffect(EffectKind kind) const;
 
-  /// Returns 'true' if the function is distributed.
+  /// Returns 'true' if the function is 'distributed'.
   bool isDistributed() const;
 
   PolymorphicEffectKind getPolymorphicEffectKind(EffectKind kind) const;
@@ -6609,7 +6607,21 @@ enum class CtorInitializerKind {
   ///
   /// FIXME: Arguably, structs and enums only have factory initializers, and
   /// using designated initializers for them is a misnomer.
-  Factory
+  Factory,
+
+  /// the init(transport:) initializer of a distributed actor.
+
+  /// It is similar to designated however we do allow end-users to define
+  /// designated initializers as usual.
+  ///
+  /// This is so that distributed actor declarations are able to initialize their
+  /// fields, but are also forced to invoke the self.init(transport:) initializer
+  /// (which is the DesignatedDistributedLocal initializer).
+  DesignatedDistributedLocal,
+
+  /// the init(resolve:using:) initializer of a distributed actor.
+  DistributedResolve,
+
 };
 
 /// Specifies the kind of initialization call performed within the body
@@ -6714,7 +6726,8 @@ public:
 
   /// Whether this is a designated initializer.
   bool isDesignatedInit() const {
-    return getInitKind() == CtorInitializerKind::Designated;
+    return getInitKind() == CtorInitializerKind::Designated ||
+    getInitKind() == CtorInitializerKind::DesignatedDistributedLocal;
   }
 
   /// Whether this is a convenience initializer.
@@ -6727,6 +6740,8 @@ public:
   bool isFactoryInit() const {
     switch (getInitKind()) {
     case CtorInitializerKind::Designated:
+    case CtorInitializerKind::DesignatedDistributedLocal:
+    case CtorInitializerKind::DistributedResolve:
     case CtorInitializerKind::Convenience:
       return false;
         
@@ -6741,6 +6756,8 @@ public:
   bool isInheritable() const {
     switch (getInitKind()) {
     case CtorInitializerKind::Designated:
+    case CtorInitializerKind::DesignatedDistributedLocal:
+    case CtorInitializerKind::DistributedResolve:
     case CtorInitializerKind::Factory:
       return false;
 
@@ -6750,6 +6767,18 @@ public:
     }
     llvm_unreachable("bad CtorInitializerKind");
   }
+
+  /// Checks if the initializer is a distributed actor's 'local' initializer:
+  /// ```
+  /// init(transport: ActorTransport)
+  /// ```
+  bool isDistributedActorLocalInit() const;
+
+  /// Checks if the initializer is a distributed actor's 'resolve' initializer:
+  /// ```
+  /// init(resolve address: ActorAddress, using transport: ActorTransport)
+  /// ```
+  bool isDistributedActorResolveInit() const;
 
   /// Determine if this is a failable initializer.
   bool isFailable() const {
@@ -6786,18 +6815,6 @@ public:
   /// @objc init(forMemory: ())
   /// \endcode
   bool isObjCZeroParameterWithLongSelector() const;
-
-  /// Checks if the initializer is a distributed actor's 'local' initializer:
-  /// ```
-  /// init(transport: ActorTransport)
-  /// ```
-  bool isDistributedActorLocalInit() const;
-
-  /// Checks if the initializer is a distributed actor's 'resolve' initializer:
-  /// ```
-  /// init(resolve address: ActorAddress, using transport: ActorTransport)
-  /// ```
-  bool isDistributedActorResolveInit() const;
 
   static bool classof(const Decl *D) {
     return D->getKind() == DeclKind::Constructor;

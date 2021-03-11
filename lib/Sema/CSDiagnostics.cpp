@@ -1508,6 +1508,26 @@ bool RValueTreatedAsLValueFailure::diagnoseAsError() {
     subElementDiagID = diag::assignment_lhs_is_immutable_property;
 
     if (auto *ctor = dyn_cast<ConstructorDecl>(getDC())) {
+      // FIXME: this has to be smarter, only when this constructor delegates to init(transport:)
+      // TODO: OR allow required inits of distributed actor to call self.init(transport)
+      if (auto classDecl = dyn_cast<ClassDecl>(ctor->getParent())) {
+        if (classDecl->isDistributedActor()) {
+          ctor->dump();
+          fprintf(stderr, "[%s:%d] (%s) detected distributed actor constructor...\n", __FILE__, __LINE__, __FUNCTION__);
+          // TODO: only if it's a required initializer, and it must delegate to init(transport:)
+          if (ctor->isDesignatedInit()) {
+            // it MUST delegate to the init(transport:) initializer
+            fprintf(stderr, "[%s:%d] (%s) detected distributed actor      is designated\n", __FILE__, __LINE__, __FUNCTION__);
+          }
+          if (ctor->isConvenienceInit()) {
+            // it MUST delegate to the init(transport:) initializer
+            fprintf(stderr, "[%s:%d] (%s) detected distributed actor      is designated\n", __FILE__, __LINE__, __FUNCTION__);
+          }
+
+          return false; // FIXME: hack, we need more checks
+        }
+      }
+
       if (auto *baseRef = dyn_cast<DeclRefExpr>(member->getBase())) {
         if (baseRef->getDecl() == ctor->getImplicitSelfDecl() &&
             ctor->getDelegatingOrChainedInitKind().initKind ==

@@ -2507,12 +2507,13 @@ void swift::checkActorConstructor(ClassDecl *decl, ConstructorDecl *ctor) {
   // which we synthesize on behalf of a distributed actor.
   //
   // When checking ctor bodies we'll check
-  if (!ctor->isConvenienceInit()) {
-    ctor->diagnose(diag::distributed_actor_init_user_defined_must_be_convenience,
-                   ctor->getName())
-        .fixItInsert(ctor->getConstructorLoc(), "convenience ");
-    return;
-  }
+  // TODO: enforce that we delegate to another init, and eventually to self.init(transport:)
+//  if (!ctor->isConvenienceInit()) {
+//    ctor->diagnose(diag::distributed_actor_init_user_defined_must_be_convenience,
+//                   ctor->getName())
+//        .fixItInsert(ctor->getConstructorLoc(), "convenience ");
+//    return;
+//  }
 }
 
 void swift::checkActorConstructorBody(ClassDecl *classDecl,
@@ -2527,6 +2528,7 @@ void swift::checkActorConstructorBody(ClassDecl *classDecl,
   if (ctor->isSynthesized())
     return;
 
+  // TODO: remove these, they are `isSynthesized` so this is covered already
   if (ctor->isDistributedActorLocalInit() ||
       ctor->isDistributedActorResolveInit()) {
     // it is illegal-to re-declare those explicitly, and this is already diagnosed

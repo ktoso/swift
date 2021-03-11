@@ -1724,6 +1724,9 @@ static void checkClassConstructorBody(ClassDecl *classDecl,
     if (classDecl->getForeignClassKind() == ClassDecl::ForeignKind::CFType) {
       ctor->diagnose(diag::delegating_designated_init_in_extension,
                      ctor->getDeclContext()->getDeclaredInterfaceType());
+    } else if (classDecl->isDistributedActor()) {
+      fprintf(stderr, "[%s:%d] (%s) class is distributed actor though, so it's okey\n", __FILE__, __LINE__, __FUNCTION__);
+      return; // ok
     } else {
       ctor->diagnose(diag::delegating_designated_init,
                      ctor->getDeclContext()->getDeclaredInterfaceType())

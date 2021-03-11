@@ -723,6 +723,10 @@ BUILTIN_MISC_OPERATION(InitializeDefaultActor, "initializeDefaultActor", "", Spe
 /// Destroy the default-actor instance in a default actor object.
 BUILTIN_MISC_OPERATION(DestroyDefaultActor, "destroyDefaultActor", "", Special)
 
+/// Create a "proxy" for a distributed remote actor.
+BUILTIN_MISC_OPERATION(CreateDistributedActorProxy,
+                       "CreateDistributedActorProxy", "", Special)
+
 /// Initialize a "proxy" for a distributed remote actor.
 BUILTIN_MISC_OPERATION(InitializeDistributedRemoteActor,
                        "initializeDistributedRemoteActor", "", Special)

@@ -124,6 +124,9 @@ const size_t MaximumAlignment = 16;
 /// The alignment of a DefaultActor.
 const size_t Alignment_DefaultActor = MaximumAlignment;
 
+/// The alignment of a DistributedActorProxy.
+const size_t Alignment_DistributedActorProxy = MaximumAlignment;
+
 /// The alignment of a TaskGroup.
 const size_t Alignment_TaskGroup = MaximumAlignment;
 

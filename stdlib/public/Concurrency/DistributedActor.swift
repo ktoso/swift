@@ -24,10 +24,10 @@ public protocol DistributedActor: Actor, Codable {
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
-  /// Upon initialization, the `actorAddress` field is populated by the transport,
+  /// Upon completion, the `actorAddress` field is populated by the transport,
   /// with an address assigned to this actor.
   ///
-  /// - Parameter transport:
+  /// - Parameter transport: transport which this actor should become associated with.
   init(transport: ActorTransport)
 
   /// Resolves the passed in `address` against the `transport`,
@@ -49,8 +49,6 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// Conformance to this requirement is synthesized automatically for any
   /// `distributed actor` declaration.
-  // FIXME: don't express it as a protocol requirement, since there never
-  //        is a reason to reach into it externally?
   var actorTransport: ActorTransport { get }
 
   /// Logical address which this distributed actor represents.
@@ -69,16 +67,15 @@ extension CodingUserInfoKey {
 }
 
 extension DistributedActor {
+
   public init(from decoder: Decoder) throws {
     guard let transport = decoder.userInfo[.actorTransportKey] as? ActorTransport else {
-      throw DistributedActorCodingError(message:
-      "ActorTransport not available under the decoder.userInfo")
+      throw DistributedActorCodingError(message: "ActorTransport not available under the decoder.userInfo")
     }
 
     var container = try decoder.singleValueContainer()
     let address = try container.decode(ActorAddress.self)
-    // self = try Self(resolve: address, using: transport) // FIXME!!!!
-    fatalError("XXXX")
+    try self.init(resolve: address, using: transport)
   }
 
   @actorIndependent
@@ -192,6 +189,11 @@ public func __isLocalActor(_ actor: AnyObject) -> Bool {
 /// The implementation will call this within the actor's initializer.
 @_silgen_name("swift_distributedActor_remote_initialize")
 public func _distributedActorRemoteInitialize(_ actor: AnyObject)
+
+/// Called to initialize the distributed-remote actor 'proxy' instance in an actor.
+/// The implementation will call this within the actor's initializer.
+@_silgen_name("swift_distributedActor_createProxy")
+public func _createDistributedActorProxy(_ actorType: Any.Type) -> Any
 
 /// Called to destroy the default actor instance in an actor.
 /// The implementation will call this within the actor's deinit.

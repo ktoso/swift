@@ -1140,6 +1140,8 @@ getActualCtorInitializerKind(uint8_t raw) {
   CASE(Convenience)
   CASE(Factory)
   CASE(ConvenienceFactory)
+  CASE(DesignatedDistributedLocal)
+  CASE(DistributedResolve)
 #undef CASE
   }
   return None;
