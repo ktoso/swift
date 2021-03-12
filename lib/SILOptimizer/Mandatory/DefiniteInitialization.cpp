@@ -805,7 +805,6 @@ void LifetimeChecker::doIt() {
 
     case DIUseKind::IndirectIn:
     case DIUseKind::Load:
-      fprintf(stderr, "[%s:%d] (%s) calling handleLoadUse(Use)\n", __FILE__, __LINE__, __FUNCTION__);
       handleLoadUse(Use);
       break;
     case DIUseKind::InOutArgument:
@@ -868,7 +867,6 @@ void LifetimeChecker::doIt() {
 void LifetimeChecker::handleLoadUse(const DIMemoryUse &Use) {
   bool IsSuperInitComplete, FailedSelfUse;
   // If the value is not definitively initialized, emit an error.
-  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (!isInitializedAtUse(Use, &IsSuperInitComplete, &FailedSelfUse))
     return handleLoadUseFailure(Use, IsSuperInitComplete, FailedSelfUse);
 }
@@ -876,6 +874,18 @@ void LifetimeChecker::handleLoadUse(const DIMemoryUse &Use) {
 static void replaceValueMetatypeInstWithMetatypeArgument(
     ValueMetatypeInst *valueMetatype) {
   SILValue metatypeArgument = valueMetatype->getFunction()->getSelfArgument();
+//  if (valueMetatype) {
+//    SILValue metatypeArgument = load->getFunction()->getSelfMetadataArgument();
+//
+//    // Bitcast to the formal metatype of the self argument, which may be
+//    // different in @dynamic_self-ness.
+//    if (metatypeArgument->getType() != valueMetatype->getType()) {
+//      SILBuilderWithScope B(valueMetatype);
+//      metatypeArgument = B.createUncheckedBitCast(valueMetatype->getLoc(),
+//                                                  metatypeArgument,
+//                                                  valueMetatype->getType());
+//    }
+//  }
 
   // SILFunction parameter types never have a DynamicSelfType, since it only
   // makes sense in the context of a given method's body. Since the

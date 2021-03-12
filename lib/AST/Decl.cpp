@@ -7604,17 +7604,6 @@ bool FuncDecl::isMainTypeMainMethod() const {
          getParameters()->size() == 0;
 }
 
-//bool VarDecl::isDistributedActorAddressName(ASTContext &ctx, DeclName name) {
-//  assert(name.getArgumentNames().size() == 0);
-//  return name.getBaseName() == ctx.Id_actorAddress;
-//}
-//
-//bool VarDecl::isDistributedActorTransportName(ASTContext &ctx, DeclName name) {
-//  assert(name.getArgumentNames().size() == 0);
-//  return name.getBaseName() == ctx.Id_transport ||
-//    name.getBaseName() == ctx.Id_actorTransport;
-//}
-
 ConstructorDecl::ConstructorDecl(DeclName Name, SourceLoc ConstructorLoc,
                                  bool Failable, SourceLoc FailabilityLoc,
                                  bool Throws,
