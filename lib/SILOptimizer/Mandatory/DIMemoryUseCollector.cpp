@@ -1486,8 +1486,17 @@ collectDelegatingInitUses(const DIMemoryObjectInfo &TheMemory,
     // for the dynamic type of that uninitialized object.
     if (isa<LoadInst>(User)) {
       auto UserVal = cast<SingleValueInstruction>(User);
-      if (UserVal->hasOneUse()
-          && isa<ValueMetatypeInst>(UserVal->getSingleUse()->get())) {
+      bool onlyUseIsValueMetatype = true;
+      for (auto use : UserVal->getUses()) {
+        // A taking or copying load is supposed to destroy the value after
+        // use, which we can turn into a no-op.
+        if (isa<ValueMetatypeInst>(use->getUser())
+            || isa<DestroyValueInst>(use->getUser()))
+          continue;
+        onlyUseIsValueMetatype = false;
+        break;
+      }
+      if (onlyUseIsValueMetatype) {
         Kind = DIUseKind::LoadForTypeOfSelf;
       }
     }
@@ -1812,8 +1821,6 @@ void swift::ownership::collectDIElementUsesFrom(
 
   if (MemoryInfo.isDelegatingInit()) {
     if (auto classDecl = MemoryInfo.getASTType()->getClassOrBoundGenericClass())
-      fprintf(stderr, "[%s:%d] (%s) isDelegatingInit on %s\n", __FILE__, __LINE__, __FUNCTION__,
-              classDecl->getBaseName());
     // When we're analyzing a delegating constructor, we aren't field sensitive
     // at all. Just treat all members of self as uses of the single
     // non-field-sensitive value.

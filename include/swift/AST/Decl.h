@@ -6732,7 +6732,7 @@ public:
   /// Whether this is a designated initializer.
   bool isDesignatedInit() const {
     return getInitKind() == CtorInitializerKind::Designated ||
-    getInitKind() == CtorInitializerKind::DesignatedDistributedLocal;
+           getInitKind() == CtorInitializerKind::DesignatedDistributedLocal;
   }
 
   /// Whether this is a convenience initializer.

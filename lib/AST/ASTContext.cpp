@@ -2673,9 +2673,21 @@ AnyFunctionType::Param swift::computeSelfParam(AbstractFunctionDecl *AFD,
   } else if (auto *CD = dyn_cast<ConstructorDecl>(AFD)) {
     if (isInitializingCtor) {
       // initializing constructors of value types always have an implicitly
-      // inout self.
-      if (!containerTy->hasReferenceSemantics())
+      // inout self, the resolve initializer of a distributed actor and ...
+      // TODO: add unlock the ability for convenience initializers, would need swift evolution?
+      if (!containerTy->hasReferenceSemantics()) {
         selfAccess = SelfAccessKind::Mutating;
+      } else if (CD->isDistributedActorResolveInit()) {
+        // we treat the resolve initializer specially here, it is allowed to
+        // assign a "proxy instance" to self, when the resolved actor is remote.
+        selfAccess = SelfAccessKind::Mutating;
+      }
+      // FIXME: this really should work for everything,
+      //        sadly this causes crashes for
+      //        @$sSo12NSDictionaryC10FoundationE10dictionaryA2Bh_tcfC
+//      else if (Ctx.isSwiftVersionAtLeast(5) && !CD->isDesignatedInit()) {
+//        selfAccess = SelfAccessKind::Mutating;
+//      }
     } else {
       // allocating constructors have metatype 'self'.
       isStatic = true;
@@ -2694,6 +2706,7 @@ AnyFunctionType::Param swift::computeSelfParam(AbstractFunctionDecl *AFD,
     // Note that we can't assert(containerTy->hasReferenceSemantics()) here
     // since incorrect or incomplete code could have deinit decls in invalid
     // contexts, and we need to recover gracefully in those cases.
+    assert(containerTy->hasReferenceSemantics());
   }
 
   if (isDynamicSelf)

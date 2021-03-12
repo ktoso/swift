@@ -827,7 +827,7 @@ namespace {
                          ManagedValue base) && override {
       // Assert that the optional value is present and return the projected out
       // payload.
-      return SGF.emitPreconditionOptonalHasValue(loc, base, isImplicitUnwrap);
+      return SGF.emitPreconditionOptionalHasValue(loc, base, isImplicitUnwrap);
     }
 
     void dump(raw_ostream &OS, unsigned indent) const override {
