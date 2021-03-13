@@ -19,9 +19,9 @@
 
 #include "swift/Runtime/Atomic.h"
 #include "swift/Runtime/Casting.h"
+#include "swift/ABI/DistributedActor.h"
 #include "swift/ABI/Task.h"
 #include "swift/ABI/Actor.h"
-#include "swift/ABI/DistributedActor.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "TaskPrivate.h"
 
@@ -38,6 +38,8 @@ class DistributedRemoteActorImpl : public HeapObject {
 
 } /// end anonymous namespace
 
+// ==== ------------------------------------------------------------------------
+
 static_assert(sizeof(DistributedRemoteActorImpl) <= sizeof(DistributedRemoteActor) &&
               alignof(DistributedRemoteActorImpl) <= alignof(DistributedRemoteActor),
               "DistributedActorImpl doesn't fit in DistributedActor");
@@ -46,12 +48,14 @@ static_assert(sizeof(DistributedRemoteActorImpl) <= sizeof(DefaultActor) &&
               alignof(DistributedRemoteActorImpl) <= alignof(DefaultActor),
               "DistributedActorImpl must be smaller or equal in size to DefaultActor");
 
+// ==== ------------------------------------------------------------------------
+
 static DistributedRemoteActorImpl *asImpl(DistributedRemoteActor *actor) {
   return reinterpret_cast<DistributedRemoteActorImpl*>(actor);
 }
 
 static DistributedRemoteActor *asAbstract(DistributedRemoteActorImpl *actor) {
-  return reinterpret_cast<DistributedRemoteActorImpl*>(actor);
+  return reinterpret_cast<DistributedRemoteActor*>(actor);
 }
 
 /*****************************************************************************/

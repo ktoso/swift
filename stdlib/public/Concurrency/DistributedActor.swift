@@ -211,8 +211,9 @@ public func __isLocalActor(_ actor: AnyObject) -> Bool {
 
 /// Called to create a proxy instance.
 @_silgen_name("swift_distributedActor_createProxy")
-//public func _createDistributedActorProxy(_ actorType: Any.Type) -> Any
-public func _createDistributedActorProxy() -> Any
+public func _createDistributedActorProxy<Act>(_ actorType: Act.Type) -> Act
+  where Act: DistributedActor
+//public func _createDistributedActorProxy() -> Any
 
 /// Called to initialize the distributed-remote actor 'proxy' instance in an actor.
 /// The implementation will call this within the actor's initializer.

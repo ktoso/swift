@@ -23,6 +23,7 @@
 #include "swift/Runtime/ThreadLocal.h"
 #include "swift/ABI/Task.h"
 #include "swift/ABI/Actor.h"
+#include "swift/ABI/DistributedActor.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "TaskPrivate.h"
 
@@ -1303,14 +1304,14 @@ enum {
 };
 
 // TODO: make it accept the metatype?
-//void *swift::swift_distributedActor_createProxy(Metadata const *actorType) {
-void *swift::swift_distributedActor_createProxy() {
+void* swift::swift_distributedActor_createProxy(Metadata const *actorType) {
+//void *swift::swift_distributedActor_createProxy() {
   fprintf(stderr, "[%s:%d] (%s) creating proxy...\n", __FILE__, __LINE__, __FUNCTION__);
   // Figure out the size to allocate.
   // TODO: this is likely slightly wrong?
-  size_t headerSize = sizeof(DefaultActor);
-  headerSize += DISTRIBUTED_ACTOR_ADDRESS_SIZE; // must be the size of `ActorAddress`
-  headerSize += sizeof(uintptr_t); // size of pointer to `ActorTransport`
+  size_t headerSize = sizeof(DistributedRemoteActor);
+//  headerSize += DISTRIBUTED_ACTOR_ADDRESS_SIZE; // must be the size of `ActorAddress`
+//  headerSize += sizeof(uintptr_t); // size of pointer to `ActorTransport`
 
   headerSize = llvm::alignTo(headerSize, llvm::Align(Alignment_DistributedActorProxy));
   size_t amountToAllocate = headerSize;
