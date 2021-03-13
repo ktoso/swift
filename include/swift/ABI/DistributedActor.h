@@ -23,7 +23,8 @@
 namespace swift {
 
 /// The distributed (remote) actor implementation.
-/// The memory layout is finely managed to contain only the address, transport and storage.
+///
+/// The memory layout is finely managed to contain only the address, transport.
 class alignas(Alignment_DistributedActorProxy) DistributedRemoteActor
     : public HeapObject {
 public:

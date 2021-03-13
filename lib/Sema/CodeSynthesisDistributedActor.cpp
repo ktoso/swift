@@ -278,19 +278,19 @@ createCall_DistributedActor_createProxy(ASTContext &C,
 //  createDeclRef->setType(paramActorType);
 
 //   DC->mapTypeIntoContext(paramActorType->getInterfaceType());
-//  auto *actorTypeExpr = TypeExpr::createImplicit(paramActorType, C);
-//  auto *dotActorTypeExpr = new (C) DotSelfExpr(actorTypeExpr, SourceLoc(),
-//                                              SourceLoc(), paramActorType);
+  auto *actorTypeExpr = TypeExpr::createImplicit(paramActorType, C);
+  auto *dotActorTypeExpr = new (C) DotSelfExpr(actorTypeExpr, SourceLoc(),
+                                               SourceLoc(), paramActorType);
 
   // Full bound _createDistributedActorProxy(Self.self) call
-//  Expr *args[1] = {dotActorTypeExpr};
-//  Identifier argLabels[1] = {Identifier()};
-//  return CallExpr::createImplicit(C, declRef, C.AllocateCopy(args),
-//                                  C.AllocateCopy(argLabels));
+  return CallExpr::createImplicit(
+      C, createDeclRef,
+      {dotActorTypeExpr},
+      {Identifier()});
 
-  auto Call = CallExpr::createImplicit(C, createDeclRef, {}, {});
+//  auto Call = CallExpr::createImplicit(C, createDeclRef, {}, {});
 //  Call->setType(paramActorType);
-  return Call;
+//  return Call;
 //  return CallExpr::create(C, createDeclRef, {}, {}, {}, false, false, actorType);
 }
 
@@ -401,15 +401,15 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 //      C, makeProxyCallExpr, selfType);
 //  castProxyExpr->setCastKind(CheckedCastKind::ValueCast);
 
-  auto castProxyExpr = UnresolvedDeclRefExpr::createImplicit(
-      C, C.getIdentifier("unsafeBitCast"), {Identifier(), C.Id_to});
-  auto call = CallExpr::createImplicit(
-      C, castProxyExpr,
-      {makeProxyCallExpr, selfTypeExpr},
-      {Identifier(), C.Id_to});
+//  auto castProxyExpr = UnresolvedDeclRefExpr::createImplicit(
+//      C, C.getIdentifier("unsafeBitCast"), {Identifier(), C.Id_to});
+//  auto call = CallExpr::createImplicit(
+//      C, castProxyExpr,
+//      {makeProxyCallExpr, selfTypeExpr},
+//      {Identifier(), C.Id_to});
 
   auto *assignSelfProxyExpr = new (C) AssignExpr(
-      selfRef, SourceLoc(), call, /*Implicit=*/true);
+      selfRef, SourceLoc(), makeProxyCallExpr, /*Implicit=*/true);
   statements.push_back(assignSelfProxyExpr);
   // ==== ----------------------------------------------------
 

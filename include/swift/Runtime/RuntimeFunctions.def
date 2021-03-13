@@ -1570,8 +1570,8 @@ FUNCTION(DistributedActorCreateProxy,
          swift_distributedActor_createProxy, SwiftCC,
          ConcurrencyAvailability,
          RETURNS(Int8PtrTy),
-//         ARGS(TypeMetadataPtrTy),
-         ARGS(),
+         ARGS(TypeMetadataPtrTy),
+//         ARGS(),
          ATTRS(NoUnwind))
 
 // void swift_distributedActor_remote_initialize(DefaultActor *actor);
