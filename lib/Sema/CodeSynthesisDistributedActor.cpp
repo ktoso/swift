@@ -183,6 +183,79 @@ createDistributedActor_init_local(ClassDecl *classDecl,
 
 // ==== Distributed Actor: Resolve Initializer ---------------------------------
 
+
+/// Creates a new \c CallExpr representing
+///
+///     transport.resolve(address: address, as: Self.self)
+///
+static CallExpr *
+createCall_DistributedActor_transport_resolve(
+    ASTContext &C, DeclContext *DC,
+    Expr *base, Type addressType,
+    DeclRefExpr *paramAddress, // FIXME???
+    Type paramSelfType
+) {
+  // (address:)
+  auto *paramAddressDecl = new (C) ParamDecl(
+      SourceLoc(), SourceLoc(), C.Id_address, SourceLoc(), C.Id_address, DC);
+  paramAddressDecl->setImplicit();
+  paramAddressDecl->setSpecifier(ParamSpecifier::Default);
+  paramAddressDecl->setInterfaceType(addressType);
+
+  // (as selfType:)
+  auto *paramSelfTypeDecl = new (C) ParamDecl(
+      SourceLoc(), SourceLoc(), C.Id_as, SourceLoc(), C.Id_actorType, DC);
+  paramSelfTypeDecl->setImplicit();
+  paramSelfTypeDecl->setSpecifier(ParamSpecifier::Default);
+  paramSelfTypeDecl->setInterfaceType(addressType);
+
+  // (address:as:)
+  auto *paramList = ParameterList::create(
+      C,
+      /*LParenLoc=*/SourceLoc(),
+      /*params=*/{paramAddressDecl, paramSelfTypeDecl},
+      /*RParenLoc=*/SourceLoc()
+  );
+
+  // transport.assignAddress(address:as:) expr
+  auto *unboundCall = UnresolvedDotExpr::createImplicit(
+      C, base, C.Id_resolve, paramList);
+
+  // DC->mapTypeIntoContext(param->getInterfaceType());
+  auto *selfTypeExpr = TypeExpr::createImplicit(paramSelfType, C);
+  auto *dotSelfTypeExpr = new (C) DotSelfExpr(
+      selfTypeExpr, SourceLoc(), SourceLoc(), paramSelfType);
+
+  // Full bound self.resolve(address: address, as: Self.self) call
+  Expr *args[2] = {paramAddress, dotSelfTypeExpr};
+  Identifier argLabels[2] = {C.Id_address, C.Id_as};
+  return CallExpr::createImplicit(
+      C, unboundCall, C.AllocateCopy(args), C.AllocateCopy(argLabels));
+}
+
+///// Creates a new VarDecl for:
+/////
+/////     let resolved: ResolvedDistributedActor<Act>
+/////
+//static VarDecl*
+//createVar_resolved(ASTContext &C, DeclContext *DC,
+//                   NominalTypeDecl *resolvedTypeDecl,
+//                   Type selfType,
+//                   VarDecl::Introducer introducer) {
+//  // Bind ResolvedDistributedActor to ResolvedDistributedActor<Act>
+//  Type boundType[1] = {selfType};
+//  auto resolvedType = BoundGenericType::get(resolvedTypeDecl, Type(),
+//                                            C.AllocateCopy(boundType));
+//
+//  // let resolved : ResolvedDistributedActor<Act>
+//  auto *resolvedDecl = new (C) VarDecl(/*IsStatic=*/false, introducer,
+//                                                    SourceLoc(), C.Id_resolved, DC);
+//  resolvedDecl->setImplicit();
+//  resolvedDecl->setSynthesized();
+//  resolvedDecl->setInterfaceType(resolvedType);
+//  return resolvedDecl;
+//}
+
 static CallExpr *
 createCall_DistributedActor_createProxy(ASTContext &C,
                                         DeclContext *DC,
@@ -202,6 +275,7 @@ createCall_DistributedActor_createProxy(ASTContext &C,
 //                                                        paramList);
   auto *createDeclRef = UnresolvedDeclRefExpr::createImplicit(
       C, C.getIdentifier("_createDistributedActorProxy"));
+//  createDeclRef->setType(paramActorType);
 
 //   DC->mapTypeIntoContext(paramActorType->getInterfaceType());
 //  auto *actorTypeExpr = TypeExpr::createImplicit(paramActorType, C);
@@ -214,9 +288,67 @@ createCall_DistributedActor_createProxy(ASTContext &C,
 //  return CallExpr::createImplicit(C, declRef, C.AllocateCopy(args),
 //                                  C.AllocateCopy(argLabels));
 
-  return CallExpr::createImplicit(C, createDeclRef, {}, {});
+  auto Call = CallExpr::createImplicit(C, createDeclRef, {}, {});
+//  Call->setType(paramActorType);
+  return Call;
 //  return CallExpr::create(C, createDeclRef, {}, {}, {}, false, false, actorType);
 }
+
+//static SwitchStmt*
+//createSwitch_resolved(ASTContext &C, DeclContext *DC,
+//                      Type resolvedEnumType,
+//                      BraceStmt resolvedBody, BraceStmt makeProxyBody,
+//                      Expr paramResolved) {
+//  // prepare the cases for the switch with their appropriate bodies
+//  SmallVector<ASTNode, 2> cases;
+//
+//  // ==== case .makeProxy:
+//  {
+//    EnumElementDecl* elt =
+//
+//    auto pat = new(C) EnumElementPattern(
+//        TypeExpr::createImplicit(resolvedEnumType, C), SourceLoc(),
+//        DeclNameLoc(), DeclNameRef(), elt, subpattern);
+//    pat->setImplicit();
+//
+//    auto labelItem = CaseLabelItem(pat);
+//    auto body = resolvedBody;
+//    auto caseStmt = CaseStmt::create(
+//        C, CaseParentKind::Switch, SourceLoc(),
+//        labelItem, SourceLoc(), SourceLoc(), body,
+//        /*case body vardecls*/ caseBodyVarDecls);
+//    cases.push_back(caseStmt);
+//  }
+//
+//  // ==== case .proxy:
+//  {
+//    // .<elt>(let a0, let a1, ...)
+//    SmallVector < VarDecl * , 1 > payloadVars;
+//    auto subpattern = DerivedConformance::enumElementPayloadSubpattern(
+//        elt, 'a', encodeDecl, payloadVars, /* useLabels */ true);
+//
+//    // auto hasBoundDecls = !payloadVars.empty();
+//    assert(payloadVars.size() == 1 && "Expected *1* bound decl for case .resolved(let instance)");
+//    Optional <MutableArrayRef<VarDecl *>> caseBodyVarDecls;
+//    // We allocated a direct copy of our var decls for the case
+//    // body.
+//    auto copy = C.Allocate<VarDecl *>(payloadVars.size());
+//    for (unsigned i : indices(payloadVars)) {
+//      auto *vOld = payloadVars[i];
+//      auto *vNew = new(C) VarDecl(
+//          /*IsStatic*/ false, vOld->getIntroducer(), vOld->getNameLoc(),
+//                       vOld->getName(), vOld->getDeclContext());
+//      vNew->setImplicit();
+//      copy[i] = vNew;
+//    }
+//    caseBodyVarDecls.emplace(copy);
+//  }
+//
+//  // ==== switch resolved { ... }
+//  auto switchStmt = SwitchStmt::create(LabeledStmtInfo(), SourceLoc(), enumRef,
+//                                       SourceLoc(), cases, SourceLoc(), C);
+//  return switchStmt;
+//}
 
 /// Synthesizes the body for
 ///
@@ -226,7 +358,6 @@ createCall_DistributedActor_createProxy(ASTContext &C,
 ///   case .instance(let instance):
 ///     self = instance
 ///   case .makeProxy:
-///   // TODO: use RebindSelfInConstructorExpr here?
 ///     self = <<MAGIC MAKE PROXY>>(address, transport) // TODO: implement this
 ///   }
 /// }
@@ -249,25 +380,36 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
   auto *transportExpr = new (C) DeclRefExpr(ConcreteDeclRef(transportParam),
                                             DeclNameLoc(), /*Implicit=*/true);
 
-  auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
 
   // ==== ----------------------------------------------------
-  // TODO: towards this one...
-  // FIXME: this must be checking with the transport instead
-  // ==== TODO: let result = try transport.resolve(address: address, as: actorType)
-  // ==== TODO: switch result {
-  // ==== TODO: case .resolved(let instance):
-  // ==== TODO:   self = instance
-  // ==== TODO: case .makeProxy:
   // ==== `self = _createDistributedActorProxy(Self.self)
-  auto actorType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
-  assert(actorType);
+
+  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+  auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
+  auto selfTypeExpr = new (C) DotSelfExpr(selfRef, SourceLoc(), SourceLoc());
+//  auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
+//      C, funcDC, selfType);
+
+//  auto selfRef = DerivedConformance::createSelfDeclRef(toRawDecl);
+//  auto bareTypeExpr = TypeExpr::createImplicit(rawTy, C);
+//  auto typeExpr = new (C) DotSelfExpr(bareTypeExpr, SourceLoc(), SourceLoc());
+
   auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
-      C, funcDC, actorType);
+      C, funcDC, selfType);
+
 //  auto castProxyExpr = ForcedCheckedCastExpr::createImplicit(
-//      C, makeProxyCallExpr, actorType);
+//      C, makeProxyCallExpr, selfType);
+//  castProxyExpr->setCastKind(CheckedCastKind::ValueCast);
+
+  auto castProxyExpr = UnresolvedDeclRefExpr::createImplicit(
+      C, C.getIdentifier("unsafeBitCast"), {Identifier(), C.Id_to});
+  auto call = CallExpr::createImplicit(
+      C, castProxyExpr,
+      {makeProxyCallExpr, selfTypeExpr},
+      {Identifier(), C.Id_to});
+
   auto *assignSelfProxyExpr = new (C) AssignExpr(
-      selfRef, SourceLoc(), makeProxyCallExpr, /*Implicit=*/true);
+      selfRef, SourceLoc(), call, /*Implicit=*/true);
   statements.push_back(assignSelfProxyExpr);
   // ==== ----------------------------------------------------
 
@@ -295,9 +437,61 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 //  statements.push_back(assignAddressExpr);
 //  // ==== ----------------------------------------------------
 
+  // ==== ----------------------------------------------------
+  // ==== ----------------------------------------------------
+  // TODO: towards this one...
+  // FIXME: this must be checking with the transport instead
+  // ==== TODO: let result = try transport.resolve(address: address, as: selfType)
+  // ==== TODO: switch result {
+  // ==== TODO: case .resolved(let instance):
+  // ==== TODO:   self = instance
+  // ==== TODO: case .makeProxy:
+//  // ==== try transport.resolve(address
+//  auto resolvedType = C.getResolvedDistributedActorDecl()->getDeclaredInterfaceType();
+//  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+//  auto *resolveCallExpr = createCall_DistributedActor_transport_resolve(C, funcDC,
+//      /*base=*/transportExpr,
+//      /*resolvedType=*/resolvedType,
+//      /*paramAddress=*/addressExpr,
+//      /*paramSelfType=*/selfType);
+//  auto *tryResolveCallExpr = new (C) TryExpr(SourceLoc(), resolveCallExpr, Type(),
+//      /*Implicit=*/true);
+//
+//  // TODO: check the call result, is it a resolved or instance
+//  // let resolved: ResolvedDistributedActor<Act>
+////  VarDecl *resolvedDecl = createVar_resolved(
+////      C, funcDC, resolvedDecl, selfType, VarDecl::Introducer::Let);
+////  auto *resolvedPattern = NamedPattern::createImplicit(C, resolvedDecl);
+////  auto *resolvedBindingDecl = PatternBindingDecl::createImplicit(
+////      C, StaticSpellingKind::None, resolvedPattern, resolveCallExpr, funcDC);
+////  statements.push_back(resolvedDecl);
+//
+//  // TODO apply?
+//
+//  // ==== body for `case .resolved(let instance): ...`
+//  SmallVector<ASTNode, 2> caseStatements;
+//  auto resolvedInstanceCaseBody = BraceStmt::create(C, SourceLoc(), caseStatements, SourceLoc());
+//  // body for `case .makeProxy: ...
+//  auto makeProxyCaseBody = BraceStmt::create(C, SourceLoc(), caseStatements, SourceLoc());
+//
+//  // ==== switch resolved { ... }
+//  auto *resolvedSwitchDecl = createSwitch_resolved(
+//      C, funcDC,
+//      resolvedType,
+//      /*case resolved: {body}*/resolvedInstanceCaseBody,
+//      /*case makeProxy: {body}*/makeProxyCaseBody,
+//      /*paramResolved=*/resolvedDecl);
+//  statements.push_back(resolvedSwitchDecl);
+//
+  // ==== ----------------------------------------------------
+  // ==== ----------------------------------------------------
+
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
 
+
+  body->dump();
+  fprintf(stderr, "[%s:%d] (%s) BODY ^^^\n", __FILE__, __LINE__, __FUNCTION__);
   return { body, /*isTypeChecked=*/false };
 }
 
