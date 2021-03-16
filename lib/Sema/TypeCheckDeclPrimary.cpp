@@ -1333,8 +1333,7 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
       continue;
 
     if (auto var = pbd->getSingleVar())
-      fprintf(stderr, "[%s:%d] (%s) checking %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
-
+//      fprintf(stderr, "[%s:%d] (%s) checking %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
 
       if (classDecl->isDistributedActor()) {
       // we may have synthesized properties that do not have initial values,
@@ -1344,8 +1343,9 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
       if (auto var = pbd->getSingleVar()) {
         if (var->isSynthesized()) {
           if (var->getBaseName() == C.Id_actorAddress || // FIXME: need to check it's the specific fields
-              var->getBaseName() == C.Id_actorTransport) {
-            fprintf(stderr, "[%s:%d] (%s) checking, was distributed actor synth property %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+              var->getBaseName() == C.Id_actorTransport ||
+              var->getBaseName() == C.Id_storage) {
+//            fprintf(stderr, "[%s:%d] (%s) checking, was distributed actor synth property %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
             continue;
           }
         }
@@ -1354,7 +1354,7 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 
     for (auto idx : range(pbd->getNumPatternEntries())) {
       if (pbd->isInitialized(idx)) {
-        fprintf(stderr, "[%s:%d] (%s) is initialized\n", __FILE__, __LINE__, __FUNCTION__);
+//        fprintf(stderr, "[%s:%d] (%s) is initialized\n", __FILE__, __LINE__, __FUNCTION__);
         continue;
       }
 
@@ -1403,7 +1403,7 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 }
 
 static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
-  fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
   if (auto *SF = classDecl->getParentSourceFile()) {
     // Allow classes without initializers in SIL and module interface files.
     switch (SF->Kind) {
@@ -1429,10 +1429,10 @@ static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
     return;
 
   for (auto member : classDecl->lookupDirect(DeclBaseName::createConstructor())) {
-    fprintf(stderr, "[%s:%d] (%s) ctor \n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) ctor \n", __FILE__, __LINE__, __FUNCTION__);
     auto ctor = dyn_cast<ConstructorDecl>(member);
     if (ctor && ctor->isDesignatedInit()) {
-      fprintf(stderr, "[%s:%d] (%s) return, is designated \n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) return, is designated \n", __FILE__, __LINE__, __FUNCTION__);
       return;
     }
   }

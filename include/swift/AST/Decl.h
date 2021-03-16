@@ -5076,8 +5076,6 @@ public:
   /// backing property will be treated as the member-initialized property.
   bool isMemberwiseInitialized(bool preferDeclaredProperties) const;
 
-  bool isPretendInitialized(bool pretendAsIfInitialized) const;
-
   /// Return the range of semantics attributes attached to this VarDecl.
   auto getSemanticsAttrs() const
       -> decltype(getAttrs().getAttributes<SemanticsAttr>()) {
@@ -5091,6 +5089,12 @@ public:
       return attrValue.equals(attr->Value);
     });
   }
+
+  /// Is a distributed actor property, and should therefore be isolated in
+  /// its personality storage.
+  bool isDistributedActorStoredProperty() const;
+
+  //  bool isDistributedActorIndependent() const;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { 
@@ -6617,7 +6621,7 @@ enum class CtorInitializerKind {
   /// This is so that distributed actor declarations are able to initialize their
   /// fields, but are also forced to invoke the self.init(transport:) initializer
   /// (which is the DesignatedDistributedLocal initializer).
-  DesignatedDistributedLocal,
+  DesignatedDistributedLocal, // FIXME: rename DistributedLocal
 
   /// the init(resolve:using:) initializer of a distributed actor.
   DistributedResolve,
@@ -6727,7 +6731,8 @@ public:
   /// Whether this is a designated initializer.
   bool isDesignatedInit() const {
     return getInitKind() == CtorInitializerKind::Designated ||
-           getInitKind() == CtorInitializerKind::DesignatedDistributedLocal;
+           getInitKind() == CtorInitializerKind::DesignatedDistributedLocal ||
+           getInitKind() == CtorInitializerKind::DistributedResolve;
   }
 
   /// Whether this is a convenience initializer.

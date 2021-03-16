@@ -2110,7 +2110,7 @@ public:
     printDeclRef(E->getMember());
     if (E->getAccessSemantics() != AccessSemantics::Ordinary)
       PrintWithColorRAII(OS, AccessLevelColor)
-        << " " << getAccessSemanticsString(E->getAccessSemantics());
+        << " " << getAccessSemanticsString(E->getAccessSemantics()); // TODO: doug, are we new access semantics?
     if (E->isSuper())
       OS << " super";
 

@@ -867,6 +867,8 @@ void LifetimeChecker::doIt() {
 void LifetimeChecker::handleLoadUse(const DIMemoryUse &Use) {
   bool IsSuperInitComplete, FailedSelfUse;
   // If the value is not definitively initialized, emit an error.
+  // FIXME: doug, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (!isInitializedAtUse(Use, &IsSuperInitComplete, &FailedSelfUse))
     return handleLoadUseFailure(Use, IsSuperInitComplete, FailedSelfUse);
 }
@@ -918,6 +920,7 @@ void LifetimeChecker::handleLoadForTypeOfSelfUse(DIMemoryUse &Use) {
   // If the value is not definitively initialized, replace the
   // value_metatype instruction with the metatype argument that was passed into
   // the initializer.
+//  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (!isInitializedAtUse(Use, &IsSuperInitComplete, &FailedSelfUse)) {
     auto load = cast<SingleValueInstruction>(Use.Inst);
     
@@ -947,6 +950,7 @@ void LifetimeChecker::handleTypeOfSelfUse(DIMemoryUse &Use) {
   // If the value is not definitively initialized, replace the
   // value_metatype instruction with the metatype argument that was passed into
   // the initializer.
+//  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (!isInitializedAtUse(Use, &IsSuperInitComplete, &FailedSelfUse)) {
     auto *valueMetatype = cast<ValueMetatypeInst>(Use.Inst);
     replaceValueMetatypeInstWithMetatypeArgument(valueMetatype);
@@ -1192,6 +1196,7 @@ void LifetimeChecker::handleInOutUse(const DIMemoryUse &Use) {
 
   // inout uses are generally straight-forward: the memory must be initialized
   // before the "address" is passed as an l-value.
+//  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (!isInitializedAtUse(Use, &IsSuperInitDone, &FailedSelfUse)) {
     if (FailedSelfUse) {
       emitSelfConsumedDiagnostic(Use.Inst);
@@ -1373,12 +1378,13 @@ void LifetimeChecker::handleEscapeUse(const DIMemoryUse &Use) {
   // the error.
   bool SuperInitDone, FailedSelfUse, FullyUninitialized;
 
+//  fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
   if (isInitializedAtUse(Use, &SuperInitDone, &FailedSelfUse,
                          &FullyUninitialized)) {
     return;
   }
-  fprintf(stderr, "[%s:%d] (%s) SuperInitDone=%d FailedSelfUse=%d FullyUninitialized=%d\n", __FILE__, __LINE__, __FUNCTION__,
-          SuperInitDone, FailedSelfUse, FullyUninitialized);
+//  fprintf(stderr, "[%s:%d] (%s) SuperInitDone=%d FailedSelfUse=%d FullyUninitialized=%d\n", __FILE__, __LINE__, __FUNCTION__,
+//          SuperInitDone, FailedSelfUse, FullyUninitialized);
 
   auto Inst = Use.Inst;
 
@@ -1427,9 +1433,9 @@ void LifetimeChecker::handleEscapeUse(const DIMemoryUse &Use) {
     }
 
     if (TheMemory.isDelegatingInit()) {
-      fprintf(stderr, "[%s:%d] (%s) is delegating init\n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) is delegating init\n", __FILE__, __LINE__, __FUNCTION__);
       if (TheMemory.isClassInitSelf()) {
-        fprintf(stderr, "[%s:%d] (%s) class init self\n", __FILE__, __LINE__, __FUNCTION__);
+//        fprintf(stderr, "[%s:%d] (%s) class init self\n", __FILE__, __LINE__, __FUNCTION__);
         diagnose(Module, Inst->getLoc(), diag::self_before_selfinit);
       } else {
         diagnose(Module, Inst->getLoc(), diag::self_before_selfinit_value_type);
@@ -1482,24 +1488,24 @@ void LifetimeChecker::handleEscapeUse(const DIMemoryUse &Use) {
   Diag<StringRef, bool> DiagMessage;
   if (isa<MarkFunctionEscapeInst>(Inst)) {
     if (Inst->getLoc().isASTNode<AbstractClosureExpr>()) {
-      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
       DiagMessage = diag::variable_closure_use_uninit;
     } else if (Inst->getLoc().isASTNode<DeferStmt>()) {
-      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
       DiagMessage = diag::variable_defer_use_uninit;
     } else {
-      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
       DiagMessage = diag::variable_function_use_uninit;
     }
   } else if (isa<UncheckedTakeEnumDataAddrInst>(Inst)) {
-    fprintf(stderr, "[%s:%d] (%s) DiagMessage = use before initialized\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) DiagMessage = use before initialized\n", __FILE__, __LINE__, __FUNCTION__);
     DiagMessage = diag::variable_used_before_initialized;
   } else {
-    fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) DiagMessage here \n", __FILE__, __LINE__, __FUNCTION__);
     DiagMessage = diag::variable_closure_use_uninit;
   }
 
-  fprintf(stderr, "[%s:%d] (%s) diagnose DiagMessage\n", __FILE__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d] (%s) diagnose DiagMessage\n", __FILE__, __LINE__, __FUNCTION__);
   diagnoseInitError(Use, DiagMessage);
 }
 
@@ -1752,7 +1758,7 @@ bool LifetimeChecker::diagnoseReturnWithoutInitializingStoredProperties(
     assert(theStruct);
 
     bool fullyUnitialized;
-    fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) about to call isInitializedAtUse\n", __FILE__, __LINE__, __FUNCTION__);
     (void)isInitializedAtUse(Use, nullptr, nullptr, &fullyUnitialized);
 
     diagnose(Module, loc,
@@ -1907,7 +1913,7 @@ void LifetimeChecker::handleLoadUseFailure(const DIMemoryUse &Use,
       Inst->getLoc().isASTNode<AbstractClosureExpr>())
     diagnoseInitError(Use, diag::variable_closure_use_uninit);
   else {
-    fprintf(stderr, "[%s:%d] (%s) issue error, Use use before initialized\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) issue error, Use use before initialized\n", __FILE__, __LINE__, __FUNCTION__);
     diagnoseInitError(Use, diag::variable_used_before_initialized);
   }
 }
@@ -3118,7 +3124,7 @@ bool LifetimeChecker::isInitializedAtUse(const DIMemoryUse &Use,
       *FullyUninitialized = false;
   }
   if (!isFullyInitialized) {
-    fprintf(stderr, "[%s:%d] (%s) is NOT fully initialized\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) is NOT fully initialized\n", __FILE__, __LINE__, __FUNCTION__);
     return false;
   }
 

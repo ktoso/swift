@@ -400,7 +400,6 @@ Type swift::performTypeResolution(TypeRepr *TyR, ASTContext &Ctx,
   if (!ProduceDiagnostics)
     suppression.emplace(Ctx.Diags);
 
-  fprintf(stderr, "[%s:%d] (%s) here\n", __FILE__, __LINE__, __FUNCTION__);
   return resolution.resolveType(TyR, GenericParams);
 }
 
