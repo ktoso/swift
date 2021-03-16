@@ -5092,6 +5092,9 @@ public:
 
   /// Is a distributed actor property, and should therefore be isolated in
   /// its personality storage.
+  ///
+  /// This automatically excludes the "special" stored properties, such as:
+  /// transport, address and storage/personality.
   bool isDistributedActorStoredProperty() const;
 
   //  bool isDistributedActorIndependent() const;
