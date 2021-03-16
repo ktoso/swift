@@ -481,7 +481,7 @@ public:
           // For now, just return the placeholder type.
           return PlaceholderType::get(Context, placeholderRepr);
         });
-    fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
     const auto ty = resolution.resolveType(repr);
     auto *enumDecl = dyn_cast_or_null<EnumDecl>(ty->getAnyNominal());
     if (!enumDecl)
@@ -592,7 +592,7 @@ public:
       // component, and look up an element inside it.
       auto *prefixRepr = IdentTypeRepr::create(Context, components);
 
-      fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
 
       // See first if the entire repr resolves to a type.
       const Type enumTy =
@@ -739,7 +739,6 @@ static Type validateTypedPattern(TypedPattern *TP, TypeResolution resolution) {
     return named->getDecl()->getDeclContext()->mapTypeIntoContext(opaqueTy);
   }
 
-  fprintf(stderr, "[%s:%d] (%s) here\n", __FILE__, __LINE__, __FUNCTION__);
   auto ty = resolution.resolveType(Repr);
   if (ty->hasError()) {
     return ErrorType::get(Context);
@@ -1305,7 +1304,7 @@ Pattern *TypeChecker::coercePatternToType(ContextualPattern pattern,
   case PatternKind::Is: {
     auto IP = cast<IsPattern>(P);
 
-    fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
 
     // Type-check the type parameter.
     const auto castType =

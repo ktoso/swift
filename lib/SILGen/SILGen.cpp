@@ -834,25 +834,35 @@ void SILGenModule::emitFunctionDefinition(SILDeclRef constant, SILFunction *f) {
   }
 
   case SILDeclRef::Kind::Allocator: {
+//    fprintf(stderr, "[%s:%d] (%s) creating allocator\n", __FILE__, __LINE__, __FUNCTION__);
     auto *decl = cast<ConstructorDecl>(constant.getDecl());
 
-    if (decl->getDeclContext()->getSelfClassDecl())
+    if (decl->getDeclContext()->getSelfClassDecl()) {
       if (decl->isDistributedActorResolveInit()) {
         fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor allocator; resolve init\n", __FILE__, __LINE__, __FUNCTION__);
       } else if (decl->isDistributedActorLocalInit()) {
         fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor allocator; local init\n", __FILE__, __LINE__, __FUNCTION__);
       }
+    }
 
+    // FIXME: remove this, we need special code for the local one, remote is now easy!!!!
+//    if (decl->getDeclContext()->getSelfClassDecl() &&
+//        decl->isDistributedActorResolveInit()) {
+//      preEmitFunction(constant, f, decl);
+////      PrettyStackTraceSILFunction X("silgen emitConstructor(distributed actor resolve init)", f);
+//      SILGenFunction(*this, *f, decl).emitDistributedActorResolveConstructorAllocator(decl);
+//      postEmitFunction(constant, f);
+//    } else
     if (decl->getDeclContext()->getSelfClassDecl() &&
         (decl->isDesignatedInit() ||
          decl->isObjC())) {
       preEmitFunction(constant, f, decl);
-      PrettyStackTraceSILFunction X("silgen emitConstructor", f);
+//      PrettyStackTraceSILFunction X("silgen emitConstructor", f);
       SILGenFunction(*this, *f, decl).emitClassConstructorAllocator(decl);
       postEmitFunction(constant, f);
     } else {
       preEmitFunction(constant, f, decl);
-      PrettyStackTraceSILFunction X("silgen emitConstructor", f);
+//      PrettyStackTraceSILFunction X("silgen emitConstructor", f);
       f->createProfiler(decl, constant, ForDefinition);
       SILGenFunction(*this, *f, decl).emitValueConstructor(decl);
       postEmitFunction(constant, f);
@@ -861,11 +871,12 @@ void SILGenModule::emitFunctionDefinition(SILDeclRef constant, SILFunction *f) {
   }
 
   case SILDeclRef::Kind::Initializer: {
+//    fprintf(stderr, "[%s:%d] (%s) creating Initializer\n", __FILE__, __LINE__, __FUNCTION__);
     auto *decl = cast<ConstructorDecl>(constant.getDecl());
     assert(decl->getDeclContext()->getSelfClassDecl());
 
     preEmitFunction(constant, f, decl);
-    PrettyStackTraceSILFunction X("silgen constructor initializer", f);
+//    PrettyStackTraceSILFunction X("silgen constructor initializer", f);
     f->createProfiler(decl, constant, ForDefinition);
     if (decl->isDistributedActorResolveInit()) {
       fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor initializer; resolve init\n", __FILE__, __LINE__, __FUNCTION__);
@@ -1342,6 +1353,7 @@ void SILGenModule::addGlobalVariable(VarDecl *global) {
 }
 
 void SILGenModule::emitConstructor(ConstructorDecl *decl) {
+//  fprintf(stderr, "[%s:%d] (%s) emit constructor\n", __FILE__, __LINE__, __FUNCTION__);
   // FIXME: Handle 'self' like any other argument here.
   // Emit any default argument getter functions.
   emitAbstractFuncDecl(decl);
@@ -1356,11 +1368,15 @@ void SILGenModule::emitConstructor(ConstructorDecl *decl) {
   bool ForCoverageMapping = doesASTRequireProfiling(M, decl);
 
   if (declCtx->getSelfClassDecl()) {
+//    fprintf(stderr, "[%s:%d] (%s) decl->isDesignatedInit() = %d\n", __FILE__, __LINE__, __FUNCTION__, decl->isDesignatedInit());
+//    fprintf(stderr, "[%s:%d] (%s) decl->isObjC() = %d\n", __FILE__, __LINE__, __FUNCTION__, decl->isObjC());
+//    fprintf(stderr, "[%s:%d] (%s) decl->isDistributedActorResolveInit() = %d\n", __FILE__, __LINE__, __FUNCTION__, decl->isDistributedActorResolveInit());
     // Designated initializers for classes, as well as @objc convenience
     // initializers, have have separate entry points for allocation and
     // initialization.
     if (decl->isDesignatedInit() || decl->isObjC()) {
-      emitOrDelayFunction(*this, constant);
+//      fprintf(stderr, "[%s:%d] (%s) EMIT OR DELAY THE INITS\n", __FILE__, __LINE__, __FUNCTION__);
+      emitOrDelayFunction(*this, constant); // FIXME: CRASH
 
       if (decl->hasBody()) {
         SILDeclRef initConstant(decl, SILDeclRef::Kind::Initializer);

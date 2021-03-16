@@ -5845,6 +5845,15 @@ bool VarDecl::isAsyncLet() const {
   return getAttrs().hasAttribute<AsyncAttr>();
 }
 
+bool VarDecl::isDistributedActorStoredProperty() const {
+  if (auto classDecl = dyn_cast<ClassDecl>(getDeclContext())) {
+    return classDecl->isDistributedActor() &&
+        hasStorage() && !isDistributedActorIndependent();
+  }
+
+  return false;
+}
+
 void ParamDecl::setSpecifier(Specifier specifier) {
   // FIXME: Revisit this; in particular shouldn't __owned parameters be
   // ::Let also?

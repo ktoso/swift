@@ -641,6 +641,14 @@ public:
   /// allocating entry point. This allocates the new 'self' value, passes it to
   /// the initializer entry point, then returns the initialized 'self'.
   void emitClassConstructorAllocator(ConstructorDecl *ctor);
+  /// Generates code for a distributed actor's "resolve" allocating entry point.
+  ///
+  /// The implementation calls out to the transport passed to the initializer to
+  /// determine whether to allocate a proxy or real local instance.
+  ///
+  /// A proxy is initialized *only* with the transport and address.
+  /// Otherwise the self is assigned a different value, returned by the transport.
+  void emitDistributedActorResolveConstructorAllocator(ConstructorDecl *ctor);
   /// Generates code for a class constructor's
   /// initializing entry point. This takes 'self' and the constructor arguments
   /// as parameters and executes the constructor body to initialize 'self'.
@@ -1029,6 +1037,16 @@ public:
   ManagedValue emitPreconditionOptionalHasValue(SILLocation loc,
                                                 ManagedValue optional,
                                                 bool isImplicitUnwrap);
+
+  /// Emit a switch_enum to call the library intrinsic
+  /// _diagnoseUnexpectedDistributedRemoteActor if the actor's personality
+  /// is 'remote' and a property access was attempted.
+  ///
+  /// Return the ManagedValue resulting from the 'local' case.
+  ManagedValue emitPreconditionDistributedActorHasLocalValue(SILLocation loc,
+                                                             ManagedValue actorSelf,
+                                                             ManagedValue property,
+                                                             bool isImplicitUnwrap);
 
   /// Emit a call to the library intrinsic _getOptionalValue
   /// given the address of the optional, which checks that an optional contains

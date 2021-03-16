@@ -835,6 +835,29 @@ namespace {
     }
   };
 
+  /// A property declared on a distributed actor actually delegates to its
+  /// 'self.$personality` which may be remote or local. If it is remote,
+  /// yet an access to the property is attempted it must trap.
+  class DistributedPropertyComponent : public PhysicalPathComponent {
+    bool isImplicitUnwrap;
+  public:
+      DistributedPropertyComponent(LValueTypeData typeData,
+                                 bool isImplicitUnwrap)
+      : PhysicalPathComponent(typeData, OptionalObjectKind),
+        isImplicitUnwrap(isImplicitUnwrap) {}
+
+    ManagedValue project(SILGenFunction &SGF, SILLocation loc,
+                         ManagedValue base) && override {
+      // Assert that the optional value is present and return the projected out
+      // payload.
+      return SGF.emitPreconditionOptionalHasValue(loc, base, isImplicitUnwrap);
+    }
+
+    void dump(raw_ostream &OS, unsigned indent) const override {
+      OS.indent(indent) << "DistributedPropertyComponent(" << isImplicitUnwrap << ")\n";
+    }
+  };
+
   /// A physical path component which projects out an opened archetype
   /// from an existential.
   class OpenOpaqueExistentialComponent : public PhysicalPathComponent {

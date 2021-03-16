@@ -236,6 +236,12 @@ struct ASTContext::Implementation {
   /// The declaration of _Concurrency.NSObjectDefaultActor.
   ClassDecl *NSObjectDefaultActorDecl = nullptr;
 
+  /// The declaration of _Concurrency.DistributedActorPersona.Local.
+  EnumElementDecl *DistributedActorPersonaLocalDecl = nullptr;
+
+  /// The declaration of _Concurrency.DistributedActorPersona.Remote.
+  EnumElementDecl *DistributedActorPersonaRemoteDecl = nullptr;
+
   // Declare cached declarations for each of the known declarations.
 #define FUNC_DECL(Name, Id) FuncDecl *Get##Name = nullptr;
 #include "swift/AST/KnownDecls.def"
@@ -842,6 +848,21 @@ EnumElementDecl *ASTContext::getOptionalNoneDecl() const {
     getImpl().OptionalNoneDecl =getOptionalDecl()->getUniqueElement(/*hasVal*/false);
   return getImpl().OptionalNoneDecl;
 }
+
+EnumElementDecl *ASTContext::getDistributedActorPersonaLocalDecl() const {
+  if (!getImpl().DistributedActorPersonaLocalDecl)
+    getImpl().DistributedActorPersonaLocalDecl =
+        getDistributedActorStorageDecl()->getUniqueElement(/*hasVal*/true);
+  return getImpl().DistributedActorPersonaLocalDecl;
+}
+
+EnumElementDecl *ASTContext::getDistributedActorPersonaRemoteDecl() const {
+  if (!getImpl().DistributedActorPersonaRemoteDecl)
+    getImpl().DistributedActorPersonaRemoteDecl =
+        getDistributedActorStorageDecl()->getUniqueElement(/*hasVal*/false);
+  return getImpl().DistributedActorPersonaRemoteDecl;
+}
+
 
 static VarDecl *getPointeeProperty(VarDecl *&cache,
                            NominalTypeDecl *(ASTContext::*getNominal)() const,

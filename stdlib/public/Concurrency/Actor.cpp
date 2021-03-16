@@ -1305,7 +1305,6 @@ enum {
 
 // TODO: make it accept the metatype?
 void* swift::swift_distributedActor_createProxy(Metadata const *actorType) {
-//void *swift::swift_distributedActor_createProxy() {
   fprintf(stderr, "[%s:%d] (%s) creating proxy...\n", __FILE__, __LINE__, __FUNCTION__);
   // Figure out the size to allocate.
   // TODO: this is likely slightly wrong?
@@ -1320,9 +1319,9 @@ void* swift::swift_distributedActor_createProxy(Metadata const *actorType) {
 
   void *allocation = malloc(amountToAllocate);
 
-//  AsyncContext *initialContext =
-//      reinterpret_cast<AsyncContext*>(
-//          reinterpret_cast<char*>(allocation) + headerSize);
+  DistributedRemoteActor *proxy =
+      reinterpret_cast<DistributedRemoteActor*>(
+          reinterpret_cast<char*>(allocation) + headerSize);
 
   return allocation;
 }
