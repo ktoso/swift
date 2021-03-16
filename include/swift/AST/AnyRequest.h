@@ -165,6 +165,7 @@ public:
 
   /// Diagnose a cycle detected for this request.
   void diagnoseCycle(DiagnosticEngine &diags) const {
+    fprintf(stderr, "[%s:%d] (%s) vtable cycle\n", __FILE__, __LINE__, __FUNCTION__);
     getVTable()->diagnoseCycle(getRawStorage(), diags);
   }
 

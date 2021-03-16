@@ -5848,7 +5848,8 @@ bool VarDecl::isAsyncLet() const {
 bool VarDecl::isDistributedActorStoredProperty() const {
   if (auto classDecl = dyn_cast<ClassDecl>(getDeclContext())) {
     return classDecl->isDistributedActor() &&
-        hasStorage() && !isDistributedActorIndependent();
+        hasStorage() && !isDistributedActorIndependent(); // &&
+        // getBaseName() != "storage"; // FIXME: how to make this less hacky?
   }
 
   return false;

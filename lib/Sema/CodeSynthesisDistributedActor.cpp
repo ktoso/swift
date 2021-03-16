@@ -905,7 +905,6 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
   // ```
   {
     auto boundPersonalityType = getBoundPersonalityStorageType(C, decl);
-    boundPersonalityType->dump();
 
     VarDecl *propDecl;
     PatternBindingDecl *pbDecl;
@@ -916,15 +915,13 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
         /*isStatic=*/false, /*isFinal=*/false);
 
 //    // Mark it private, only the actor itself can access storage.
-//    propDecl->setAccess(); // TODO: do this, but this fails on 'access already set' we must set this at creation inside the createStoredProperty
+//    propDecl->setAccess(AccessLevel::Private); // TODO: do this, but this fails on 'access already set' we must set this at creation inside the createStoredProperty
 
-    // mark as @_distributedActorIndependent, allowing access to it from everywhere
+//    // FIXME: we need to somehow mark it to not be included in "slap property wrappers on things"
+//    //       however independent is the wrong thing; so I guess just the synthesized or implicit thing?
+//    // SEE ALSO: isDistributedActorStoredProperty which would be part of the fix
     propDecl->getAttrs().add(
         new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
-
-    propDecl->dump();
-    pbDecl->dump();
-    fprintf(stderr, "[%s:%d] (%s) THE PROPERTY DECL\n", __FILE__, __LINE__, __FUNCTION__);
 
     decl->addMember(propDecl);
     decl->addMember(pbDecl);
@@ -999,7 +996,6 @@ static void addImplicitDistributedActorStorageStruct(ClassDecl *actorDecl) {
     storageDecl->addMember(pbDecl);
   }
 
-
   storageDecl->dump();
   fprintf(stderr, "[%s:%d] (%s) synthesized STORAGE STRUCT\n", __FILE__, __LINE__, __FUNCTION__);
   actorDecl->addMember(storageDecl);
@@ -1016,7 +1012,7 @@ static void addImplicitDistributedActorMembersToClass(ClassDecl *decl) {
     return;
 
   // addImplicitDistributedActorTypeAliases(decl); // FIXME: enable the typealias gen
-  addImplicitDistributedActorStorageStruct(decl);
+//  addImplicitDistributedActorStorageStruct(decl);
   addImplicitDistributedActorStoredProperties(decl);
   addImplicitDistributedActorConstructors(decl);
 

@@ -621,8 +621,8 @@ void SILGenFunction::emitClassConstructorAllocator(ConstructorDecl *ctor) {
                                         useObjCAllocation, {}, {});
   } else {
     assert(ctor->isDesignatedInit());
-    fprintf(stderr, "[%s:%d] (%s) init designated ctor allocator [%s]\n", __FILE__, __LINE__, __FUNCTION__,
-            ctor->getBaseName());
+//    fprintf(stderr, "[%s:%d] (%s) init designated ctor allocator [%s]\n", __FILE__, __LINE__, __FUNCTION__,
+//            ctor->getBaseName());
 
     // For a designated initializer, we know that the static type being
     // allocated is the type of the class that defines the designated
