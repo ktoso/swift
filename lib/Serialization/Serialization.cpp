@@ -1659,6 +1659,8 @@ getStableCtorInitializerKind(swift::CtorInitializerKind K){
       CASE(Convenience)
       CASE(Factory)
       CASE(ConvenienceFactory)
+      CASE(DesignatedDistributedLocal)
+      CASE(DistributedResolve)
 #undef CASE
   }
 

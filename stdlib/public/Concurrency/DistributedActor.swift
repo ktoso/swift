@@ -21,13 +21,17 @@ import Swift
 /// point. Actor classes implicitly conform to this protocol as part of their
 /// primary class definition.
 public protocol DistributedActor: Actor, Codable {
+  associatedtype DistributedActorLocalStorage
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
-  /// Upon initialization, the `actorAddress` field is populated by the transport,
+  /// Upon completion, the `actorAddress` field is populated by the transport,
   /// with an address assigned to this actor.
   ///
-  /// - Parameter transport:
+  /// - Parameter transport: transport which this actor should become associated with.
+  ///
+  /// ### Synthesis
+  /// Implementation synthesized by the compiler.
   init(transport: ActorTransport)
 
   /// Resolves the passed in `address` against the `transport`,
@@ -41,25 +45,38 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// - Parameter address: the address to resolve, and produce an instance or proxy for.
   /// - Parameter transport: transport which should be used to resolve the `address`.
+  ///
+  /// ### Synthesis
+  /// Implementation synthesized by the compiler.
   init(resolve address: ActorAddress, using transport: ActorTransport) throws
 
   /// The `ActorTransport` associated with this actor.
   /// It is immutable and equal to the transport passed in the local/resolve
   /// initializer.
   ///
-  /// Conformance to this requirement is synthesized automatically for any
-  /// `distributed actor` declaration.
-  // FIXME: don't express it as a protocol requirement, since there never
-  //        is a reason to reach into it externally?
+  /// ### Synthesis
+  /// Implementation synthesized by the compiler.
   var actorTransport: ActorTransport { get }
 
   /// Logical address which this distributed actor represents.
   ///
   /// An address is always uniquely pointing at a specific actor instance.
   ///
-  /// Conformance to this requirement is synthesized automatically for any
-  /// `distributed actor` declaration.
+  /// ### Synthesis
+  /// Implementation synthesized by the compiler.
   var actorAddress: ActorAddress { get }
+
+  // === Storage mechanism internals -------------------------------------------
+
+  // TODO: would be best if this was completely user inaccessible? Not sure we want to commit to the existence of this
+  // FIXME: can we hide this from public API?
+  var storage: DistributedActorStorage<DistributedActorLocalStorage> { get set }
+
+  /// ### Synthesis
+  /// Implementation synthesized by the compiler.
+  // FIXME: can we hide this method from public API?
+  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T>
+
 }
 
 // ==== Codable conformance ----------------------------------------------------
@@ -69,16 +86,15 @@ extension CodingUserInfoKey {
 }
 
 extension DistributedActor {
+
   public init(from decoder: Decoder) throws {
     guard let transport = decoder.userInfo[.actorTransportKey] as? ActorTransport else {
-      throw DistributedActorCodingError(message:
-      "ActorTransport not available under the decoder.userInfo")
+      throw DistributedActorCodingError(message: "ActorTransport not available under the decoder.userInfo")
     }
 
-    var container = try decoder.singleValueContainer()
+    let container = try decoder.singleValueContainer()
     let address = try container.decode(ActorAddress.self)
-    // self = try Self(resolve: address, using: transport) // FIXME!!!!
-    fatalError("XXXX")
+    try self.init(resolve: address, using: transport)
   }
 
   @actorIndependent
@@ -87,6 +103,7 @@ extension DistributedActor {
     try container.encode(self.actorAddress)
   }
 }
+
 /******************************************************************************/
 /***************************** Actor Transport ********************************/
 /******************************************************************************/
@@ -114,7 +131,7 @@ public protocol ActorTransport: ConcurrentValue {
   ) -> ActorAddress
     where Act: DistributedActor
 
-  // FIXME: call from deinit
+  // FIXME: call from deinit, or rather the actor destroy
 //  func resignAddress(address: ActorAddress)
 //    from recipient: ActorAddress
 //  ) async throws where Request: Codable, Reply: Codable
@@ -124,6 +141,70 @@ public enum ActorResolved<Act: DistributedActor> {
   case resolved(Act)
   case makeProxy
 }
+
+/******************************************************************************/
+/*************************** Actor Personality ********************************/
+/******************************************************************************/
+
+// Personality of distributed actors it means either a 'remote' or 'local'
+// instance of a distributed actor. It is the same actor type, but playing
+// a different role: either a real instance, or a proxy type.
+
+/// A distributed actor's persona represents whether it is a remote proxy
+/// or local instance. The 'local' case contains all the actual state of
+/// the `distributed actor` as it was declared, while the properties on the
+/// outside of the instance are synthesized with replacement accessors
+/// reaching "into" the instance, or failing to do so.
+///
+/// E.g. non distributed properties and functions on a distributed actors will crash the program
+/// when attempted to be read from an actor with a remote persona.
+public enum DistributedActorStorage<Storage> {
+  /// In the remote case, the actor has no actual state,
+  /// it is an empty shell which is used only to send messages through.
+  case remote
+  /// In the local case, all of the actors stored properties are stored in
+  /// the synthesized `Storage` value type. Modifications of of `self.property`
+  /// are actually forwarded by "proxy" property wrappers to modify the storage.
+  indirect case local(Storage)
+}
+
+@propertyWrapper
+public struct DistributedActorValue<Value> {
+
+  @available(*, unavailable, message: "only useful on distributed actors")
+  public var wrappedValue: Value {
+    get { fatalError("wrappedValue on 'distributed actor' value must never be accessed directly.") }
+    set { fatalError("wrappedValue on 'distributed actor' value must never be accessed directly.") }
+  }
+  
+  public static subscript<Myself: DistributedActor>(
+    _enclosingInstance actor: /*isolated*/ Myself,
+    wrapped wrappedKeyPath: ReferenceWritableKeyPath<Myself, Value>,
+    storage storageKeyPath: ReferenceWritableKeyPath<Myself, Self>
+  ) -> Value {
+    get {
+      guard case .local(let DistributedActorLocalStorage) = actor.storage else {
+        fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
+      }
+      
+      let kp: KeyPath<Myself.DistributedActorLocalStorage, Value> =
+        Myself.mapStorage(keyPath: wrappedKeyPath)
+      return DistributedActorLocalStorage[keyPath: kp]
+    }
+    
+    set {
+      guard case .local(var DistributedActorLocalStorage) = actor.storage else {
+        fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
+      }
+      let kp: WritableKeyPath<Myself.DistributedActorLocalStorage, Value> =
+        Myself.mapStorage(keyPath: wrappedKeyPath) as! WritableKeyPath
+      DistributedActorLocalStorage[keyPath: kp] = newValue
+    }
+  }
+
+  public init() {}
+}
+
 
 /******************************************************************************/
 /***************************** Actor Address **********************************/
@@ -157,6 +238,27 @@ public struct ActorAddress: Codable, ConcurrentValue, Equatable {
 /******************************** Misc ****************************************/
 /******************************************************************************/
 
+//@_transparent
+//public // COMPILER_INTRINSIC
+//func _diagnoseUnexpectedDistributedRemoteActor(
+//  _filenameStart: Builtin.RawPointer,
+//  _filenameLength: Builtin.Word,
+//  _filenameIsASCII: Builtin.Int1,
+//  _line: Builtin.Word,
+//  _isImplicitUnwrap: Builtin.Int1) { // FIXME: remove _isImplicitUnwrap
+//  // Cannot use _preconditionFailure as the file and line info would not be printed.
+//    _preconditionFailure(
+//      "Unexpectedly attempted to access a distributed *remote* actor's state.",
+//      file: StaticString(_start: _filenameStart,
+//        utf8CodeUnitCount: _filenameLength,
+//        isASCII: _filenameIsASCII),
+//      line: UInt(_line))
+//}
+
+/******************************************************************************/
+/******************************* Errors ***************************************/
+/******************************************************************************/
+
 /// Error protocol to which errors thrown by any `ActorTransport` should conform.
 public protocol ActorTransportError: Error {}
 
@@ -188,10 +290,16 @@ public func __isLocalActor(_ actor: AnyObject) -> Bool {
 
 // ==== Proxy Actor lifecycle --------------------------------------------------
 
+/// Called to create a proxy instance.
+@_silgen_name("swift_distributedActor_createProxy")
+public func _createDistributedActorProxy<Act>(_ actorType: Act.Type) -> Act // TODO: doug, does the return value "cheat" seem ok?
+  where Act: DistributedActor
+
 /// Called to initialize the distributed-remote actor 'proxy' instance in an actor.
 /// The implementation will call this within the actor's initializer.
 @_silgen_name("swift_distributedActor_remote_initialize")
 public func _distributedActorRemoteInitialize(_ actor: AnyObject)
+
 
 /// Called to destroy the default actor instance in an actor.
 /// The implementation will call this within the actor's deinit.

@@ -7749,6 +7749,8 @@ void SwiftDeclConverter::importInheritedConstructors(
     case CtorInitializerKind::ConvenienceFactory:
     case CtorInitializerKind::Convenience:
     case CtorInitializerKind::Designated:
+    case CtorInitializerKind::DesignatedDistributedLocal:
+    case CtorInitializerKind::DistributedResolve:
       break;
     }
 

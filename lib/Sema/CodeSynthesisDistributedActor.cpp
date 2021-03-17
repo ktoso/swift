@@ -35,6 +35,88 @@
 using namespace swift;
 
 /******************************************************************************/
+/************************************ MISC ************************************/
+/******************************************************************************/
+
+static std::pair<BraceStmt *, bool>
+synthesizeStubBody(AbstractFunctionDecl *fn, void *);
+
+/******************************************************************************/
+/*********************************** TYPES ************************************/
+/******************************************************************************/
+
+/// Return the `DistributedActorStorage<Self.DistributedActorLocalStorage>`
+/// specific to this distributed actor.
+static Type
+getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
+  // === DistributedActorStorage<?>
+  auto storageTypeDecl = C.getDistributedActorStorageDecl();
+
+  // === locate the synthesized: DistributedActorLocalStorage
+  auto localStorageTypeDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+//  if (localStorageTypeDecls.size() > 1) {
+//    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+//  }
+  StructDecl *localStorageDecl = nullptr;
+  for (auto decl : localStorageTypeDecls) {
+    fprintf(stderr, "\n");
+    fprintf(stderr, "[%s:%d] (%s) DECL:\n", __FILE__, __LINE__, __FUNCTION__);
+    decl->dump();
+    fprintf(stderr, "\n");
+    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
+      localStorageDecl = structDecl;
+      break;
+    }
+  }
+  assert(localStorageDecl && "unable to lookup synthesized struct DistributedActorLocalStorage!");
+//  TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localStorageDecl);
+//  if (!localStorageTypeDecl) {
+//    // TODO: diagnose here
+//    assert(false && "could not find DistributedActorLocalStorage in distributed actor");
+//  }
+
+    // === bind: DistributedActorStorage<DistributedActorLocalStorage>
+  auto localStorageType = localStorageDecl->getDeclaredInterfaceType();
+//    if (isa<TypeAliasDecl>(localStorageType)) // TODO: doug, ??????
+//      localStorageType = localStorageType->getAnyNominal();
+
+  auto boundStorageType = BoundGenericType::get(
+      storageTypeDecl, /*Parent=*/Type(), {localStorageType});
+
+  return boundStorageType;
+}
+
+static void addImplicitDistributedActorTypeAliases(ClassDecl *actorDecl) {
+  assert(actorDecl->isDistributedActor());
+  auto &C = actorDecl->getASTContext();
+
+  // ```
+  // typealias DistributedActorLocalStorage = ...
+  // ```
+  {
+    // TODO: this is a bit duplicated
+    auto localStorageTypeDecls = actorDecl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+    if (localStorageTypeDecls.size() > 1) {
+      assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+    }
+    TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localStorageTypeDecls.front());
+    Type localStorageType = localStorageTypeDecl->getDeclaredInterfaceType();
+
+
+    auto *aliasDecl = new (C) TypeAliasDecl(SourceLoc(), SourceLoc(),
+                                            C.Id_LocalStorage, SourceLoc(),
+                                            /*GenericParams=*/nullptr,
+                                            actorDecl);
+    aliasDecl->setUnderlyingType(localStorageType);
+    aliasDecl->copyFormalAccessFrom(actorDecl, /*sourceIsParentContext=*/true);
+
+    aliasDecl->dump();
+    fprintf(stderr, "[%s:%d] (%s) ALIAS\n", __FILE__, __LINE__, __FUNCTION__);
+    actorDecl->addMember(aliasDecl);
+  }
+}
+
+/******************************************************************************/
 /******************************* INITIALIZERS *********************************/
 /******************************************************************************/
 
@@ -92,39 +174,88 @@ createCall_DistributedActor_transport_assignAddress(ASTContext &C,
 /// \param initDecl The function decl whose body to synthesize.
 static std::pair<BraceStmt *, bool>
 createBody_DistributedActor_init_transport(AbstractFunctionDecl *initDecl, void *) {
-
   auto *funcDC = cast<DeclContext>(initDecl);
+  auto DC = initDecl->getDeclContext();
   ASTContext &C = funcDC->getASTContext();
 
-  SmallVector<ASTNode, 2> statements;
+  SmallVector<ASTNode, 3> statements;
 
   auto transportParam = initDecl->getParameters()->get(0);
   auto *transportExpr = new (C) DeclRefExpr(ConcreteDeclRef(transportParam),
                                             DeclNameLoc(), /*Implicit=*/true);
 
   auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
+  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
 
   // ==== `self.actorTransport = transport`
-  auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                             C.Id_actorTransport);
-  auto *assignTransportExpr = new (C) AssignExpr(
-      varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
-  statements.push_back(assignTransportExpr);
+  {
+    auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+                                                               C.Id_actorTransport);
+    auto *assignTransportExpr = new (C) AssignExpr(
+        varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
+    // assignTransportExpr->setType(TupleType::getEmpty(C));
+    statements.push_back(assignTransportExpr);
+  }
 
   // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
-  // self.actorAddress
-  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                           C.Id_actorAddress);
-  // Bound transport.assignAddress(Self.self) call
-  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
-  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
-  auto *callExpr = createCall_DistributedActor_transport_assignAddress(C, funcDC,
-      /*base=*/transportExpr,
-      /*returnType=*/addressType,
-      /*param=*/selfType);
-  auto *assignAddressExpr = new (C) AssignExpr(
-      varAddressExpr, SourceLoc(), callExpr, /*Implicit=*/true);
-  statements.push_back(assignAddressExpr);
+  {
+    // self.actorAddress
+    auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+                                                             C.Id_actorAddress);
+    // Bound transport.assignAddress(Self.self) call
+    auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+    auto *callExpr = createCall_DistributedActor_transport_assignAddress(C, funcDC,
+        /*base=*/transportExpr,
+        /*returnType=*/addressType,
+        /*param=*/selfType);
+    auto *assignAddressExpr = new (C) AssignExpr(
+        varAddressExpr, SourceLoc(), callExpr, /*Implicit=*/true);
+    // assignAddressExpr->setType(TupleType::getEmpty(C));
+    statements.push_back(assignAddressExpr);
+  }
+
+  // ==== `self.storage = .local($Instance(...))`
+  {
+    // self.storage
+    auto *varStorageExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+                                                             C.Id_storage); // TODO: $storage
+
+    // DistributedActorStorage<?>
+    auto storageTypeDecl = C.getDistributedActorStorageDecl();
+
+//    // user storage type: DistributedActorPersonality<DistributedActorLocalStorage>
+//    auto selfClassDecl = dyn_cast<ClassDecl>(initDecl->getParent());
+//    auto localStorageTypeDecls = selfClassDecl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+//    if (localStorageTypeDecls.size() > 1) {
+//      assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+//    }
+//    TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localStorageTypeDecls.front());
+//    if (!localStorageTypeDecl) {
+//      // TODO: diagnose here
+//      assert(false && "could not find DistributedActorLocalStorage in distributed actor");
+//    }
+//
+//    auto localStorageType = localStorageTypeDecl->getDeclaredInterfaceType();
+////    if (isa<TypeAliasDecl>(localStorageType)) // TODO: doug, ??????
+////      localStorageType = localStorageType->getAnyNominal();
+
+    auto classDecl = dyn_cast<ClassDecl>(initDecl->getParent());
+    auto boundStorageType = getBoundPersonalityStorageType(C, classDecl);
+    auto boundStorageTypeExpr = TypeExpr::createImplicit(boundStorageType, C);
+    auto storageTypeSelfRef = new (C) DotSelfExpr(
+        boundStorageTypeExpr, SourceLoc(), SourceLoc());
+    auto localStorageExpr =
+        UnresolvedDotExpr::createImplicit(C, storageTypeSelfRef, C.Id_remote); // TODO: this should store the local thing
+
+    auto *assignStorageExpr = new(C) AssignExpr(
+        varStorageExpr, SourceLoc(), localStorageExpr, /*Implicit=*/true);
+    assignStorageExpr->dump();
+    // varStorageExpr->setType(TupleType::getEmpty(C));
+
+    assignStorageExpr->dump();
+//    fprintf(stderr, "[%s:%d] (%s) ^^^^ THE ASSIGN STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
+    statements.push_back(assignStorageExpr);
+  }
 
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
@@ -172,7 +303,7 @@ createDistributedActor_init_local(ClassDecl *classDecl,
   initDecl->setSynthesized();
   initDecl->setBodySynthesizer(&createBody_DistributedActor_init_transport);
 
-  // This constructor is 'required', all distributed actors MUST invoke it.
+  // This constructor is 'required', all distributed actors MUST have it.
   auto *reqAttr = new (C) RequiredAttr(/*IsImplicit*/true);
   initDecl->getAttrs().add(reqAttr);
 
@@ -183,16 +314,181 @@ createDistributedActor_init_local(ClassDecl *classDecl,
 
 // ==== Distributed Actor: Resolve Initializer ---------------------------------
 
+
+/// Creates a new \c CallExpr representing
+///
+///     transport.resolve(address: address, as: Self.self)
+///
+static CallExpr *
+createCall_DistributedActor_transport_resolve(
+    ASTContext &C, DeclContext *DC,
+    Expr *base, Type addressType,
+    DeclRefExpr *paramAddress, // FIXME???
+    Type paramSelfType
+) {
+  // (address:)
+  auto *paramAddressDecl = new (C) ParamDecl(
+      SourceLoc(), SourceLoc(), C.Id_address, SourceLoc(), C.Id_address, DC);
+  paramAddressDecl->setImplicit();
+  paramAddressDecl->setSpecifier(ParamSpecifier::Default);
+  paramAddressDecl->setInterfaceType(addressType);
+
+  // (as selfType:)
+  auto *paramSelfTypeDecl = new (C) ParamDecl(
+      SourceLoc(), SourceLoc(), C.Id_as, SourceLoc(), C.Id_actorType, DC);
+  paramSelfTypeDecl->setImplicit();
+  paramSelfTypeDecl->setSpecifier(ParamSpecifier::Default);
+  paramSelfTypeDecl->setInterfaceType(addressType);
+
+  // (address:as:)
+  auto *paramList = ParameterList::create(
+      C,
+      /*LParenLoc=*/SourceLoc(),
+      /*params=*/{paramAddressDecl, paramSelfTypeDecl},
+      /*RParenLoc=*/SourceLoc()
+  );
+
+  // transport.assignAddress(address:as:) expr
+  auto *unboundCall = UnresolvedDotExpr::createImplicit(
+      C, base, C.Id_resolve, paramList);
+
+  // DC->mapTypeIntoContext(param->getInterfaceType());
+  auto *selfTypeExpr = TypeExpr::createImplicit(paramSelfType, C);
+  auto *dotSelfTypeExpr = new (C) DotSelfExpr(
+      selfTypeExpr, SourceLoc(), SourceLoc(), paramSelfType);
+
+  // Full bound self.resolve(address: address, as: Self.self) call
+  Expr *args[2] = {paramAddress, dotSelfTypeExpr};
+  Identifier argLabels[2] = {C.Id_address, C.Id_as};
+  return CallExpr::createImplicit(
+      C, unboundCall, C.AllocateCopy(args), C.AllocateCopy(argLabels));
+}
+
+///// Creates a new VarDecl for:
+/////
+/////     let resolved: ResolvedDistributedActor<Act>
+/////
+//static VarDecl*
+//createVar_resolved(ASTContext &C, DeclContext *DC,
+//                   NominalTypeDecl *resolvedTypeDecl,
+//                   Type selfType,
+//                   VarDecl::Introducer introducer) {
+//  // Bind ResolvedDistributedActor to ResolvedDistributedActor<Act>
+//  Type boundType[1] = {selfType};
+//  auto resolvedType = BoundGenericType::get(resolvedTypeDecl, Type(),
+//                                            C.AllocateCopy(boundType));
+//
+//  // let resolved : ResolvedDistributedActor<Act>
+//  auto *resolvedDecl = new (C) VarDecl(/*IsStatic=*/false, introducer,
+//                                                    SourceLoc(), C.Id_resolved, DC);
+//  resolvedDecl->setImplicit();
+//  resolvedDecl->setSynthesized();
+//  resolvedDecl->setInterfaceType(resolvedType);
+//  return resolvedDecl;
+//}
+
+static CallExpr *
+createCall_DistributedActor_createProxy(ASTContext &C,
+                                        DeclContext *DC,
+                                        Type paramActorType) {
+  // (_ actorType:)
+  auto *paramDecl = new (C) ParamDecl(SourceLoc(),
+                                      SourceLoc(), Identifier(),
+                                      SourceLoc(), C.Id_actorType, DC);
+  paramDecl->setImplicit();
+  paramDecl->setSpecifier(ParamSpecifier::Default);
+  paramDecl->setInterfaceType(paramActorType); // FIXME: Any?
+
+  // _createDistributedActorProxy(_:) expr
+  auto *paramList = ParameterList::createWithoutLoc(paramDecl);
+//  auto *unboundCall = UnresolvedDotExpr::createImplicit(C, /*base*/nullptr,
+//                                                        C.Id_createDistributedActorProxy,
+//                                                        paramList);
+  auto *createDeclRef = UnresolvedDeclRefExpr::createImplicit(
+      C, C.getIdentifier("_createDistributedActorProxy"));
+//  createDeclRef->setType(paramActorType);
+
+//   DC->mapTypeIntoContext(paramActorType->getInterfaceType());
+  auto *actorTypeExpr = TypeExpr::createImplicit(paramActorType, C);
+  auto *dotActorTypeExpr = new (C) DotSelfExpr(actorTypeExpr, SourceLoc(),
+                                               SourceLoc(), paramActorType);
+
+  // Full bound _createDistributedActorProxy(Self.self) call
+  return CallExpr::createImplicit(
+      C, createDeclRef,
+      {dotActorTypeExpr},
+      {Identifier()});
+
+//  auto Call = CallExpr::createImplicit(C, createDeclRef, {}, {});
+//  Call->setType(paramActorType);
+//  return Call;
+//  return CallExpr::create(C, createDeclRef, {}, {}, {}, false, false, actorType);
+}
+
+//static SwitchStmt*
+//createSwitch_resolved(ASTContext &C, DeclContext *DC,
+//                      Type resolvedEnumType,
+//                      BraceStmt resolvedBody, BraceStmt makeProxyBody,
+//                      Expr paramResolved) {
+//  // prepare the cases for the switch with their appropriate bodies
+//  SmallVector<ASTNode, 2> cases;
+//
+//  // ==== case .makeProxy:
+//  {
+//    EnumElementDecl* elt =
+//
+//    auto pat = new(C) EnumElementPattern(
+//        TypeExpr::createImplicit(resolvedEnumType, C), SourceLoc(),
+//        DeclNameLoc(), DeclNameRef(), elt, subpattern);
+//    pat->setImplicit();
+//
+//    auto labelItem = CaseLabelItem(pat);
+//    auto body = resolvedBody;
+//    auto caseStmt = CaseStmt::create(
+//        C, CaseParentKind::Switch, SourceLoc(),
+//        labelItem, SourceLoc(), SourceLoc(), body,
+//        /*case body vardecls*/ caseBodyVarDecls);
+//    cases.push_back(caseStmt);
+//  }
+//
+//  // ==== case .proxy:
+//  {
+//    // .<elt>(let a0, let a1, ...)
+//    SmallVector < VarDecl * , 1 > payloadVars;
+//    auto subpattern = DerivedConformance::enumElementPayloadSubpattern(
+//        elt, 'a', encodeDecl, payloadVars, /* useLabels */ true);
+//
+//    // auto hasBoundDecls = !payloadVars.empty();
+//    assert(payloadVars.size() == 1 && "Expected *1* bound decl for case .resolved(let instance)");
+//    Optional <MutableArrayRef<VarDecl *>> caseBodyVarDecls;
+//    // We allocated a direct copy of our var decls for the case
+//    // body.
+//    auto copy = C.Allocate<VarDecl *>(payloadVars.size());
+//    for (unsigned i : indices(payloadVars)) {
+//      auto *vOld = payloadVars[i];
+//      auto *vNew = new(C) VarDecl(
+//          /*IsStatic*/ false, vOld->getIntroducer(), vOld->getNameLoc(),
+//                       vOld->getName(), vOld->getDeclContext());
+//      vNew->setImplicit();
+//      copy[i] = vNew;
+//    }
+//    caseBodyVarDecls.emplace(copy);
+//  }
+//
+//  // ==== switch resolved { ... }
+//  auto switchStmt = SwitchStmt::create(LabeledStmtInfo(), SourceLoc(), enumRef,
+//                                       SourceLoc(), cases, SourceLoc(), C);
+//  return switchStmt;
+//}
+
 /// Synthesizes the body for
 ///
 /// ```
 /// init(resolve address: ActorAddress, using transport: ActorTransport) throws {
-///   // TODO: implement calling the transport
 ///   switch try transport.resolve(address: address, as: Self.self) {
 ///   case .instance(let instance):
 ///     self = instance
 ///   case .makeProxy:
-///   // TODO: use RebindSelfInConstructorExpr here?
 ///     self = <<MAGIC MAKE PROXY>>(address, transport) // TODO: implement this
 ///   }
 /// }
@@ -207,6 +503,10 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 
   SmallVector<ASTNode, 2> statements; // TODO: how many?
 
+  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+  auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
+  auto selfTypeExpr = new (C) DotSelfExpr(selfRef, SourceLoc(), SourceLoc());
+
   auto addressParam = initDecl->getParameters()->get(0);
   auto *addressExpr = new (C) DeclRefExpr(ConcreteDeclRef(addressParam),
                                           DeclNameLoc(), /*Implicit=*/true);
@@ -215,29 +515,131 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
   auto *transportExpr = new (C) DeclRefExpr(ConcreteDeclRef(transportParam),
                                             DeclNameLoc(), /*Implicit=*/true);
 
-  auto *selfRef = DerivedConformance::createSelfDeclRef(initDecl);
+  // ==== `self.actorAddress = address`
+  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+                                                             C.Id_actorAddress);
+  auto *assignAddressExpr = new (C) AssignExpr(
+      varAddressExpr, SourceLoc(), addressExpr, /*Implicit=*/true);
+  assignAddressExpr->setType(TupleType::getEmpty(C));
+  statements.push_back(assignAddressExpr);
 
   // ==== `self.actorTransport = transport`
   auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
                                                              C.Id_actorTransport);
   auto *assignTransportExpr = new (C) AssignExpr(
       varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
+  assignTransportExpr->setType(TupleType::getEmpty(C));
   statements.push_back(assignTransportExpr);
 
-  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
-  // self.actorAddress
-  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
-                                                           C.Id_actorAddress);
-  // TODO implement calling the transport with the address and Self.self
+
+  // ==== ----------------------------------------------------
+  // ==== `self = _createDistributedActorProxy(Self.self)
+
+//  auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
+//      C, funcDC, selfType);
+
+//  auto selfRef = DerivedConformance::createSelfDeclRef(toRawDecl);
+//  auto bareTypeExpr = TypeExpr::createImplicit(rawTy, C);
+//  auto typeExpr = new (C) DotSelfExpr(bareTypeExpr, SourceLoc(), SourceLoc());
+//
+//  auto makeProxyCallExpr = createCall_DistributedActor_createProxy(
+//      C, funcDC, selfType);
+//
+//  auto castProxyExpr = ForcedCheckedCastExpr::createImplicit(
+//      C, makeProxyCallExpr, selfType);
+//  castProxyExpr->setCastKind(CheckedCastKind::ValueCast);
+
+//  auto castProxyExpr = UnresolvedDeclRefExpr::createImplicit(
+//      C, C.getIdentifier("unsafeBitCast"), {Identifier(), C.Id_to});
+//  auto call = CallExpr::createImplicit(
+//      C, castProxyExpr,
+//      {makeProxyCallExpr, selfTypeExpr},
+//      {Identifier(), C.Id_to});
+
+//  auto *assignSelfProxyExpr = new (C) AssignExpr(
+//      selfRef, SourceLoc(), makeProxyCallExpr, /*Implicit=*/true);
+//  statements.push_back(assignSelfProxyExpr);
+  // ==== ----------------------------------------------------
+
+//  // ==== ----------------------------------------------------
+//  // ==== `self.actorTransport = transport`
+//  auto *varTransportExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+//                                                             C.Id_actorTransport);
+//  auto *assignTransportExpr = new (C) AssignExpr(
+//      varTransportExpr, SourceLoc(), transportExpr, /*Implicit=*/true);
+//  statements.push_back(assignTransportExpr);
+//
+//  // ==== `self.actorAddress = transport.assignAddress<Self>(Self.self)`
+//  // self.actorAddress
+//  auto *varAddressExpr = UnresolvedDotExpr::createImplicit(C, selfRef,
+//                                                           C.Id_actorAddress);
+//  // Bound transport.assignAddress(Self.self) call
+//  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+//  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+//  auto *callExpr = createCall_DistributedActor_transport_assignAddress(C, funcDC,
+//      /*base=*/transportExpr,
+//      /*returnType=*/addressType,
+//      /*param=*/selfType);
+//  auto *assignAddressExpr = new (C) AssignExpr(
+//      varAddressExpr, SourceLoc(), callExpr, /*Implicit=*/true);
+//  statements.push_back(assignAddressExpr);
+//  // ==== ----------------------------------------------------
+
+  // ==== ----------------------------------------------------
+  // ==== ----------------------------------------------------
+  // TODO: towards this one...
   // FIXME: this must be checking with the transport instead
-  auto *assignAddressExpr = new (C) AssignExpr(
-      varAddressExpr, SourceLoc(), addressExpr, /*Implicit=*/true);
-  statements.push_back(assignAddressExpr);
-  // end-of-FIXME: this must be checking with the transport instead
+  // ==== TODO: let result = try transport.resolve(address: address, as: selfType)
+  // ==== TODO: switch result {
+  // ==== TODO: case .resolved(let instance):
+  // ==== TODO:   self = instance
+  // ==== TODO: case .makeProxy:
+//  // ==== try transport.resolve(address
+//  auto resolvedType = C.getResolvedDistributedActorDecl()->getDeclaredInterfaceType();
+//  auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
+//  auto *resolveCallExpr = createCall_DistributedActor_transport_resolve(C, funcDC,
+//      /*base=*/transportExpr,
+//      /*resolvedType=*/resolvedType,
+//      /*paramAddress=*/addressExpr,
+//      /*paramSelfType=*/selfType);
+//  auto *tryResolveCallExpr = new (C) TryExpr(SourceLoc(), resolveCallExpr, Type(),
+//      /*Implicit=*/true);
+//
+//  // TODO: check the call result, is it a resolved or instance
+//  // let resolved: ResolvedDistributedActor<Act>
+////  VarDecl *resolvedDecl = createVar_resolved(
+////      C, funcDC, resolvedDecl, selfType, VarDecl::Introducer::Let);
+////  auto *resolvedPattern = NamedPattern::createImplicit(C, resolvedDecl);
+////  auto *resolvedBindingDecl = PatternBindingDecl::createImplicit(
+////      C, StaticSpellingKind::None, resolvedPattern, resolveCallExpr, funcDC);
+////  statements.push_back(resolvedDecl);
+//
+//  // TODO apply?
+//
+//  // ==== body for `case .resolved(let instance): ...`
+//  SmallVector<ASTNode, 2> caseStatements;
+//  auto resolvedInstanceCaseBody = BraceStmt::create(C, SourceLoc(), caseStatements, SourceLoc());
+//  // body for `case .makeProxy: ...
+//  auto makeProxyCaseBody = BraceStmt::create(C, SourceLoc(), caseStatements, SourceLoc());
+//
+//  // ==== switch resolved { ... }
+//  auto *resolvedSwitchDecl = createSwitch_resolved(
+//      C, funcDC,
+//      resolvedType,
+//      /*case resolved: {body}*/resolvedInstanceCaseBody,
+//      /*case makeProxy: {body}*/makeProxyCaseBody,
+//      /*paramResolved=*/resolvedDecl);
+//  statements.push_back(resolvedSwitchDecl);
+//
+  // ==== ----------------------------------------------------
+  // ==== ----------------------------------------------------
 
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
 
+
+//  body->dump();
+//  fprintf(stderr, "[%s:%d] (%s) BODY ^^^\n", __FILE__, __LINE__, __FUNCTION__);
   return { body, /*isTypeChecked=*/false };
 }
 
@@ -250,7 +652,7 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
 /// resolve initializer.
 static ConstructorDecl *
 createDistributedActor_init_resolve(ClassDecl *classDecl,
-                                  ASTContext &ctx) {
+                                    ASTContext &ctx) {
   auto &C = ctx;
 
   auto conformanceDC = classDecl;
@@ -292,7 +694,9 @@ createDistributedActor_init_resolve(ClassDecl *classDecl,
           /*GenericParams=*/nullptr, conformanceDC);
   initDecl->setImplicit();
   initDecl->setSynthesized();
-  initDecl->setBodySynthesizer(&createDistributedActor_init_resolve_body);
+  // initDecl->setBodySynthesizer(&createDistributedActor_init_resolve_body); // FIXME?????!!!!!!
+  initDecl->setBodySynthesizer(synthesizeStubBody);
+//  initDecl->setStubImplementation(true); // TODO: if we set this we're not getting into SIL generation for it?
 
   // This constructor is 'required', all distributed actors MUST have it.
   initDecl->getAttrs().add(new (C) RequiredAttr(/*IsImplicit*/true));
@@ -315,25 +719,18 @@ createDistributedActorInit(ClassDecl *classDecl,
 
   switch (argumentNames.size()) {
     case 1: {
-      if (requirement->isDistributedActorLocalInit()) {
+      if (requirement->isDistributedActorLocalInit())
         return createDistributedActor_init_local(classDecl, ctx);
-      }
-
-      if (argumentNames[0] == C.Id_from) {
-        // TODO: do we need to check types of the params here too?
-        // TODO: implement synthesis
-        return nullptr;
-      }
       break;
     }
-    case 2:
-      if (requirement->isDistributedActorResolveInit()) {
+    case 2: {
+      if (requirement->isDistributedActorResolveInit())
         return createDistributedActor_init_resolve(classDecl, ctx);
-      }
       break;
+    }
   }
 
-  return nullptr; // TODO: make it assert(false); after we're done with all
+  return nullptr;
 }
 
 static void collectNonOveriddenDistributedActorInits(
@@ -412,6 +809,7 @@ static void addImplicitDistributedActorConstructors(ClassDecl *decl) {
   collectNonOveriddenDistributedActorInits(
       ctx, decl, nonOverridenCtors);
 
+  // FIXME: change this, as people cannot ever override our inits anyway
   for (auto *daCtor : nonOverridenCtors) {
     if (auto ctor = createDistributedActorInit(decl, daCtor, ctx)) {
       decl->addMember(ctor);
@@ -425,18 +823,16 @@ static void addImplicitDistributedActorConstructors(ClassDecl *decl) {
 
 // TODO: deduplicate with 'declareDerivedProperty' from DerivedConformance...
 std::pair<VarDecl *, PatternBindingDecl *>
-createStoredProperty(ClassDecl *classDecl, ASTContext &ctx,
+createStoredProperty(ValueDecl *parent, DeclContext *parentDC, ASTContext &ctx,
                      VarDecl::Introducer introducer, Identifier name,
                      Type propertyInterfaceType, Type propertyContextType,
                      bool isStatic, bool isFinal) {
-  auto parentDC = classDecl;
-
   VarDecl *propDecl = new (ctx)
       VarDecl(/*IsStatic*/ isStatic, introducer,
                            SourceLoc(), name, parentDC);
   propDecl->setImplicit();
   propDecl->setSynthesized();
-  propDecl->copyFormalAccessFrom(classDecl, /*sourceIsParentContext*/ true);
+  propDecl->copyFormalAccessFrom(parent, /*sourceIsParentContext*/ true);
   propDecl->setInterfaceType(propertyInterfaceType);
 
   Pattern *propPat = NamedPattern::createImplicit(ctx, propDecl);
@@ -454,10 +850,10 @@ createStoredProperty(ClassDecl *classDecl, ASTContext &ctx,
 /// Adds the following, fairly special, properties to each distributed actor:
 /// - actorTransport
 /// - actorAddress
-static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
-  assert(decl->isDistributedActor());
-
-  auto &C = decl->getASTContext();
+/// - storage
+static void addImplicitDistributedActorStoredProperties(ClassDecl *actorDecl) {
+  assert(actorDecl->isDistributedActor());
+  auto &C = actorDecl->getASTContext();
 
   // ```
   // @_distributedActorIndependent
@@ -470,7 +866,7 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
     VarDecl *propDecl;
     PatternBindingDecl *pbDecl;
     std::tie(propDecl, pbDecl) = createStoredProperty(
-        decl, C,
+        actorDecl, actorDecl, C,
         VarDecl::Introducer::Let, C.Id_actorAddress,
         propertyType, propertyType,
         /*isStatic=*/false, /*isFinal=*/true);
@@ -479,8 +875,8 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
     propDecl->getAttrs().add(
         new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
 
-    decl->addMember(propDecl);
-    decl->addMember(pbDecl);
+    actorDecl->addMember(propDecl);
+    actorDecl->addMember(pbDecl);
   }
 
   // ```
@@ -494,7 +890,7 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
     VarDecl *propDecl;
     PatternBindingDecl *pbDecl;
     std::tie(propDecl, pbDecl) = createStoredProperty(
-        decl, C,
+        actorDecl, actorDecl, C,
         VarDecl::Introducer::Let, C.Id_actorTransport,
         propertyType, propertyType,
         /*isStatic=*/false, /*isFinal=*/true);
@@ -503,21 +899,139 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
     propDecl->getAttrs().add(
         new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
 
-    decl->addMember(propDecl);
-    decl->addMember(pbDecl);
+    actorDecl->addMember(propDecl);
+    actorDecl->addMember(pbDecl);
   }
+
+  // ```
+  // private var storage: DistributedActorStorage<LocalStorage>
+  // ```
+  {
+    auto boundPersonalityType = getBoundPersonalityStorageType(C, actorDecl);
+
+    VarDecl *propDecl;
+    PatternBindingDecl *pbDecl;
+    std::tie(propDecl, pbDecl) = createStoredProperty(
+        actorDecl, actorDecl, C,
+        VarDecl::Introducer::Let, C.Id_storage,
+        boundPersonalityType, boundPersonalityType,
+        /*isStatic=*/false, /*isFinal=*/false);
+
+//    // Mark it private, only the actor itself can access storage.
+//    propDecl->setAccess(AccessLevel::Private); // TODO: do this, but this fails on 'access already set' we must set this at creation inside the createStoredProperty
+
+//    // FIXME: we need to somehow mark it to not be included in "slap property wrappers on things"
+//    //       however independent is the wrong thing; so I guess just the synthesized or implicit thing?
+//    // SEE ALSO: isDistributedActorStoredProperty which would be part of the fix
+    propDecl->getAttrs().add(
+        new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
+
+    actorDecl->addMember(propDecl);
+    actorDecl->addMember(pbDecl);
+  }
+}
+
+/******************************************************************************/
+/***************************** STORAGE STRUCT *********************************/
+/******************************************************************************/
+
+// TODO: similar to getVarNameForCoding, so maybe move it onto VarDecl
+static Identifier getVarName(VarDecl *var) {
+  if (auto originalVar = var->getOriginalWrappedProperty())
+    return originalVar->getName();
+
+  return var->getName();
+}
+
+/// Create a `$Storage` type that mirrors all stored properties of a distributed actor.
+///
+/// E.g. for the following distributed actor:
+
+///     distributed actor Greeter {
+///         var name: String
+///     }
+///
+/// to be represented as:
+///
+///     distributed actor Greeter {
+///       private Storage {
+///         var name: String
+///       }
+///
+///       @distributedActorState var name: String
+///     }
+///
+/// Where the `distributedActorState` property wrapper is implemented as
+static void addImplicitDistributedActorLocalStorageStruct(ClassDecl *actorDecl) {
+  assert(actorDecl->isDistributedActor());
+  auto &C = actorDecl->getASTContext();
+
+  StructDecl *storageDecl = new (C) StructDecl(
+      SourceLoc(), C.Id_DistributedActorLocalStorage, SourceLoc(),
+      /*Inherited*/ {},
+      /*GenericParams*/ {}, actorDecl
+      );
+  storageDecl->setImplicit();
+//  storageDecl->setSynthesized();
+  // storageDecl->setAccess(AccessLevel::Private); // TODO: would love for these to be private (!!!)
+  storageDecl->copyFormalAccessFrom(actorDecl, /*sourceIsParentContext=*/true); // TODO: unfortunate
+  // storageDecl->setUserAccessible(false); // TODO: would be nice
+
+  // mirror all stored properties from the 'distributed actor' decl
+  // to the storage struct.
+  for (auto *varDecl : actorDecl->getStoredProperties()) {
+    if (!varDecl->isUserAccessible())
+      continue;
+
+//    fprintf(stderr, "[%s:%d] (%s) mirror [%s] to DistributedActorLocalStorage.%s\n",
+//            __FILE__, __LINE__, __FUNCTION__, varDecl->getBaseName(), varDecl->getBaseName());
+
+    VarDecl *propDecl;
+    PatternBindingDecl *pbDecl;
+    auto propertyType = varDecl->getInterfaceType();
+    std::tie(propDecl, pbDecl) = createStoredProperty(
+        storageDecl, storageDecl, C,
+        VarDecl::Introducer::Var, getVarName(varDecl), // TODO: copy whether it was a Var or a Let
+        propertyType, propertyType,
+        /*isStatic=*/false, /*isFinal=*/false); // TODO: if Let then make it final
+
+    storageDecl->addMember(propDecl);
+    storageDecl->addMember(pbDecl);
+  }
+
+  TypeChecker::checkConformancesInContext(storageDecl);
+
+  storageDecl->dump();
+  fprintf(stderr, "[%s:%d] (%s) synthesized STORAGE STRUCT\n", __FILE__, __LINE__, __FUNCTION__);
+  actorDecl->addMember(storageDecl);
 }
 
 /******************************************************************************/
 /************************ SYNTHESIS ENTRY POINT *******************************/
 /******************************************************************************/
 
-/// Entry point for adding all computed members to a distributed actor decl.
-static void addImplicitDistributedActorMembersToClass(ClassDecl *decl) {
-  // Bail out if not a distributed actor definition.
-  if (!decl->isDistributedActor())
-    return;
+///// Entry point for adding all computed members to a distributed actor decl.
+//static void addImplicitDistributedActorConstructors(ClassDecl *decl) {
+//  // Bail out if not a distributed actor definition.
+//  if (!decl->isDistributedActor())
+//    return;
+//
+////  addImplicitDistributedActorLocalStorageStruct(decl);
+//////  addImplicitDistributedActorTypeAliases(decl);
+////  addImplicitDistributedActorStoredProperties(decl);
+//  addImplicitDistributedActorConstructors(decl);
+//
+////  fprintf(stderr, "[%s:%d] (%s) ----- ENTIRE DIST DECL --------\n", __FILE__, __LINE__, __FUNCTION__);
+////  decl->dump();
+////  fprintf(stderr, "[%s:%d] (%s) ===== END OF DIST DECL ========\n", __FILE__, __LINE__, __FUNCTION__);
+//}
 
-  addImplicitDistributedActorConstructors(decl);
-  addImplicitDistributedActorStoredProperties(decl);
-}
+//static void addImplicitDistributedActorStorage(ClassDecl *decl) {
+//  // Bail out if not a distributed actor definition.
+//  if (!decl->isDistributedActor())
+//    return;
+//
+//  addImplicitDistributedActorLocalStorageStruct(decl);
+////  addImplicitDistributedActorTypeAliases(decl);
+//  addImplicitDistributedActorStoredProperties(decl);
+//}

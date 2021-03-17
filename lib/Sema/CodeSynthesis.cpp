@@ -1150,6 +1150,24 @@ static bool shouldAttemptInitializerSynthesis(const NominalTypeDecl *decl) {
   return true;
 }
 
+void TypeChecker::addImplicitDistributedActorStorage(NominalTypeDecl *decl) {
+  // If we already added implicit storage, we're done.
+  if (decl->addedDistributedActorStorage())
+    return;
+
+  if (!shouldAttemptInitializerSynthesis(decl)) {
+    decl->setAddedDistributedActorStorage();
+    return;
+  }
+
+  auto *classDecl = dyn_cast<ClassDecl>(decl);
+  if (classDecl && classDecl->isDistributedActor()) {
+    addImplicitDistributedActorLocalStorageStruct(classDecl);
+//    addImplicitDistributedActorTypeAliases(classDecl);
+    addImplicitDistributedActorStoredProperties(classDecl);
+  }
+}
+
 void TypeChecker::addImplicitConstructors(NominalTypeDecl *decl) {
   // If we already added implicit initializers, we're done.
   if (decl->addedImplicitInitializers())
@@ -1162,7 +1180,9 @@ void TypeChecker::addImplicitConstructors(NominalTypeDecl *decl) {
 
   if (auto *classDecl = dyn_cast<ClassDecl>(decl)) {
     addImplicitInheritedConstructorsToClass(classDecl);
-    addImplicitDistributedActorMembersToClass(classDecl);
+
+    if (classDecl->isDistributedActor())
+      addImplicitDistributedActorConstructors(classDecl);
   }
 
   // Force the memberwise and default initializers if the type has them.
@@ -1245,16 +1265,22 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     (void)evaluateTargetConformanceTo(decodableProto);
   }
     break;
-  case ImplicitMemberAction::ResolveDistributedActor:
-  case ImplicitMemberAction::ResolveDistributedActorAddress: {
+  case ImplicitMemberAction::ResolveDistributedActor: {
+    // Synthesize the `struct DistributedActorLocalStorage { ... }`,
+    // along with supporting `mapStorage` to access it through the properties.
+    //
+    // Also synthesizes transport, address and storage stored properties,
+    // and changes
+    TypeChecker::addImplicitDistributedActorStorage(target);
+
     // init(transport:) and init(resolve:using:) may be synthesized as part of
     // derived conformance to the DistributedActor protocol.
     // If the target should conform to the DistributedActor protocol, check the
     // conformance here to attempt synthesis.
     TypeChecker::addImplicitConstructors(target);
-    auto *distributedActorProto =
-        Context.getProtocol(KnownProtocolKind::DistributedActor);
-    (void)evaluateTargetConformanceTo(distributedActorProto);
+
+    (void)evaluateTargetConformanceTo(
+        Context.getProtocol(KnownProtocolKind::DistributedActor));
   }
     break;
   }

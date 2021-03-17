@@ -449,8 +449,12 @@ InitKindRequest::evaluate(Evaluator &evaluator, ConstructorDecl *decl) const {
     // it ties the actors lifecycle with the transport. As such, it must always
     // be invoked by any other initializer, just like a designated initializer.
     if (auto clazz = dyn_cast<ClassDecl>(decl->getDeclContext())) {
-      if (clazz->isDistributedActor() && decl->isDistributedActorLocalInit())
-        return CtorInitializerKind::Designated;
+      if (clazz->isDistributedActor()) {
+        if (decl->isDistributedActorLocalInit())
+          return CtorInitializerKind::DesignatedDistributedLocal; // TODO: DistributedLocal
+        if (decl->isDistributedActorResolveInit())
+          return CtorInitializerKind::DistributedResolve;
+      }
     }
 
     if (decl->getDeclContext()->getExtendedProtocolDecl()) {

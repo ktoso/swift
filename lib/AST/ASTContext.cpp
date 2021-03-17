@@ -236,6 +236,12 @@ struct ASTContext::Implementation {
   /// The declaration of _Concurrency.NSObjectDefaultActor.
   ClassDecl *NSObjectDefaultActorDecl = nullptr;
 
+  /// The declaration of _Concurrency.DistributedActorPersona.Local.
+  EnumElementDecl *DistributedActorPersonaLocalDecl = nullptr;
+
+  /// The declaration of _Concurrency.DistributedActorPersona.Remote.
+  EnumElementDecl *DistributedActorPersonaRemoteDecl = nullptr;
+
   // Declare cached declarations for each of the known declarations.
 #define FUNC_DECL(Name, Id) FuncDecl *Get##Name = nullptr;
 #include "swift/AST/KnownDecls.def"
@@ -842,6 +848,21 @@ EnumElementDecl *ASTContext::getOptionalNoneDecl() const {
     getImpl().OptionalNoneDecl =getOptionalDecl()->getUniqueElement(/*hasVal*/false);
   return getImpl().OptionalNoneDecl;
 }
+
+EnumElementDecl *ASTContext::getDistributedActorPersonaLocalDecl() const {
+  if (!getImpl().DistributedActorPersonaLocalDecl)
+    getImpl().DistributedActorPersonaLocalDecl =
+        getDistributedActorStorageDecl()->getUniqueElement(/*hasVal*/true);
+  return getImpl().DistributedActorPersonaLocalDecl;
+}
+
+EnumElementDecl *ASTContext::getDistributedActorPersonaRemoteDecl() const {
+  if (!getImpl().DistributedActorPersonaRemoteDecl)
+    getImpl().DistributedActorPersonaRemoteDecl =
+        getDistributedActorStorageDecl()->getUniqueElement(/*hasVal*/false);
+  return getImpl().DistributedActorPersonaRemoteDecl;
+}
+
 
 static VarDecl *getPointeeProperty(VarDecl *&cache,
                            NominalTypeDecl *(ASTContext::*getNominal)() const,
@@ -2673,9 +2694,21 @@ AnyFunctionType::Param swift::computeSelfParam(AbstractFunctionDecl *AFD,
   } else if (auto *CD = dyn_cast<ConstructorDecl>(AFD)) {
     if (isInitializingCtor) {
       // initializing constructors of value types always have an implicitly
-      // inout self.
-      if (!containerTy->hasReferenceSemantics())
+      // inout self, the resolve initializer of a distributed actor and ...
+      // TODO: add unlock the ability for convenience initializers, would need swift evolution?
+      if (!containerTy->hasReferenceSemantics()) {
         selfAccess = SelfAccessKind::Mutating;
+      } else if (CD->isDistributedActorResolveInit()) {
+        // we treat the resolve initializer specially here, it is allowed to
+        // assign a "proxy instance" to self, when the resolved actor is remote.
+        selfAccess = SelfAccessKind::Mutating;
+      }
+      // FIXME: this really should work for everything,
+      //        sadly this causes crashes for
+      //        @$sSo12NSDictionaryC10FoundationE10dictionaryA2Bh_tcfC
+//      else if (Ctx.isSwiftVersionAtLeast(5) && !CD->isDesignatedInit()) {
+//        selfAccess = SelfAccessKind::Mutating;
+//      }
     } else {
       // allocating constructors have metatype 'self'.
       isStatic = true;
@@ -2694,6 +2727,7 @@ AnyFunctionType::Param swift::computeSelfParam(AbstractFunctionDecl *AFD,
     // Note that we can't assert(containerTy->hasReferenceSemantics()) here
     // since incorrect or incomplete code could have deinit decls in invalid
     // contexts, and we need to recover gracefully in those cases.
+    assert(containerTy->hasReferenceSemantics());
   }
 
   if (isDynamicSelf)

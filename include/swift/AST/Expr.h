@@ -135,6 +135,8 @@ enum class AccessSemantics : uint8_t {
   /// This is an ordinary access to a declaration, using whatever
   /// polymorphism is expected.
   Ordinary,
+
+  // TODO: doug, is the protection of properties a new access semantics type?
 };
 
 /// Expr - Base class for all expressions in swift.

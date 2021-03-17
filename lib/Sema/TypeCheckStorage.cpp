@@ -3071,6 +3071,38 @@ static void finishPropertyWrapperImplInfo(VarDecl *var,
   }
 }
 
+static void finishDistributedActorPropertyImplInfo(VarDecl *var,
+                                                   StorageImplInfo &info) {
+  auto parentSF = var->getDeclContext()->getParentSourceFile();
+  if (!parentSF)
+    return;
+
+  bool wrapperSetterIsUsable = false;
+  if (var->getParsedAccessor(AccessorKind::Set)) {
+    wrapperSetterIsUsable = true;
+  } else if (parentSF && parentSF->Kind != SourceFileKind::Interface
+             && !var->isLet()) {
+    if (auto comp = var->getPropertyWrapperMutability()) {
+      wrapperSetterIsUsable =
+        comp->Setter != PropertyWrapperMutability::DoesntExist;
+    } else {
+      wrapperSetterIsUsable = true;
+    }
+  }
+
+  if (!wrapperSetterIsUsable) {
+    info = StorageImplInfo::getImmutableComputed();
+    return;
+  }
+
+  if (var->hasObservers() || var->getDeclContext()->isLocalContext()) {
+    info = StorageImplInfo::getMutableComputed();
+  } else {
+    info = StorageImplInfo(ReadImplKind::Get, WriteImplKind::Set,
+                           ReadWriteImplKind::Modify);
+  }
+}
+
 static void finishNSManagedImplInfo(VarDecl *var,
                                     StorageImplInfo &info) {
   auto *attr = var->getAttrs().getAttribute<NSManagedAttr>();
@@ -3135,6 +3167,9 @@ static void finishStorageImplInfo(AbstractStorageDecl *storage,
     } else if (var->hasAttachedPropertyWrapper()) {
       finishPropertyWrapperImplInfo(var, info);
     }
+//    else if (var->isDistributedActorStoredProperty()) { // FIXME: !!!!!!
+//      finishDistributedActorPropertyImplInfo(var, info);
+//    }
   }
 
   if (isa<ProtocolDecl>(dc))

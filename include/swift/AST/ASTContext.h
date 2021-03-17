@@ -491,6 +491,12 @@ public:
   /// Retrieve the declaration of Swift.Optional<T>.None.
   EnumElementDecl *getOptionalNoneDecl() const;
 
+  /// Retrieve the declaration of _Concurrency.DistributedActorPersona.Local.
+  EnumElementDecl *getDistributedActorPersonaLocalDecl() const;
+
+  /// Retrieve the declaration of _Concurrency.DistributedActorPersona.Remote.
+  EnumElementDecl *getDistributedActorPersonaRemoteDecl() const;
+
   /// Retrieve the declaration of the "pointee" property of a pointer type.
   VarDecl *getPointerPointeePropertyDecl(PointerTypeKind ptrKind) const;
 

@@ -260,6 +260,89 @@ SILGenFunction::emitPreconditionOptionalHasValue(SILLocation loc,
   return ManagedValue::forUnmanaged(result.forward(*this));
 }
 
+//ManagedValue
+//SILGenFunction::emitPreconditionDistributedActorHasLocalValue(SILLocation loc,
+//                                                              ManagedValue actorSelf,
+//                                                              ManagedValue property,
+//                                                              bool isImplicitUnwrap) {
+//  // Generate code to the optional is present, and if not, abort with a message
+//  // (provided by the stdlib).
+//  SILBasicBlock *contBB = createBasicBlock();
+//  SILBasicBlock *failBB = createBasicBlock();
+//
+//  bool hadCleanup = property.hasCleanup();
+//  bool hadLValue = property.isLValue();
+//
+////  auto someDecl = getASTContext().getOptionalSomeDecl();
+////  auto noneDecl = getASTContext().getOptionalNoneDecl();
+//  auto remoteDecl = getASTContext().getDistributedActorPersonaRemoteDecl();
+//  auto localDecl = getASTContext().getDistributedActorPersonaLocalDecl();
+//
+//  // If we have an object, make sure the object is at +1. All switch_enum of
+//  // objects is done at +1.
+//  if (property.getType().isAddress()) {
+//    // We forward in the creation routine for
+//    // unchecked_take_enum_data_addr. switch_enum_addr is a +0 operation.
+//    B.createSwitchEnumAddr(loc, property.getValue(),
+//                           /*defaultDest*/ nullptr,
+//                           {{localDecl, contBB}, {remoteDecl, failBB}});
+//  } else {
+//    property = property.ensurePlusOne(*this, loc);
+//    hadCleanup = true;
+//    hadLValue = false;
+//    B.createSwitchEnum(loc, property.forward(*this),
+//                       /*defaultDest*/ nullptr,
+//                       {{localDecl, contBB}, {remoteDecl, failBB}});
+//  }
+//  B.emitBlock(failBB);
+//
+//  // Call the standard library implementation of _diagnoseUnexpectedDistributedRemoteActor.
+//  if (auto diagnoseFailure =
+//        getASTContext().getDiagnoseUnexpectedDistributedRemoteActor()) {
+//    auto args = emitSourceLocationArgs(loc.getSourceLoc(), loc);
+//
+//    auto i1Ty = SILType::getBuiltinIntegerType(1, getASTContext());
+//    auto isImplicitUnwrapLiteral =
+//      B.createIntegerLiteral(loc, i1Ty, isImplicitUnwrap);
+//    auto isImplicitUnwrapValue =
+//      ManagedValue::forUnmanaged(isImplicitUnwrapLiteral);
+//
+//    emitApplyOfLibraryIntrinsic(loc, diagnoseFailure, SubstitutionMap(),
+//                                {
+//                                  args.filenameStartPointer,
+//                                  args.filenameLength,
+//                                  args.filenameIsAscii,
+//                                  args.line,
+//                                  isImplicitUnwrapValue
+//                                },
+//                                SGFContext());
+//  }
+//
+//  B.createUnreachable(ArtificialUnreachableLocation());
+//  B.clearInsertionPoint();
+//  B.emitBlock(contBB);
+//
+//  ManagedValue result;
+//  SILType payloadType = property.getType().getOptionalObjectType(); // FIXME
+//
+//  if (payloadType.isObject()) {
+//    result = B.createOwnedPhiArgument(payloadType);
+//  } else {
+//    result =
+//        B.createUncheckedTakeEnumDataAddr(loc, property, localDecl, payloadType);
+//  }
+//
+//  if (hadCleanup) {
+//    return result;
+//  }
+//
+//  if (hadLValue) {
+//    return ManagedValue::forLValue(result.forward(*this));
+//  }
+//
+//  return ManagedValue::forUnmanaged(result.forward(*this));
+//}
+
 SILValue SILGenFunction::emitDoesOptionalHaveValue(SILLocation loc,
                                                    SILValue addrOrValue) {
   auto boolTy = SILType::getBuiltinIntegerType(1, getASTContext());

@@ -1889,6 +1889,7 @@ namespace {
 Type TypeResolution::resolveType(TypeRepr *TyR,
                                  GenericParamList *silParams) const {
   auto &ctx = getASTContext();
+  assert(TyR);
   auto Ty =
       evaluateOrDefault(ctx.evaluator,
                         ResolveTypeRequest{this, TyR, silParams}, Type());

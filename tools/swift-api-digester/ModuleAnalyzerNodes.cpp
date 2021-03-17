@@ -1326,6 +1326,8 @@ StringRef SDKContext::getInitKind(Decl *D) {
     CASE(Convenience)
     CASE(ConvenienceFactory)
     CASE(Factory)
+    CASE(DesignatedDistributedLocal)
+    CASE(DistributedResolve)
 #undef CASE
     }
   }

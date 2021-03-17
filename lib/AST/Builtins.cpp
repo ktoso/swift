@@ -1410,6 +1410,13 @@ static ValueDecl *getDefaultActorInitDestroy(ASTContext &ctx,
                             _void);
 }
 
+static ValueDecl *getDistributedActorCreateProxy(ASTContext &ctx,
+                                                 Identifier id) {
+  return getBuiltinFunction(ctx, id, _thin,
+                            _parameters(), // TODO: no idea if to pass more here?
+                            _void); // FIXME: return void*
+}
+
 static ValueDecl *getDistributedActorInitDestroy(ASTContext &ctx,
                                                  Identifier id) {
   return getBuiltinFunction(ctx, id, _thin,
@@ -2626,6 +2633,9 @@ ValueDecl *swift::getBuiltinValueDecl(ASTContext &Context, Identifier Id) {
   case BuiltinValueKind::InitializeDefaultActor:
   case BuiltinValueKind::DestroyDefaultActor:
     return getDefaultActorInitDestroy(Context, Id);
+
+  case BuiltinValueKind::CreateDistributedActorProxy:
+    return getDistributedActorCreateProxy(Context, Id);
 
   case BuiltinValueKind::InitializeDistributedRemoteActor:
   case BuiltinValueKind::DestroyDistributedActor:

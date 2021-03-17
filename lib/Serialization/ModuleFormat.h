@@ -321,6 +321,8 @@ enum CtorInitializerKind : uint8_t {
   Convenience = 1,
   Factory = 2,
   ConvenienceFactory = 3,
+  DesignatedDistributedLocal = 4,
+  DistributedResolve = 5,
 };
 using CtorInitializerKindField = BCFixed<2>;
 

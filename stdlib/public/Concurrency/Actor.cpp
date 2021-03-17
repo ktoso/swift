@@ -23,6 +23,7 @@
 #include "swift/Runtime/ThreadLocal.h"
 #include "swift/ABI/Task.h"
 #include "swift/ABI/Actor.h"
+#include "swift/ABI/DistributedActor.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "TaskPrivate.h"
 
@@ -1296,6 +1297,33 @@ void swift::swift_defaultActor_initialize(DefaultActor *_actor) {
 
 void swift::swift_defaultActor_destroy(DefaultActor *_actor) {
   asImpl(_actor)->destroy();
+}
+
+enum {
+    DISTRIBUTED_ACTOR_ADDRESS_SIZE = 88,
+};
+
+// TODO: make it accept the metatype?
+void* swift::swift_distributedActor_createProxy(Metadata const *actorType) {
+  fprintf(stderr, "[%s:%d] (%s) creating proxy...\n", __FILE__, __LINE__, __FUNCTION__);
+  // Figure out the size to allocate.
+  // TODO: this is likely slightly wrong?
+  size_t headerSize = sizeof(DistributedRemoteActor);
+//  headerSize += DISTRIBUTED_ACTOR_ADDRESS_SIZE; // must be the size of `ActorAddress`
+//  headerSize += sizeof(uintptr_t); // size of pointer to `ActorTransport`
+
+  headerSize = llvm::alignTo(headerSize, llvm::Align(Alignment_DistributedActorProxy));
+  size_t amountToAllocate = headerSize;
+
+  assert(amountToAllocate % MaximumAlignment == 0);
+
+  void *allocation = malloc(amountToAllocate);
+
+  DistributedRemoteActor *proxy =
+      reinterpret_cast<DistributedRemoteActor*>(
+          reinterpret_cast<char*>(allocation) + headerSize);
+
+  return allocation;
 }
 
 // TODO: most likely where we'd need to create the "proxy instance" instead?

@@ -5114,8 +5114,10 @@ Optional<KnownDerivableProtocolKind>
   case KnownProtocolKind::Differentiable:
     return KnownDerivableProtocolKind::Differentiable;
   case KnownProtocolKind::DistributedActor:
-    return KnownDerivableProtocolKind::DistributedActor;
-  default: return None;
+    return None;
+//    return KnownDerivableProtocolKind::DistributedActor; // FIXME: !!!!!!!!!!
+  default:
+    return None;
   }
 }
 
@@ -5843,6 +5845,23 @@ bool VarDecl::isMemberwiseInitialized(bool preferDeclaredProperties) const {
 
 bool VarDecl::isAsyncLet() const {
   return getAttrs().hasAttribute<AsyncAttr>();
+}
+
+bool VarDecl::isDistributedActorStoredProperty() const {
+  if (auto classDecl = dyn_cast<ClassDecl>(getDeclContext())) {
+    if (!classDecl->isDistributedActor())
+      return false;
+    if (isDistributedActorIndependent())
+      return false;
+
+    auto &C = getASTContext();
+    auto name = getBaseName();
+    return name != C.Id_actorTransport &&
+           name != C.Id_actorAddress &&
+           name != C.Id_storage;
+  }
+
+  return false;
 }
 
 void ParamDecl::setSpecifier(Specifier specifier) {
@@ -7604,17 +7623,6 @@ bool FuncDecl::isMainTypeMainMethod() const {
          getParameters()->size() == 0;
 }
 
-bool VarDecl::isDistributedActorAddressName(ASTContext &ctx, DeclName name) {
-  assert(name.getArgumentNames().size() == 0);
-  return name.getBaseName() == ctx.Id_actorAddress;
-}
-
-bool VarDecl::isDistributedActorTransportName(ASTContext &ctx, DeclName name) {
-  assert(name.getArgumentNames().size() == 0);
-  return name.getBaseName() == ctx.Id_transport ||
-    name.getBaseName() == ctx.Id_actorTransport;
-}
-
 ConstructorDecl::ConstructorDecl(DeclName Name, SourceLoc ConstructorLoc,
                                  bool Failable, SourceLoc FailabilityLoc,
                                  bool Throws,
@@ -7666,9 +7674,16 @@ bool ConstructorDecl::isObjCZeroParameterWithLongSelector() const {
 }
 
 bool ConstructorDecl::isDistributedActorLocalInit() const {
+  // Only a `distributed actor` may have its specialized initializers.
+  if (auto clazz = dyn_cast<ClassDecl>(getParent()))
+    if (!clazz->isDistributedActor())
+      return false;
+
   auto name = getName();
   auto argumentNames = name.getArgumentNames();
 
+  // the signature must be:
+  //    init(transport: ActorAddress)
   if (argumentNames.size() != 1)
     return false;
 
@@ -7684,9 +7699,16 @@ bool ConstructorDecl::isDistributedActorLocalInit() const {
 }
 
 bool ConstructorDecl::isDistributedActorResolveInit() const {
+  // Only a `distributed actor` may have its specialized initializers.
+  if (auto clazz = dyn_cast<ClassDecl>(getParent()))
+    if (!clazz->isDistributedActor())
+      return false;
+
   auto name = getName();
   auto argumentNames = name.getArgumentNames();
 
+  // the signature must be:
+  //    init(resolve address: ActorAddress, using transport: ActorTransport) throws
   if (argumentNames.size() != 2)
     return false;
 

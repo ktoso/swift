@@ -752,9 +752,11 @@ BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, CancelAsyncTask)
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, CreateAsyncTask)
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, CreateAsyncTaskFuture)
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, CreateAsyncTaskGroupFuture)
+
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, InitializeDefaultActor)
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, DestroyDefaultActor)
 
+BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, CreateDistributedActorProxy)
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, InitializeDistributedRemoteActor)
 BUILTIN_OPERAND_OWNERSHIP(InteriorPointer, DestroyDistributedActor)
 

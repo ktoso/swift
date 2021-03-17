@@ -354,7 +354,6 @@ static void installCodingKeysIfNecessary(NominalTypeDecl *NTD) {
   (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
 }
 
-// TODO: same ugly hack as Codable does...
 static void installDistributedActorIfNecessary(NominalTypeDecl *NTD) {
   auto req =
     ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActor};
@@ -1224,8 +1223,13 @@ static std::string getFixItStringForDecodable(ClassDecl *CD,
 /// Diagnose a class that does not have any initializers.
 static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
   ASTContext &C = classDecl->getASTContext();
-  C.Diags.diagnose(classDecl, diag::class_without_init,
-                   classDecl->getDeclaredType());
+
+  if (!classDecl->isDistributedActor()) {
+    /// Distributed actors are classes which get automatically synthesized initializers,
+    /// as long as they are all valid, we're good; and we definitely have *some* inits.
+    C.Diags.diagnose(classDecl, diag::class_without_init,
+                     classDecl->getDeclaredType());
+  }
 
   // HACK: We've got a special case to look out for and diagnose specifically to
   // improve the experience of seeing this, and mitigate some confusion.
@@ -1326,9 +1330,32 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
     if (pbd->isStatic() || !pbd->hasStorage() ||
         pbd->isDefaultInitializable() || pbd->isInvalid())
       continue;
-   
+
+    if (auto var = pbd->getSingleVar())
+//      fprintf(stderr, "[%s:%d] (%s) checking %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+
+      if (classDecl->isDistributedActor()) {
+      // we may have synthesized properties that do not have initial values,
+      // however we guarantee they will be initialized in other ways, i.e. the
+      // distributed actor initializers have strong guarantees about initializing
+      // the transport and address fields of a 'distributed actor'.
+      if (auto var = pbd->getSingleVar()) {
+        if (var->isSynthesized()) {
+          if (var->getBaseName() == C.Id_actorAddress || // FIXME: need to check it's the specific fields
+              var->getBaseName() == C.Id_actorTransport ||
+              var->getBaseName() == C.Id_storage) {
+//            fprintf(stderr, "[%s:%d] (%s) checking, was distributed actor synth property %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+            continue;
+          }
+        }
+      }
+    }
+
     for (auto idx : range(pbd->getNumPatternEntries())) {
-      if (pbd->isInitialized(idx)) continue;
+      if (pbd->isInitialized(idx)) {
+//        fprintf(stderr, "[%s:%d] (%s) is initialized\n", __FILE__, __LINE__, __FUNCTION__);
+        continue;
+      }
 
       auto *pattern = pbd->getPattern(idx);
       SmallVector<VarDecl *, 4> vars;
@@ -1375,6 +1402,7 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 }
 
 static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
+//  fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
   if (auto *SF = classDecl->getParentSourceFile()) {
     // Allow classes without initializers in SIL and module interface files.
     switch (SF->Kind) {
@@ -1400,9 +1428,12 @@ static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
     return;
 
   for (auto member : classDecl->lookupDirect(DeclBaseName::createConstructor())) {
+//    fprintf(stderr, "[%s:%d] (%s) ctor \n", __FILE__, __LINE__, __FUNCTION__);
     auto ctor = dyn_cast<ConstructorDecl>(member);
-    if (ctor && ctor->isDesignatedInit())
+    if (ctor && ctor->isDesignatedInit()) {
+//      fprintf(stderr, "[%s:%d] (%s) return, is designated \n", __FILE__, __LINE__, __FUNCTION__);
       return;
+    }
   }
 
   diagnoseClassWithoutInitializers(classDecl);
@@ -2222,7 +2253,6 @@ public:
     TypeChecker::addImplicitConstructors(SD);
 
     installCodingKeysIfNecessary(SD);
-    installDistributedActorIfNecessary(SD);
 
     TypeChecker::checkDeclAttributes(SD);
 
@@ -2338,6 +2368,8 @@ public:
 
   void visitClassDecl(ClassDecl *CD) {
     checkUnsupportedNestedType(CD);
+
+    installDistributedActorIfNecessary(CD);
 
     // Force creation of the generic signature.
     (void) CD->getGenericSignature();

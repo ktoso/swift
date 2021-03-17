@@ -539,6 +539,10 @@ void swift::simple_display(
     out << "convenience_factory"; break;
   case CtorInitializerKind::Factory:
     out << "factory"; break;
+  case CtorInitializerKind::DesignatedDistributedLocal:
+    out << "designated_distributed_local"; break;
+  case CtorInitializerKind::DistributedResolve:
+    out << "distributed_resolve"; break;
   }
   out << " }";
 }
@@ -1087,10 +1091,7 @@ void swift::simple_display(llvm::raw_ostream &out,
     out << "resolve Decodable.init(from:)";
     break;
   case ImplicitMemberAction::ResolveDistributedActor:
-    out << "resolve DistributedActor[init(transport:), init(resolve:using:)]";
-    break;
-  case ImplicitMemberAction::ResolveDistributedActorAddress:
-    out << "resolve DistributedActor[actorAddress]";
+    out << "resolve DistributedActor";
     break;
   }
 }

@@ -290,6 +290,15 @@ void irgen::emitBuiltinCall(IRGenFunction &IGF, const BuiltinInfo &Builtin,
   if (Builtin.ID == BuiltinValueKind::DestroyDefaultActor) {
   }
 
+  if (Builtin.ID == BuiltinValueKind::CreateDistributedActorProxy) {
+    auto fn = IGF.IGM.getDistributedActorCreateProxyFn();
+    // TODO: take parameters?
+    // auto actorType = ...
+    auto call = IGF.Builder.CreateCall(fn, { /* actorType */ });
+    call->setCallingConv(IGF.IGM.SwiftCC);
+    return;
+  }
+
   if (Builtin.ID == BuiltinValueKind::InitializeDistributedRemoteActor) {
     auto fn = IGF.IGM.getDistributedActorInitializeRemoteFn();
     auto actor = args.claimNext();
