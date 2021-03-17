@@ -411,15 +411,17 @@ AttachedPropertyWrappersRequest::evaluate(Evaluator &evaluator,
   // if the property is declared in a 'distributed actor' synthesize
   // @distributedActorValue for it, which will implement and enforce the
   // storage implementation by delegating to `self.$personality`.
-  if (var->isDistributedActorStoredProperty()) {
-    fprintf(stderr, "[%s:%d] (%s) DIST STORED PROPERTY [%s]\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
-    auto distributedActorStorageType =
-        ctx.getDistributedActorStorageDecl()->getDeclaredInterfaceType();
-    auto typeExpr = TypeExpr::createImplicit(distributedActorStorageType, ctx);
-    auto distStorageAttr = CustomAttr::create(
-        ctx, SourceLoc(), typeExpr, /*implicit=*/true);
-    result.push_back(distStorageAttr);
-  }
+  if (auto classDecl = dyn_cast<ClassDecl>(dc))
+    if (var->isDistributedActorStoredProperty()) {
+//    if (classDecl->isDistributedActor()) {
+      fprintf(stderr, "[%s:%d] (%s) DIST STORED PROPERTY [%s]\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+      auto distributedActorStorageType =
+          ctx.getDistributedActorStorageDecl()->getDeclaredInterfaceType();
+      auto typeExpr = TypeExpr::createImplicit(distributedActorStorageType, ctx);
+      auto distStorageAttr = CustomAttr::create(
+          ctx, SourceLoc(), typeExpr, /*implicit=*/true);
+      result.push_back(distStorageAttr);
+    }
 
   for (auto attr : var->getAttrs().getAttributes<CustomAttr>()) {
     auto mutableAttr = const_cast<CustomAttr *>(attr);

@@ -1810,9 +1810,9 @@ void swift::ownership::collectDIElementUsesFrom(
     const DIMemoryObjectInfo &MemoryInfo, DIElementUseInfo &UseInfo) {
 
   if (shouldPerformClassInitSelf(MemoryInfo)) {
-    if (auto classDecl = MemoryInfo.getASTType()->getClassOrBoundGenericClass())
-      fprintf(stderr, "[%s:%d] (%s) shouldPerformClassInitSelf on %s\n", __FILE__, __LINE__, __FUNCTION__,
-              classDecl->getBaseName());
+//    if (auto classDecl = MemoryInfo.getASTType()->getClassOrBoundGenericClass())
+//      fprintf(stderr, "[%s:%d] (%s) shouldPerformClassInitSelf on %s\n", __FILE__, __LINE__, __FUNCTION__,
+//              classDecl->getBaseName());
     ClassInitElementUseCollector UseCollector(MemoryInfo, UseInfo);
     UseCollector.collectClassInitSelfUses();
     gatherDestroysOfContainer(MemoryInfo, UseInfo);

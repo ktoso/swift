@@ -822,9 +822,9 @@ void SILGenModule::emitFunctionDefinition(SILDeclRef constant, SILFunction *f) {
 
     if (decl->getDeclContext()->getSelfClassDecl()) {
       if (decl->isDistributedActorResolveInit()) {
-        fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor allocator; resolve init\n", __FILE__, __LINE__, __FUNCTION__);
+//        fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor allocator; resolve init\n", __FILE__, __LINE__, __FUNCTION__);
       } else if (decl->isDistributedActorLocalInit()) {
-        fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor allocator; local init\n", __FILE__, __LINE__, __FUNCTION__);
+//        fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor allocator; local init\n", __FILE__, __LINE__, __FUNCTION__);
       }
     }
 
@@ -862,7 +862,7 @@ void SILGenModule::emitFunctionDefinition(SILDeclRef constant, SILFunction *f) {
 //    PrettyStackTraceSILFunction X("silgen constructor initializer", f);
     f->createProfiler(decl, constant, ForDefinition);
     if (decl->isDistributedActorResolveInit()) {
-      fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor initializer; resolve init\n", __FILE__, __LINE__, __FUNCTION__);
+//      fprintf(stderr, "[%s:%d] (%s) SIL gen: distributed actor initializer; resolve init\n", __FILE__, __LINE__, __FUNCTION__);
       SILGenFunction(*this, *f, decl).emitClassConstructorInitializer(decl);
     } else {
       SILGenFunction(*this, *f, decl).emitClassConstructorInitializer(decl);
