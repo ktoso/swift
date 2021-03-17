@@ -5114,8 +5114,10 @@ Optional<KnownDerivableProtocolKind>
   case KnownProtocolKind::Differentiable:
     return KnownDerivableProtocolKind::Differentiable;
   case KnownProtocolKind::DistributedActor:
-    return KnownDerivableProtocolKind::DistributedActor;
-  default: return None;
+    return None;
+//    return KnownDerivableProtocolKind::DistributedActor; // FIXME: !!!!!!!!!!
+  default:
+    return None;
   }
 }
 
@@ -5847,9 +5849,16 @@ bool VarDecl::isAsyncLet() const {
 
 bool VarDecl::isDistributedActorStoredProperty() const {
   if (auto classDecl = dyn_cast<ClassDecl>(getDeclContext())) {
-    return classDecl->isDistributedActor() &&
-           !isDistributedActorIndependent(); // &&
-        // getBaseName() != "storage"; // FIXME: how to make this less hacky?
+    if (!classDecl->isDistributedActor())
+      return false;
+    if (isDistributedActorIndependent())
+      return false;
+
+    auto &C = getASTContext();
+    auto name = getBaseName();
+    return name != C.Id_actorTransport &&
+           name != C.Id_actorAddress &&
+           name != C.Id_storage;
   }
 
   return false;

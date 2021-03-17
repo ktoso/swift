@@ -21,43 +21,7 @@ import Swift
 /// point. Actor classes implicitly conform to this protocol as part of their
 /// primary class definition.
 public protocol DistributedActor: Actor, Codable {
-
-  // TODO: implement this as source of the restriction rather than hardcoded Codable
-  // /// Type to which all parameters and return types of 'distributed' functions
-  // /// declared on this specific distributed actor type must conform to.
-  // ///
-  // /// ### Default strategy
-  // /// Unless overriden by a specific typealias requirement in a distributed
-  // /// actor, or `DistributedActor` restricted protocol, this type will be
-  // /// synthesized as:
-  // ///
-  // ///     typealias DistributedSendable = Codable & Sendable
-  // ///
-  // /// ### Customization
-  // /// It is possible to override this associated type any type requirement,
-  // /// however the used type must also be `Sendable` as for distributed-local
-  // /// actor interactions it must be safe to share as usual between actors as
-  // /// usual.
-  // ///
-  // /// The need for customizing this is expected to be fairly uncommon, as
-  // /// specific serialization requirements should be able to be handled by
-  // /// Encoder/Decoder implementations used by a specific `ActorTransport`.
-  // /// Some very special transports however may need to restrict the allowed
-  // /// types to a very limited, or custom tailored set of types. This
-  // /// customization point allows them to do just that, e.g. to require only
-  // /// sending "known size" values, such as integers and fixed-size collections etc.
-  // associatedtype DistributedSendable
-
-  /// Represents the actual "storage" in which the distributed actor keeps all
-  /// local state. Its implementation is synthesized and mirrors all stored
-  /// properties declared on the 'distributed actor' type itself.
-  ///
-  /// Only a local instance of a distributed actor contains such storage.
-  ///
-  /// ### Synthesis
-  /// An implementation of a struct implementing this associated type
-  /// is synthesized by the compiler.
-  associatedtype LocalStorage
+  associatedtype DistributedActorLocalStorage
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
@@ -106,12 +70,12 @@ public protocol DistributedActor: Actor, Codable {
 
   // TODO: would be best if this was completely user inaccessible? Not sure we want to commit to the existence of this
   // FIXME: can we hide this from public API?
-  var storage: DistributedActorStorage<LocalStorage> { get set }
+  var storage: DistributedActorStorage<DistributedActorLocalStorage> { get set }
 
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
   // FIXME: can we hide this method from public API?
-  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<LocalStorage, T>
+  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T>
 
 }
 
@@ -219,22 +183,22 @@ public struct DistributedActorValue<Value> {
     storage storageKeyPath: ReferenceWritableKeyPath<Myself, Self>
   ) -> Value {
     get {
-      guard case .local(let localStorage) = actor.storage else {
+      guard case .local(let DistributedActorLocalStorage) = actor.storage else {
         fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
       }
       
-      let kp: KeyPath<Myself.LocalStorage, Value> =
+      let kp: KeyPath<Myself.DistributedActorLocalStorage, Value> =
         Myself.mapStorage(keyPath: wrappedKeyPath)
-      return localStorage[keyPath: kp]
+      return DistributedActorLocalStorage[keyPath: kp]
     }
     
     set {
-      guard case .local(var localStorage) = actor.storage else {
+      guard case .local(var DistributedActorLocalStorage) = actor.storage else {
         fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
       }
-      let kp: WritableKeyPath<Myself.LocalStorage, Value> =
+      let kp: WritableKeyPath<Myself.DistributedActorLocalStorage, Value> =
         Myself.mapStorage(keyPath: wrappedKeyPath) as! WritableKeyPath
-      localStorage[keyPath: kp] = newValue
+      DistributedActorLocalStorage[keyPath: kp] = newValue
     }
   }
 

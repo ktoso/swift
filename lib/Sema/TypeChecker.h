@@ -541,6 +541,11 @@ bool checkContextualRequirements(GenericTypeDecl *decl,
                                  SourceLoc loc,
                                  DeclContext *dc);
 
+
+/// Add synthesized storage properties and supporting structures to a
+/// distributed actor decl.
+void addImplicitDistributedActorStorage(NominalTypeDecl *decl);
+
 /// Add any implicitly-defined constructors required for the given
 /// struct, class or actor.
 void addImplicitConstructors(NominalTypeDecl *typeDecl);

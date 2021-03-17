@@ -1,13 +1,10 @@
 
 
 
-enum Storage<A> { 
-    case local(A)
-case remote
+protocol Top { 
+    associatedtype LocalStorage
 }
 
-
-
-
-let XXXXXXXXXX = Storage<String>.remote
-
+class X: Top { 
+    typealias LocalStorage = String 
+}

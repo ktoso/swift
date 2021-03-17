@@ -496,10 +496,14 @@ protected:
     IsDebuggerAlias : 1
   );
 
-  SWIFT_INLINE_BITFIELD(NominalTypeDecl, GenericTypeDecl, 1+1+1,
+  SWIFT_INLINE_BITFIELD(NominalTypeDecl, GenericTypeDecl, 1+1+1+1,
     /// Whether we have already added implicitly-defined initializers
     /// to this declaration.
     AddedImplicitInitializers : 1,
+
+    /// Whether we have already added implicitly-defined distributed actor
+    /// storage properties and supporting structs and funcs to this declaration.
+    AddedDistributedActorStorage : 1,
 
     /// Whether there is are lazily-loaded conformances for this nominal type.
     HasLazyConformances : 1,
@@ -3029,6 +3033,7 @@ protected:
     IterableDeclContext(IterableDeclContextKind::NominalTypeDecl)
   {
     Bits.NominalTypeDecl.AddedImplicitInitializers = false;
+    Bits.NominalTypeDecl.AddedDistributedActorStorage = false;
     ExtensionGeneration = 0;
     Bits.NominalTypeDecl.HasLazyConformances = false;
     Bits.NominalTypeDecl.IsComputingSemanticMembers = false;
@@ -3067,6 +3072,17 @@ public:
   /// Note that we have attempted to add implicit initializers.
   void setAddedImplicitInitializers() {
     Bits.NominalTypeDecl.AddedImplicitInitializers = true;
+  }
+
+  /// Determine whether we have already attempted to add any
+  /// implicitly-defined distributed-actor storage to this declaration.
+  bool addedDistributedActorStorage() const {
+    return Bits.NominalTypeDecl.AddedDistributedActorStorage;
+  }
+
+  /// Note that we have attempted to add implicit distributed actor storage.
+  void setAddedDistributedActorStorage() {
+    Bits.NominalTypeDecl.AddedDistributedActorStorage = true;
   }
 
   /// getDeclaredType - Retrieve the type declared by this entity, without
