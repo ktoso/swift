@@ -6,19 +6,17 @@
 import _Concurrency
 
 distributed actor Person {
-  var name: String = ""
-
-  // typealias LocalStorage = ...
+  var name: String = "HELLO"
 
   // compiler can synthesize this
-  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<LocalStorage, T> {
-    switch keyPath {
+//  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T> {
+//    switch keyPath {
 //    case \Person.name:
 //      return \DistributedActorLocalStorage.name as! KeyPath<DistributedActorLocalStorage, T>
-    default:
-      fatalError("Bad key path: \(keyPath)")
-    }
-  }
+//    default:
+//      fatalError("Bad key path: \(keyPath)")
+//    }
+//  }
 
 }
 

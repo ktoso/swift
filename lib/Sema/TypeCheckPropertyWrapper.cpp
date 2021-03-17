@@ -654,6 +654,12 @@ Expr *swift::buildPropertyWrapperInitCall(
   Expr *initializer = value;
   ApplyExpr *innermostInit = nullptr;
 
+  fprintf(stderr, "buildPropertyWrapperInitCall, value:\n");
+  value->dump();
+  fprintf(stderr, "buildPropertyWrapperInitCall, var:\n");
+  var->dump();
+  fprintf(stderr, "\n");
+
   // Projected-value initializers don't compose, so no need to iterate
   // over the wrapper attributes.
   if (initKind == PropertyWrapperInitKind::ProjectedValue) {

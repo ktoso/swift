@@ -354,7 +354,6 @@ static void installCodingKeysIfNecessary(NominalTypeDecl *NTD) {
   (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
 }
 
-// TODO: same ugly hack as Codable does...
 static void installDistributedActorIfNecessary(NominalTypeDecl *NTD) {
   auto req =
     ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActor};
@@ -2254,7 +2253,6 @@ public:
     TypeChecker::addImplicitConstructors(SD);
 
     installCodingKeysIfNecessary(SD);
-    installDistributedActorIfNecessary(SD);
 
     TypeChecker::checkDeclAttributes(SD);
 
@@ -2370,6 +2368,8 @@ public:
 
   void visitClassDecl(ClassDecl *CD) {
     checkUnsupportedNestedType(CD);
+
+    installDistributedActorIfNecessary(CD);
 
     // Force creation of the generic signature.
     (void) CD->getGenericSignature();
