@@ -1,4 +1,4 @@
-// RUN: %target-run-simple-swift(-Xfrontend -enable-experimental-concurrency -Xfrontend -enable-experimental-distributed -parse-as-library) | %FileCheck %s
+// RUN: %target-run-simple-swift(-Xfrontend -enable-experimental-concurrency -Xfrontend -enable-experimental-distributed -parse-as-library -Xfrontend -debug-cycles) | %FileCheck %s
 
 // REQUIRES: executable_test
 // REQUIRES: concurrency
@@ -6,7 +6,7 @@
 import _Concurrency
 
 distributed actor Person {
-//  var name: String = ""
+  var name: String = ""
 
   // typealias LocalStorage = ...
 

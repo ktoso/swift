@@ -72,17 +72,16 @@ getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
   return boundStorageType;
 }
 
-static void addImplicitDistributedActorTypeAliases(ClassDecl *decl) {
-  assert(decl->isDistributedActor());
-
-  auto &C = decl->getASTContext();
+static void addImplicitDistributedActorTypeAliases(ClassDecl *actorDecl) {
+  assert(actorDecl->isDistributedActor());
+  auto &C = actorDecl->getASTContext();
 
   // ```
   // typealias DistributedActorLocalStorage = ...
   // ```
   {
     // TODO: this is a bit duplicated
-    auto localStorageTypeDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+    auto localStorageTypeDecls = actorDecl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
     if (localStorageTypeDecls.size() > 1) {
       assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
     }
@@ -97,14 +96,14 @@ static void addImplicitDistributedActorTypeAliases(ClassDecl *decl) {
     auto *aliasDecl = new (C) TypeAliasDecl(SourceLoc(), SourceLoc(),
                                             C.Id_LocalStorage, SourceLoc(),
                                             /*genericparams*/nullptr,
-                                            decl);
+                                            actorDecl);
     aliasDecl->setUnderlyingType(localStorageType);
-    aliasDecl->copyFormalAccessFrom(decl, /*sourceIsParentContext=*/true);
+    aliasDecl->copyFormalAccessFrom(actorDecl, /*sourceIsParentContext=*/true);
 
 
     aliasDecl->dump();
-    fprintf(stderr, "[%s:%d] (%s) ALIAS\n", __FILE__, __LINE__, __FUNCTION__);
-    decl->addMember(aliasDecl);
+//    fprintf(stderr, "[%s:%d] (%s) ALIAS\n", __FILE__, __LINE__, __FUNCTION__);
+    actorDecl->addMember(aliasDecl);
   }
 }
 
@@ -245,7 +244,7 @@ createBody_DistributedActor_init_transport(AbstractFunctionDecl *initDecl, void 
     // varStorageExpr->setType(TupleType::getEmpty(C));
 
     assignStorageExpr->dump();
-    fprintf(stderr, "[%s:%d] (%s) ^^^^ THE ASSIGN STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) ^^^^ THE ASSIGN STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
     statements.push_back(assignStorageExpr);
   }
 
@@ -630,8 +629,8 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
       /*implicit=*/true);
 
 
-  body->dump();
-  fprintf(stderr, "[%s:%d] (%s) BODY ^^^\n", __FILE__, __LINE__, __FUNCTION__);
+//  body->dump();
+//  fprintf(stderr, "[%s:%d] (%s) BODY ^^^\n", __FILE__, __LINE__, __FUNCTION__);
   return { body, /*isTypeChecked=*/false };
 }
 
@@ -711,17 +710,13 @@ createDistributedActorInit(ClassDecl *classDecl,
 
   switch (argumentNames.size()) {
     case 1: {
-      if (requirement->isDistributedActorLocalInit()) {
-        fprintf(stderr, "[%s:%d] (%s) generate local init\n", __FILE__, __LINE__, __FUNCTION__);
+      if (requirement->isDistributedActorLocalInit())
         return createDistributedActor_init_local(classDecl, ctx);
-      }
       break;
     }
     case 2: {
-      if (requirement->isDistributedActorResolveInit()) {
-        fprintf(stderr, "[%s:%d] (%s) generate resolve init\n", __FILE__, __LINE__, __FUNCTION__);
+      if (requirement->isDistributedActorResolveInit())
         return createDistributedActor_init_resolve(classDecl, ctx);
-      }
       break;
     }
   }
@@ -980,8 +975,8 @@ static void addImplicitDistributedActorStorageStruct(ClassDecl *actorDecl) {
     if (!varDecl->isUserAccessible())
       continue;
 
-    fprintf(stderr, "[%s:%d] (%s) mirror [%s] to DistributedActorLocalStorage.%s\n",
-            __FILE__, __LINE__, __FUNCTION__, varDecl->getBaseName(), varDecl->getBaseName());
+//    fprintf(stderr, "[%s:%d] (%s) mirror [%s] to DistributedActorLocalStorage.%s\n",
+//            __FILE__, __LINE__, __FUNCTION__, varDecl->getBaseName(), varDecl->getBaseName());
 
     VarDecl *propDecl;
     PatternBindingDecl *pbDecl;
@@ -996,8 +991,8 @@ static void addImplicitDistributedActorStorageStruct(ClassDecl *actorDecl) {
     storageDecl->addMember(pbDecl);
   }
 
-  storageDecl->dump();
-  fprintf(stderr, "[%s:%d] (%s) synthesized STORAGE STRUCT\n", __FILE__, __LINE__, __FUNCTION__);
+//  storageDecl->dump();
+//  fprintf(stderr, "[%s:%d] (%s) synthesized STORAGE STRUCT\n", __FILE__, __LINE__, __FUNCTION__);
   actorDecl->addMember(storageDecl);
 }
 
@@ -1012,11 +1007,11 @@ static void addImplicitDistributedActorMembersToClass(ClassDecl *decl) {
     return;
 
   // addImplicitDistributedActorTypeAliases(decl); // FIXME: enable the typealias gen
-//  addImplicitDistributedActorStorageStruct(decl);
+  addImplicitDistributedActorStorageStruct(decl);
   addImplicitDistributedActorStoredProperties(decl);
   addImplicitDistributedActorConstructors(decl);
 
-  fprintf(stderr, "[%s:%d] (%s) ----- ENTIRE DIST DECL --------\n", __FILE__, __LINE__, __FUNCTION__);
-  decl->dump();
-  fprintf(stderr, "[%s:%d] (%s) ===== END OF DIST DECL ========\n", __FILE__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d] (%s) ----- ENTIRE DIST DECL --------\n", __FILE__, __LINE__, __FUNCTION__);
+//  decl->dump();
+//  fprintf(stderr, "[%s:%d] (%s) ===== END OF DIST DECL ========\n", __FILE__, __LINE__, __FUNCTION__);
 }
