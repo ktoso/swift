@@ -4183,6 +4183,9 @@ ResolveWitnessResult ConformanceChecker::resolveWitnessViaDerivation(
     return ResolveWitnessResult::Success;
   }
 
+  fprintf(stderr, "[%s:%d] (%s) derrive FAILED\n", __FILE__, __LINE__, __FUNCTION__);
+  requirement->dump();
+
   // Derivation failed.
   diagnoseOrDefer(requirement, true,
     [](NormalProtocolConformance *conformance) {

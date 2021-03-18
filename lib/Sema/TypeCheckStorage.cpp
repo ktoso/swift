@@ -167,6 +167,8 @@ StoredPropertiesRequest::evaluate(Evaluator &evaluator,
     computeLoweredStoredProperties(decl);
   }
 
+  // FIXME: do we need to ensure we have the synth in here???????? !!!!!!!!!!!!!
+
   for (auto *member : decl->getMembers()) {
     if (auto *var = dyn_cast<VarDecl>(member)) {
       if (!var->isStatic() && var->hasStorage()) {

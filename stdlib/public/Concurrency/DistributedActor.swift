@@ -178,6 +178,7 @@ public enum DistributedActorStorage<Storage> {
   indirect case local(Storage)
 }
 
+// TODO: make it _DistributedActorValue
 @propertyWrapper
 public struct DistributedActorValue<Value> {
 

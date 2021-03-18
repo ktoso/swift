@@ -309,14 +309,27 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
 
   if (dyn_cast<VarDecl>(requirement)) {
     auto name = requirement->getName();
-    if (name == Context.Id_actorAddress)
-      return deriveDistributedActorPropertyAddress(*this);
-
-    if (name == Context.Id_actorTransport)
-      return deriveDistributedActorPropertyTransport(*this);
-
-    if (name == Context.Id_storage)
-      return deriveDistributedActorPropertyStorage(*this);
+    if (name == Context.Id_actorAddress) {
+      auto x = deriveDistributedActorPropertyAddress(*this);
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      this->Nominal->dump();
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      return x;
+    }
+    if (name == Context.Id_actorTransport) {
+      auto x =  deriveDistributedActorPropertyTransport(*this);
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      this->Nominal->dump();
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      return x;
+    }
+    if (name == Context.Id_storage) {
+      auto x = deriveDistributedActorPropertyStorage(*this);
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      this->Nominal->dump();
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      return x;
+    }
   }
 
   if (auto func = dyn_cast<AbstractFunctionDecl>(requirement)) {
@@ -326,8 +339,13 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
     // === _mapStorage(keyPath:)
     if (func->isStatic() && baseName == Context.Id_mapStorage &&
         argumentNames.size() == 1 &&
-        argumentNames[0] == Context.Id_keyPath)
-      return deriveDistributedActorFuncMapStorage(*this);
+        argumentNames[0] == Context.Id_keyPath) {
+      auto x = deriveDistributedActorFuncMapStorage(*this);
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      this->Nominal->dump();
+      fprintf(stderr, "[%s:%d] (%s) ================================================\n", __FILE__, __LINE__, __FUNCTION__);
+      return x;
+    }
   }
 
   requirement->dump();
