@@ -354,9 +354,15 @@ static void installCodingKeysIfNecessary(NominalTypeDecl *NTD) {
   (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
 }
 
-static void installDistributedActorIfNecessary(NominalTypeDecl *NTD) {
+static void installDistributedActorInits(NominalTypeDecl *NTD) {
   auto req =
-    ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActor};
+    ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActorInit};
+  (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
+}
+
+static void installDistributedActorProperties(NominalTypeDecl *NTD) {
+  auto req =
+    ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActorProperties};
   (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
 }
 
@@ -2369,8 +2375,6 @@ public:
   void visitClassDecl(ClassDecl *CD) {
     checkUnsupportedNestedType(CD);
 
-    installDistributedActorIfNecessary(CD);
-
     // Force creation of the generic signature.
     (void) CD->getGenericSignature();
 
@@ -2380,6 +2384,7 @@ public:
     (void)CD->getSuperclassDecl();
 
     // Force lowering of stored properties.
+    fprintf(stderr, "[%s:%d] (%s) going to call >>> getStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     (void) CD->getStoredProperties();
 
     // Force creation of an implicit destructor, if any.
@@ -2391,6 +2396,9 @@ public:
       visit(Member);
 
     TypeChecker::checkPatternBindingCaptures(CD);
+
+//    fprintf(stderr, "[%s:%d] (%s) going to call >>> installDistributedActorInits\n", __FILE__, __LINE__, __FUNCTION__);
+//    installDistributedActorInits(CD);
 
     // If this class requires all of its stored properties to have
     // in-class initializers, diagnose this now.

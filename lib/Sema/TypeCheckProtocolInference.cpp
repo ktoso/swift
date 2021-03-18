@@ -874,16 +874,20 @@ AssociatedTypeInference::computeDerivedTypeWitness(
 
   // Can we derive conformances for this protocol and adoptee?
   NominalTypeDecl *derivingTypeDecl = adoptee->getAnyNominal();
+  fprintf(stderr, "[%s:%d] (%s) going to call >>> DerivedConformance::derivesProtocolConformance(DC, nominal, Proto)\n", __FILE__, __LINE__, __FUNCTION__);
   if (!DerivedConformance::derivesProtocolConformance(dc, derivingTypeDecl,
                                                       proto))
     return std::make_pair(Type(), nullptr);
 
   // Try to derive the type witness.
+  fprintf(stderr, "[%s:%d] (%s) going to call >>> deriveTypeWitness\n", __FILE__, __LINE__, __FUNCTION__);
   auto result = TypeChecker::deriveTypeWitness(dc, derivingTypeDecl, assocType);
   if (!result.first)
     return std::make_pair(Type(), nullptr);
 
   // Make sure that the derived type satisfies requirements.
+  assocType->dump();
+  fprintf(stderr, "[%s:%d] (%s) synthesized type requirement, going to call >>> checkTypeWitness\n", __FILE__, __LINE__, __FUNCTION__);
   if (checkTypeWitness(result.first, assocType, conformance)) {
     /// FIXME: Diagnose based on this.
     failedDerivedAssocType = assocType;

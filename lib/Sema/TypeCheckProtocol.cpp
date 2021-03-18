@@ -1818,6 +1818,7 @@ checkIndividualConformance(NormalProtocolConformance *conformance,
   std::vector<MissingWitness> revivedMissingWitnesses;
   switch (conformance->getState()) {
     case ProtocolConformanceState::Incomplete:
+      fprintf(stderr, "[%s:%d] (%s) incomplete\n", __FILE__, __LINE__, __FUNCTION__);
       if (conformance->isInvalid()) {
         // Revive registered missing witnesses to handle it below.
         if (auto delayed = getASTContext().takeDelayedMissingWitnesses(
@@ -4160,6 +4161,7 @@ ResolveWitnessResult ConformanceChecker::resolveWitnessViaDerivation(
   // Find the declaration that derives the protocol conformance.
   NominalTypeDecl *derivingTypeDecl = nullptr;
   auto *nominal = Adoptee->getAnyNominal();
+  fprintf(stderr, "[%s:%d] (%s) going to call >>> DerivedConformance::derivesProtocolConformance(DC, nominal, Proto)\n", __FILE__, __LINE__, __FUNCTION__);
   if (DerivedConformance::derivesProtocolConformance(DC, nominal, Proto))
     derivingTypeDecl = nominal;
 
@@ -5104,6 +5106,7 @@ ModuleDecl::conformsToProtocol(Type sourceTy, ProtocolDecl *targetProtocol) {
 }
 
 void TypeChecker::checkConformance(NormalProtocolConformance *conformance) {
+  fprintf(stderr, "[%s:%d] (%s) running TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
   MultiConformanceChecker checker(conformance->getProtocol()->getASTContext());
   checker.addConformance(conformance);
   checker.checkAllConformances();
@@ -6216,6 +6219,9 @@ ValueDecl *TypeChecker::deriveProtocolRequirement(DeclContext *DC,
 
   case KnownDerivableProtocolKind::DistributedActor:
     return derived.deriveDistributedActor(Requirement);
+//    Requirement->dump();
+//    fprintf(stderr, "[%s:%d] (%s) COULD SYNTHESIZE HERE, SKIPPING\n", __FILE__, __LINE__, __FUNCTION__);
+//    return nullptr;
 
   case KnownDerivableProtocolKind::OptionSet:
       llvm_unreachable(
@@ -6246,6 +6252,9 @@ TypeChecker::deriveTypeWitness(DeclContext *DC,
     return std::make_pair(derived.deriveCaseIterable(AssocType), nullptr);
   case KnownProtocolKind::Differentiable:
     return derived.deriveDifferentiable(AssocType);
+  case KnownProtocolKind::DistributedActor:
+    fprintf(stderr, "[%s:%d] (%s) call >>>> deriveDistributedActorAssociatedType\n", __FILE__, __LINE__, __FUNCTION__);
+    return derived.deriveDistributedActorAssociatedType(AssocType);
   default:
     return std::make_pair(nullptr, nullptr);
   }

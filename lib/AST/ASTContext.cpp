@@ -991,9 +991,9 @@ ProtocolDecl *ASTContext::getProtocol(KnownProtocolKind kind) const {
     M = getLoadedModule(Id_Differentiation);
     break;
   case KnownProtocolKind::Actor:
+  case KnownProtocolKind::DistributedActor:
   case KnownProtocolKind::AsyncSequence:
   case KnownProtocolKind::AsyncIteratorProtocol:
-  case KnownProtocolKind::DistributedActor:
     M = getLoadedModule(Id_Concurrency);
     break;
   default:

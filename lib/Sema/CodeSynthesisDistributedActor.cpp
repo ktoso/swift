@@ -49,24 +49,29 @@ synthesizeStubBody(AbstractFunctionDecl *fn, void *);
 /// specific to this distributed actor.
 static Type
 getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
+  fprintf(stderr, "[%s:%d] (%s) getBoundPersonalityStorageType\n", __FILE__, __LINE__, __FUNCTION__);
+
   // === DistributedActorStorage<?>
   auto storageTypeDecl = C.getDistributedActorStorageDecl();
+  storageTypeDecl->dump();
 
   // === locate the synthesized: DistributedActorLocalStorage
   auto localStorageTypeDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
 //  if (localStorageTypeDecls.size() > 1) {
 //    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
 //  }
-  StructDecl *localStorageDecl = nullptr;
+  ValueDecl *localStorageDecl = nullptr;
   for (auto decl : localStorageTypeDecls) {
     fprintf(stderr, "\n");
     fprintf(stderr, "[%s:%d] (%s) DECL:\n", __FILE__, __LINE__, __FUNCTION__);
     decl->dump();
+
     fprintf(stderr, "\n");
-    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
-      localStorageDecl = structDecl;
-      break;
-    }
+      localStorageDecl = decl;
+//    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
+//      localStorageDecl = structDecl;
+//      break;
+//    }
   }
   assert(localStorageDecl && "unable to lookup synthesized struct DistributedActorLocalStorage!");
 //  TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localStorageDecl);
@@ -76,7 +81,8 @@ getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
 //  }
 
     // === bind: DistributedActorStorage<DistributedActorLocalStorage>
-  auto localStorageType = localStorageDecl->getDeclaredInterfaceType();
+//  auto localStorageType = localStorageDecl->getDeclaredInterfaceType();
+  auto localStorageType = localStorageDecl->getInterfaceType();
 //    if (isa<TypeAliasDecl>(localStorageType)) // TODO: doug, ??????
 //      localStorageType = localStorageType->getAnyNominal();
 
@@ -240,6 +246,11 @@ createBody_DistributedActor_init_transport(AbstractFunctionDecl *initDecl, void 
 ////      localStorageType = localStorageType->getAnyNominal();
 
     auto classDecl = dyn_cast<ClassDecl>(initDecl->getParent());
+
+    fprintf(stderr, "\n");
+    classDecl->dump();
+    fprintf(stderr, "[%s:%d] (%s) PARENT ^^^^\n", __FILE__, __LINE__, __FUNCTION__);
+
     auto boundStorageType = getBoundPersonalityStorageType(C, classDecl);
     auto boundStorageTypeExpr = TypeExpr::createImplicit(boundStorageType, C);
     auto storageTypeSelfRef = new (C) DotSelfExpr(
@@ -308,6 +319,10 @@ createDistributedActor_init_local(ClassDecl *classDecl,
   initDecl->getAttrs().add(reqAttr);
 
   initDecl->copyFormalAccessFrom(classDecl, /*sourceIsParentContext=*/true);
+
+  fprintf(stderr, "\n", __FILE__, __LINE__, __FUNCTION__);
+  initDecl->dump();
+  fprintf(stderr, "[%s:%d] (%s) SYNTHESIZED INIT LOCAL\n", __FILE__, __LINE__, __FUNCTION__);
 
   return initDecl;
 }
@@ -637,9 +652,9 @@ createDistributedActor_init_resolve_body(AbstractFunctionDecl *initDecl, void *)
   auto *body = BraceStmt::create(C, SourceLoc(), statements, SourceLoc(),
       /*implicit=*/true);
 
-
+//
 //  body->dump();
-//  fprintf(stderr, "[%s:%d] (%s) BODY ^^^\n", __FILE__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d] (%s) SYNTHESIZED CONSTRUCTOR ^^^\n", __FILE__, __LINE__, __FUNCTION__);
   return { body, /*isTypeChecked=*/false };
 }
 
@@ -702,6 +717,10 @@ createDistributedActor_init_resolve(ClassDecl *classDecl,
   initDecl->getAttrs().add(new (C) RequiredAttr(/*IsImplicit*/true));
 
   initDecl->copyFormalAccessFrom(classDecl, /*sourceIsParentContext=*/true);
+
+  fprintf(stderr, "\n", __FILE__, __LINE__, __FUNCTION__);
+  initDecl->dump();
+  fprintf(stderr, "[%s:%d] (%s) SYNTHESIZED INIT RESOLVE\n", __FILE__, __LINE__, __FUNCTION__);
 
   return initDecl;
 }
@@ -780,6 +799,7 @@ static void collectNonOveriddenDistributedActorInits(
 /// that match the DistributedActor requirements.
 // TODO: inheritance is tricky here?
 static void addImplicitDistributedActorConstructors(ClassDecl *decl) {
+  fprintf(stderr, "[%s:%d] (%s) SYNTHESIZE CONSTRUCTORS\n", __FILE__, __LINE__, __FUNCTION__);
   // Bail out if not a distributed actor definition.
   if (!decl->isDistributedActor())
     return;
@@ -852,6 +872,10 @@ createStoredProperty(ValueDecl *parent, DeclContext *parentDC, ASTContext &ctx,
 /// - actorAddress
 /// - storage
 static void addImplicitDistributedActorStoredProperties(ClassDecl *actorDecl) {
+  fprintf(stderr, "\n");
+  actorDecl->dump();
+  fprintf(stderr, "[%s:%d] (%s) SYNTH PROPERTIES FOR ^^^^\n", __FILE__, __LINE__, __FUNCTION__);
+
   assert(actorDecl->isDistributedActor());
   auto &C = actorDecl->getASTContext();
 
