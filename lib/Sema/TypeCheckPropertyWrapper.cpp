@@ -412,16 +412,17 @@ AttachedPropertyWrappersRequest::evaluate(Evaluator &evaluator,
   // @distributedActorValue for it, which will implement and enforce the
   // storage implementation by delegating to `self.$personality`.
   if (auto classDecl = dyn_cast<ClassDecl>(dc))
-    if (var->isDistributedActorStoredProperty()) {
-//    if (classDecl->isDistributedActor()) {
-      fprintf(stderr, "[%s:%d] (%s) DIST STORED PROPERTY [%s]\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
-      auto distributedActorStorageType =
-          ctx.getDistributedActorStorageDecl()->getDeclaredInterfaceType();
-      auto typeExpr = TypeExpr::createImplicit(distributedActorStorageType, ctx);
-      auto distStorageAttr = CustomAttr::create(
-          ctx, SourceLoc(), typeExpr, /*implicit=*/true);
-      result.push_back(distStorageAttr);
-    }
+    // FIXME: this automatically applies the property wrapper, but it crashes on a SourceLoc() in TupleExpr() then!!!!!!!!!!
+//    if (var->isDistributedActorStoredProperty()) {
+////    if (classDecl->isDistributedActor()) {
+//      fprintf(stderr, "[%s:%d] (%s) DIST STORED PROPERTY [%s]\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+//      auto distributedActorStorageType =
+//          ctx.getDistributedActorStorageDecl()->getDeclaredInterfaceType();
+//      auto typeExpr = TypeExpr::createImplicit(distributedActorStorageType, ctx);
+//      auto distStorageAttr = CustomAttr::create(
+//          ctx, SourceLoc(), typeExpr, /*implicit=*/true);
+//      result.push_back(distStorageAttr);
+//    }
 
   for (auto attr : var->getAttrs().getAttributes<CustomAttr>()) {
     auto mutableAttr = const_cast<CustomAttr *>(attr);
@@ -654,9 +655,9 @@ Expr *swift::buildPropertyWrapperInitCall(
   Expr *initializer = value;
   ApplyExpr *innermostInit = nullptr;
 
-  fprintf(stderr, "buildPropertyWrapperInitCall, value:\n");
+  fprintf(stderr, "[%s:%d] (%s) buildPropertyWrapperInitCall, value:\n", __FILE__, __LINE__, __FUNCTION__);
   value->dump();
-  fprintf(stderr, "buildPropertyWrapperInitCall, var:\n");
+  fprintf(stderr, "[%s:%d] (%s) buildPropertyWrapperInitCall, var:\n", __FILE__, __LINE__, __FUNCTION__);
   var->dump();
   fprintf(stderr, "\n");
 

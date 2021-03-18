@@ -6,8 +6,22 @@
 import _Concurrency
 
 distributed actor Person {
-  var name: String = "HELLO"
+  @DistributedActorValue
+  var name: String
+  // TODO: allow default values here
+  // var name: String = "Alice"
 
+  // TODO: @derive this, gets complicated with definite initialization...
+//  init(transport: ActorTransport) {
+//    self.actorTransport = transport
+//    self.actorAddress = transport.assignAddress(Self.self)
+//    self.storage = .local(.init(
+//      name: "Other Name"
+//    ))
+//  }
+}
+
+extension Person {
   // compiler can synthesize this
   static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T> {
     switch keyPath {
@@ -17,7 +31,6 @@ distributed actor Person {
       fatalError("Bad key path: \(keyPath)")
     }
   }
-
 }
 
 // ==== Fake Transport ---------------------------------------------------------

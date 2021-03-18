@@ -1348,7 +1348,14 @@ TupleExpr::TupleExpr(SourceLoc LParenLoc, SourceLoc RParenLoc,
   Bits.TupleExpr.HasElementNames = !ElementNames.empty();
   Bits.TupleExpr.HasElementNameLocations = !ElementNameLocs.empty();
   Bits.TupleExpr.NumElements = SubExprs.size();
-  
+
+  for (auto e : ElementNames) {
+    fprintf(stderr, "[%s:%d] (%s) ELEMENT: %s\n", __FILE__, __LINE__, __FUNCTION__, e.str());
+  }
+
+  fprintf(stderr, "[%s:%d] (%s) LParenLoc.isValid() == %d\n", __FILE__, __LINE__, __FUNCTION__, LParenLoc.isValid());
+  fprintf(stderr, "[%s:%d] (%s) RParenLoc.isValid() == %d\n", __FILE__, __LINE__, __FUNCTION__, RParenLoc.isValid());
+
   assert(LParenLoc.isValid() == RParenLoc.isValid() &&
          "Mismatched parenthesis location information validity");
   assert(ElementNames.empty() || ElementNames.size() == SubExprs.size());
