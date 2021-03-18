@@ -23,6 +23,16 @@ import Swift
 public protocol DistributedActor: Actor, Codable {
   associatedtype DistributedActorLocalStorage
 
+  /// TODO: Customization point not implemented yet.
+  ///
+  /// A distributed actor requires all types involved in a 'distributed func'
+  /// definition to conform to 'DistributedSendable'.
+  ///
+  /// It defaults to 'Codable', however specific transports may require that
+  /// their actors conform to a specific different type and use highly specialized
+  /// serialization mechanisms.
+  typealias DistributedSendable = Codable // & Sendable
+
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
   /// Upon completion, the `actorAddress` field is populated by the transport,
@@ -75,7 +85,7 @@ public protocol DistributedActor: Actor, Codable {
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
   // FIXME: can we hide this method from public API?
-  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T>
+  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T>
 
 }
 
@@ -188,7 +198,7 @@ public struct DistributedActorValue<Value> {
       }
       
       let kp: KeyPath<Myself.DistributedActorLocalStorage, Value> =
-        Myself.mapStorage(keyPath: wrappedKeyPath)
+        Myself._mapStorage(keyPath: wrappedKeyPath)
       return DistributedActorLocalStorage[keyPath: kp]
     }
     
@@ -197,7 +207,7 @@ public struct DistributedActorValue<Value> {
         fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
       }
       let kp: WritableKeyPath<Myself.DistributedActorLocalStorage, Value> =
-        Myself.mapStorage(keyPath: wrappedKeyPath) as! WritableKeyPath
+        Myself._mapStorage(keyPath: wrappedKeyPath) as! WritableKeyPath
       DistributedActorLocalStorage[keyPath: kp] = newValue
     }
   }

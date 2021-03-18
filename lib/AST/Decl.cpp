@@ -4106,7 +4106,7 @@ void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
         if ((member.isSimpleName() || argumentNames.front() == Context.Id_from)) {
           action.emplace(ImplicitMemberAction::ResolveDecodable);
         } else if (argumentNames[0] == Context.Id_transport) {
-          action.emplace(ImplicitMemberAction::ResolveDistributedActor);
+          action.emplace(ImplicitMemberAction::ResolveDistributedActorInit);
         }
       } else if (!baseName.isSpecial() &&
            baseName.getIdentifier() == Context.Id_encode &&
@@ -4117,7 +4117,7 @@ void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
       if (baseName == DeclBaseName::createConstructor() &&
           argumentNames[0] == Context.Id_resolve &&
           argumentNames[1] == Context.Id_using) {
-        action.emplace(ImplicitMemberAction::ResolveDistributedActor);
+        action.emplace(ImplicitMemberAction::ResolveDistributedActorInit);
       }
     } else if (member.isSimpleName() &&
                baseName.getKind() == DeclBaseName::Kind::Normal &&
@@ -5114,8 +5114,7 @@ Optional<KnownDerivableProtocolKind>
   case KnownProtocolKind::Differentiable:
     return KnownDerivableProtocolKind::Differentiable;
   case KnownProtocolKind::DistributedActor:
-    return None;
-//    return KnownDerivableProtocolKind::DistributedActor; // FIXME: !!!!!!!!!!
+    return KnownDerivableProtocolKind::DistributedActor;
   default:
     return None;
   }

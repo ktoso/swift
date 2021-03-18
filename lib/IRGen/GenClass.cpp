@@ -78,9 +78,12 @@ static bool classHasIncompleteLayout(IRGenModule &IGM,
   if (theClass->getParentModule() == IGM.getSwiftModule())
     return false;
 
+  fprintf(stderr, "[%s:%d] (%s) checking...\n", __FILE__, __LINE__, __FUNCTION__);
   for (auto field : theClass->getStoredPropertiesAndMissingMemberPlaceholders())
-    if (isa<MissingMemberDecl>(field))
+    if (isa<MissingMemberDecl>(field)) {
+      fprintf(stderr, "[%s:%d] (%s) OH NO...\n", __FILE__, __LINE__, __FUNCTION__);
       return true;
+    }
 
   return false;
 }

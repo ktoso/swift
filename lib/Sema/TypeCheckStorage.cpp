@@ -102,6 +102,7 @@ static bool hasStoredProperties(NominalTypeDecl *decl) {
 }
 
 static void computeLoweredStoredProperties(NominalTypeDecl *decl) {
+  fprintf(stderr, "[%s:%d] (%s) computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
   // Just walk over the members of the type, forcing backing storage
   // for lazy properties and property wrappers to be synthesized.
   for (auto *member : decl->getMembers()) {
@@ -126,18 +127,25 @@ static void computeLoweredStoredProperties(NominalTypeDecl *decl) {
         SmallVector<ProtocolConformance *, 1> conformances;
         classDecl->lookupConformance(
             decl->getModuleContext(), actorProto, conformances);
-        for (auto conformance : conformances)
+        for (auto conformance : conformances) {
+          conformance->dump();
+          fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
           TypeChecker::checkConformance(conformance->getRootNormalConformance());
+        }
       }
 
       // If this is a distributed actor, synthesize its special stored properties.
       if (classDecl->isDistributedActor()) {
+        fprintf(stderr, "[%s:%d] (%s) checking dist conformance\n", __FILE__, __LINE__, __FUNCTION__);
         if (auto actorProto = ctx.getProtocol(KnownProtocolKind::DistributedActor)) {
           SmallVector<ProtocolConformance *, 1> conformances;
           classDecl->lookupConformance(
               decl->getModuleContext(), actorProto, conformances);
-          for (auto conformance : conformances)
+          for (auto conformance : conformances) {
+            conformance->dump();
+            fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
             TypeChecker::checkConformance(conformance->getRootNormalConformance());
+          }
         }
       }
     }
@@ -154,14 +162,20 @@ StoredPropertiesRequest::evaluate(Evaluator &evaluator,
 
   // Unless we're in a source file we don't have to do anything
   // special to lower lazy properties and property wrappers.
-  if (isa<SourceFile>(decl->getModuleScopeContext()))
+  if (isa<SourceFile>(decl->getModuleScopeContext())) {
+    fprintf(stderr, "[%s:%d] (%s) going to call >>> computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     computeLoweredStoredProperties(decl);
+  }
 
   for (auto *member : decl->getMembers()) {
-    if (auto *var = dyn_cast<VarDecl>(member))
+    if (auto *var = dyn_cast<VarDecl>(member)) {
       if (!var->isStatic() && var->hasStorage()) {
+        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] STORED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
         results.push_back(var);
+      } else {
+        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] SKIPPED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
       }
+    }
   }
 
   return decl->getASTContext().AllocateCopy(results);
@@ -177,8 +191,10 @@ StoredPropertiesAndMissingMembersRequest::evaluate(Evaluator &evaluator,
 
   // Unless we're in a source file we don't have to do anything
   // special to lower lazy properties and property wrappers.
-  if (isa<SourceFile>(decl->getModuleScopeContext()))
+  if (isa<SourceFile>(decl->getModuleScopeContext())) {
+    fprintf(stderr, "[%s:%d] (%s) going to call computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     computeLoweredStoredProperties(decl);
+  }
 
   for (auto *member : decl->getMembers()) {
     if (auto *var = dyn_cast<VarDecl>(member))

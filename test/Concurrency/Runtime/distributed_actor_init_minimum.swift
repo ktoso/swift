@@ -9,14 +9,14 @@ distributed actor Person {
   var name: String = "HELLO"
 
   // compiler can synthesize this
-//  static func mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T> {
-//    switch keyPath {
-//    case \Person.name:
-//      return \DistributedActorLocalStorage.name as! KeyPath<DistributedActorLocalStorage, T>
-//    default:
-//      fatalError("Bad key path: \(keyPath)")
-//    }
-//  }
+  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T> {
+    switch keyPath {
+    case \Person.name:
+      return \DistributedActorLocalStorage.name as! KeyPath<DistributedActorLocalStorage, T>
+    default:
+      fatalError("Bad key path: \(keyPath)")
+    }
+  }
 
 }
 

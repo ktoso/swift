@@ -2639,6 +2639,7 @@ static ArrayRef<Decl *> evaluateMembersRequest(
       continue;
     }
 
+    fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
     TypeChecker::checkConformance(conformance->getRootNormalConformance());
   }
 

@@ -260,6 +260,7 @@ IDENTIFIER(resolve)
 IDENTIFIER(using)
 IDENTIFIER(local)
 IDENTIFIER(remote)
+IDENTIFIER_(mapStorage)
 IDENTIFIER(DistributedActorLocalStorage)
 IDENTIFIER(LocalStorage) // TODO: $LocalStorage?
 IDENTIFIER(DistributedSendable)

@@ -1151,21 +1151,25 @@ static bool shouldAttemptInitializerSynthesis(const NominalTypeDecl *decl) {
 }
 
 void TypeChecker::addImplicitDistributedActorStorage(NominalTypeDecl *decl) {
-  // If we already added implicit storage, we're done.
-  if (decl->addedDistributedActorStorage())
-    return;
-
-  if (!shouldAttemptInitializerSynthesis(decl)) {
-    decl->setAddedDistributedActorStorage();
-    return;
-  }
-
-  auto *classDecl = dyn_cast<ClassDecl>(decl);
-  if (classDecl && classDecl->isDistributedActor()) {
-    addImplicitDistributedActorLocalStorageStruct(classDecl);
-//    addImplicitDistributedActorTypeAliases(classDecl);
-    addImplicitDistributedActorStoredProperties(classDecl);
-  }
+//  // If we already added implicit storage, we're done.
+//  if (decl->addedDistributedActorStorage()) {
+//    fprintf(stderr, "[%s:%d] (%s) ALREADY ADDED STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
+//    return;
+//  }
+//
+//  if (!shouldAttemptInitializerSynthesis(decl)) {
+//    fprintf(stderr, "[%s:%d] (%s) SET(true) ALREADY ADDED STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
+//    decl->setAddedDistributedActorStorage();
+//    return;
+//  }
+//
+//  auto *classDecl = dyn_cast<ClassDecl>(decl);
+//  if (classDecl && classDecl->isDistributedActor()) {
+//    fprintf(stderr, "[%s:%d] (%s) going to call >>> .............. xxxxxx ..............\n", __FILE__, __LINE__, __FUNCTION__);
+////    addImplicitDistributedActorLocalStorageStruct(classDecl);
+////    addImplicitDistributedActorTypeAliases(classDecl);
+//    addImplicitDistributedActorStoredProperties(classDecl);
+//  }
 }
 
 void TypeChecker::addImplicitConstructors(NominalTypeDecl *decl) {
@@ -1216,6 +1220,7 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     if (auto *conformance = dyn_cast<NormalProtocolConformance>(
             ref.getConcrete()->getRootConformance())) {
       if (conformance->getState() == ProtocolConformanceState::Incomplete) {
+        fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
         TypeChecker::checkConformance(conformance);
       }
     }
@@ -1265,22 +1270,30 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     (void)evaluateTargetConformanceTo(decodableProto);
   }
     break;
-  case ImplicitMemberAction::ResolveDistributedActor: {
+  case ImplicitMemberAction::ResolveDistributedActorInit: {
+    // init(transport:) and init(resolve:using:) may be synthesized as part of
+    // derived conformance to the DistributedActor protocol.
+    // If the target should conform to the DistributedActor protocol, check the
+    // conformance here to attempt synthesis.
+    fprintf(stderr, "[%s:%d] (%s) call >>>> addImplicitConstructors\n", __FILE__, __LINE__, __FUNCTION__);
+    TypeChecker::addImplicitConstructors(target);
+
+//    fprintf(stderr, "[%s:%d] (%s) evaluateTargetConformanceTo\n", __FILE__, __LINE__, __FUNCTION__);
+//    (void)evaluateTargetConformanceTo(
+//        Context.getProtocol(KnownProtocolKind::DistributedActor));
+  }
+  case ImplicitMemberAction::ResolveDistributedActorProperties: {
     // Synthesize the `struct DistributedActorLocalStorage { ... }`,
     // along with supporting `mapStorage` to access it through the properties.
     //
     // Also synthesizes transport, address and storage stored properties,
     // and changes
+    fprintf(stderr, "[%s:%d] (%s) call >>>> addImplicitDistributedActorStorage\n", __FILE__, __LINE__, __FUNCTION__);
     TypeChecker::addImplicitDistributedActorStorage(target);
 
-    // init(transport:) and init(resolve:using:) may be synthesized as part of
-    // derived conformance to the DistributedActor protocol.
-    // If the target should conform to the DistributedActor protocol, check the
-    // conformance here to attempt synthesis.
-    TypeChecker::addImplicitConstructors(target);
-
-    (void)evaluateTargetConformanceTo(
-        Context.getProtocol(KnownProtocolKind::DistributedActor));
+//    fprintf(stderr, "[%s:%d] (%s) evaluateTargetConformanceTo\n", __FILE__, __LINE__, __FUNCTION__);
+//    (void)evaluateTargetConformanceTo(
+//        Context.getProtocol(KnownProtocolKind::DistributedActor));
   }
     break;
   }

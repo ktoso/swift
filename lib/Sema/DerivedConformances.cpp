@@ -76,7 +76,7 @@ bool DerivedConformance::derivesProtocolConformance(DeclContext *DC,
   }
 
   if (*derivableKind == KnownDerivableProtocolKind::DistributedActor) {
-    return canDeriveDistributedActor(Nominal, DC);
+    return canDeriveDistributedActor(Nominal);
   }
 
   if (*derivableKind == KnownDerivableProtocolKind::AdditiveArithmetic)
@@ -273,6 +273,7 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
     if (conformance) {
       auto DC = conformance.getConcrete()->getDeclContext();
       // Check whether this nominal type derives conformances to the protocol.
+      fprintf(stderr, "[%s:%d] (%s) going to call >>> DerivedConformance::derivesProtocolConformance(DC, nominal, Proto)\n", __FILE__, __LINE__, __FUNCTION__);
       if (!DerivedConformance::derivesProtocolConformance(DC, nominal, proto))
         return nullptr;
     }
@@ -310,6 +311,8 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
     // AdditiveArithmetic.zero
     if (name.isSimpleName(ctx.Id_zero))
       return getRequirement(KnownProtocolKind::AdditiveArithmetic);
+
+    // TODO: synth distributed actor storage here instead?
 
     return nullptr;
   }
@@ -388,6 +391,9 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
     // Differentiable.TangentVector
     if (name.isSimpleName(ctx.Id_TangentVector))
       return getRequirement(KnownProtocolKind::Differentiable);
+
+    if (name.isSimpleName(ctx.Id_DistributedActorLocalStorage))
+      fprintf(stderr, "[%s:%d] (%s) TODO: SYNTHESIZE Id_DistributedActorLocalStorage\n", __FILE__, __LINE__, __FUNCTION__);
 
     return nullptr;
   }
