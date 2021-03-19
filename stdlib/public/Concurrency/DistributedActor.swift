@@ -78,8 +78,15 @@ public protocol DistributedActor: Actor, Codable {
 
   // === Storage mechanism internals -------------------------------------------
 
-  // TODO: would be best if this was completely user inaccessible? Not sure we want to commit to the existence of this
   // FIXME: can we hide this from public API?
+  //
+  // FIXME: the following; we need the nonisolated conformance
+  // main.Person (internal):11:18: error: actor-isolated property 'storage' cannot be used to satisfy a protocol requirement
+  //    internal var storage: DistributedActorStorage<String>
+  //                 ^
+  @actorIndependent(unsafe) // FIXME: pretty nasty... on the local case this breaks isolation then
+  // NOT @_distributedActorIndependent on purpose, as it makes it not accessible
+  // from outside of the actor, which is good - it is effectively the
   var storage: DistributedActorStorage<DistributedActorLocalStorage> { get set }
 
   /// ### Synthesis
@@ -197,7 +204,7 @@ public struct DistributedActorValue<Value> {
       guard case .local(let DistributedActorLocalStorage) = actor.storage else {
         fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
       }
-      
+
       let kp: KeyPath<Myself.DistributedActorLocalStorage, Value> =
         Myself._mapStorage(keyPath: wrappedKeyPath)
       return DistributedActorLocalStorage[keyPath: kp]

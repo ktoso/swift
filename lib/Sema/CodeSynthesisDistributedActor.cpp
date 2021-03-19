@@ -865,9 +865,8 @@ createStoredProperty(ValueDecl *parent, DeclContext *parentDC, ASTContext &ctx,
                      Type propertyInterfaceType, Type propertyContextType,
                      bool isStatic, bool isFinal,
                      llvm::Optional<AccessLevel> accessLevel = llvm::None) {
-  VarDecl *propDecl = new (ctx)
-      VarDecl(/*IsStatic*/ isStatic, introducer,
-                           SourceLoc(), name, parentDC);
+  VarDecl *propDecl = new (ctx) VarDecl(
+      /*IsStatic*/ isStatic, introducer, SourceLoc(), name, parentDC);
   propDecl->setImplicit();
   propDecl->setSynthesized();
   if (accessLevel.hasValue()) {
