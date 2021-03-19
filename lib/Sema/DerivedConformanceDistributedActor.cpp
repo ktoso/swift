@@ -413,10 +413,10 @@ deriveDistributedActorFuncMapStorage(DerivedConformance &derived) {
   keyPathParamDecl->setSpecifier(ParamSpecifier::Default);
   keyPathParamDecl->setInterfaceType(anyKeyPathType);
 
-  auto paramList = ParameterList::createWithoutLoc(keyPathParamDecl);
+  auto params = ParameterList::createWithoutLoc(keyPathParamDecl);
 
   // Func name: _mapStorage(keyPath:)
-  DeclName name(C, C.Id_mapStorage, paramList);
+  DeclName name(C, C.Id_mapStorage, params);
 
   // KeyPath<Self.DistributedActorLocalStorage, T>
   auto theT = CanGenericTypeParamType::get(0, 0, C);
@@ -426,17 +426,29 @@ deriveDistributedActorFuncMapStorage(DerivedConformance &derived) {
   returnType->dump();
   fprintf(stderr, "[%s:%d] (%s) THE returnType ^^^^\n", __FILE__, __LINE__, __FUNCTION__);
 
-  auto *funcDecl =
-      FuncDecl::createImplicit(
-          C, StaticSpellingKind::KeywordStatic, name, /*NameLoc=*/SourceLoc(),
-          /*Async=*/false,
-          /*Throws=*/false, /*GenericParams=*/nullptr, paramList, returnType,
-          nominal);
+  // --- <T> generic for the func
+  SmallVector<GenericTypeParamDecl *, 1> genericTypeParamDecls;
+    auto *singleTypeParam = new (C) GenericTypeParamDecl(
+        nominal, C.getIdentifier("T"), SourceLoc(),
+        GenericTypeParamDecl::InvalidDepth,
+        /*index=*/0);
+  singleTypeParam->setImplicit(true);
+  genericTypeParamDecls.push_back(singleTypeParam);
+  auto genericParams = GenericParamList::create(
+      C, SourceLoc(), genericTypeParamDecls, SourceLoc());
+
+  // === func _mapStorage<T>(keyPath:) -> KeyPath<LocalStorate, T>
+  auto *funcDecl = FuncDecl::createImplicit(
+      C, StaticSpellingKind::KeywordStatic, name, /*NameLoc=*/SourceLoc(),
+      /*Async=*/false, /*Throws=*/false,
+      genericParams, params, returnType, nominal);
   funcDecl->setImplicit();
   funcDecl->setSynthesized();
   // funcDecl->setBodySynthesizer(&createBody_DistributedActor_mapStorage); // FIXME: actually implement the body synthesis!!!!!!
   funcDecl->setBodySynthesizer(______synthesizeStubBody);
   funcDecl->copyFormalAccessFrom(nominal, /*sourceIsParentContext=*/true); // TODO: make private?
+
+//  funcDecl->setGenericSignature(); // FIXME: !!!!!
 
   fprintf(stderr, "\n", __FILE__, __LINE__, __FUNCTION__);
   funcDecl->dump();
