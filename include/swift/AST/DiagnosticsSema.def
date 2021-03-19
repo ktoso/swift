@@ -1898,7 +1898,30 @@ ERROR(protocol_does_not_conform_static,none,
       "has static requirements",
       (Type, Type))
 ERROR(protocol_derivation_is_broken,none,
-      "protocol %0 is broken; cannot derive conformance for type %1", (Type, Type))
+      "protocol %0 is broken; cannot derive conformance for type %1. "
+      "Match kind: %select{"
+      "The witness matched the requirement exactly.|"
+      "There is a difference in optionality.|"
+      "The witness matched the requirement with some renaming.|"
+      "The witness is invalid or has an invalid type.|"
+      "The witness is currently being type checked and this type checking in turn triggered conformance checking, so the witness cannot be considered as a candidate.|"
+      "The kind of the witness and requirement differ, e.g., one is a function and the other is a variable.|"
+      "The types conflict.|"
+      "The witness would match if an additional requirement were met.|"
+      "The witness and requirement disagree on 'async'.|"
+      "The witness throws, but the requirement does not.|"
+      "The witness did not match due to static/non-static differences.|"
+      "The witness is not settable, but the requirement is.|"
+      "The witness did not match due to prefix/non-prefix differences.|"
+      "The witness did not match due to postfix/non-postfix differences.|"
+      "The witness did not match because of mutating conflicts.|"
+      "The witness did not match because of nonmutating conflicts.|"
+      "The witness did not match because of __consuming conflicts.|"
+      "The witness throws unconditionally, but the requirement rethrows.|"
+      "The witness rethrows via conformance, but the requirement rethrows via closure and is not in a '@rethrows' protocol.|"
+      "The witness is explicitly @nonobjc but the requirement is @objc.|"
+      "The witness is missing a `@differentiable` attribute from the requirement.|"
+      "The witness did not match because it is an enum case with associated values.}2", (Type, Type, unsigned))
 ERROR(type_does_not_inherit,none,
       "%0 requires that %1 inherit from %2", (Type, Type, Type))
 NOTE(type_does_not_inherit_or_conform_requirement,none,

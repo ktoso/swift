@@ -745,11 +745,21 @@ AssociatedTypeInference::inferTypeWitnessesViaValueWitness(ValueDecl *req,
     }
   };
 
-  // Match a requirement and witness type.
   MatchVisitor matchVisitor(conformance, inferred);
   auto matchTypes = [&](Type reqType, Type witnessType)
                       -> Optional<RequirementMatch> {
     if (!matchVisitor.match(reqType, witnessType)) {
+
+      // Match a requirement and witness type.
+      fprintf(stderr, "[%s:%d] (%s) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", __FILE__, __LINE__, __FUNCTION__);
+      fprintf(stderr, "[%s:%d] (%s) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", __FILE__, __LINE__, __FUNCTION__);
+      reqType->dump();
+      fprintf(stderr, "[%s:%d] (%s) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", __FILE__, __LINE__, __FUNCTION__);
+      fprintf(stderr, "[%s:%d] (%s) yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\n", __FILE__, __LINE__, __FUNCTION__);
+      inferred.dump();
+      fprintf(stderr, "[%s:%d] (%s) yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\n", __FILE__, __LINE__, __FUNCTION__);
+
+
       return RequirementMatch(witness, MatchKind::TypeConflict,
                               fullWitnessType);
     }

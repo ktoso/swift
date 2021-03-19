@@ -303,7 +303,6 @@ static ConstructorDecl *
 createDistributedActor_init_local(ClassDecl *classDecl,
                                   ASTContext &ctx) {
   auto &C = ctx;
-
 //  auto conformanceDC = derived.getConformanceContext();
   auto conformanceDC = classDecl;
 
@@ -864,13 +863,18 @@ std::pair<VarDecl *, PatternBindingDecl *>
 createStoredProperty(ValueDecl *parent, DeclContext *parentDC, ASTContext &ctx,
                      VarDecl::Introducer introducer, Identifier name,
                      Type propertyInterfaceType, Type propertyContextType,
-                     bool isStatic, bool isFinal) {
+                     bool isStatic, bool isFinal,
+                     llvm::Optional<AccessLevel> accessLevel = llvm::None) {
   VarDecl *propDecl = new (ctx)
       VarDecl(/*IsStatic*/ isStatic, introducer,
                            SourceLoc(), name, parentDC);
   propDecl->setImplicit();
   propDecl->setSynthesized();
-  propDecl->copyFormalAccessFrom(parent, /*sourceIsParentContext*/ true);
+  if (accessLevel.hasValue()) {
+    propDecl->setAccess(accessLevel.getValue());
+  } else {
+    propDecl->copyFormalAccessFrom(parent, /*sourceIsParentContext*/ true);
+  }
   propDecl->setInterfaceType(propertyInterfaceType);
 
   Pattern *propPat = NamedPattern::createImplicit(ctx, propDecl);

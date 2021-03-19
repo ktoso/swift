@@ -102,7 +102,7 @@ static bool hasStoredProperties(NominalTypeDecl *decl) {
 }
 
 static void computeLoweredStoredProperties(NominalTypeDecl *decl) {
-  fprintf(stderr, "[%s:%d] (%s) computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d] (%s) computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
   // Just walk over the members of the type, forcing backing storage
   // for lazy properties and property wrappers to be synthesized.
   for (auto *member : decl->getMembers()) {
@@ -163,7 +163,7 @@ StoredPropertiesRequest::evaluate(Evaluator &evaluator,
   // Unless we're in a source file we don't have to do anything
   // special to lower lazy properties and property wrappers.
   if (isa<SourceFile>(decl->getModuleScopeContext())) {
-    fprintf(stderr, "[%s:%d] (%s) going to call >>> computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) going to call >>> computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     computeLoweredStoredProperties(decl);
   }
 
@@ -172,10 +172,10 @@ StoredPropertiesRequest::evaluate(Evaluator &evaluator,
   for (auto *member : decl->getMembers()) {
     if (auto *var = dyn_cast<VarDecl>(member)) {
       if (!var->isStatic() && var->hasStorage()) {
-        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] STORED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+//        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] STORED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
         results.push_back(var);
       } else {
-        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] SKIPPED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+//        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] SKIPPED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
       }
     }
   }
@@ -194,7 +194,7 @@ StoredPropertiesAndMissingMembersRequest::evaluate(Evaluator &evaluator,
   // Unless we're in a source file we don't have to do anything
   // special to lower lazy properties and property wrappers.
   if (isa<SourceFile>(decl->getModuleScopeContext())) {
-    fprintf(stderr, "[%s:%d] (%s) going to call computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d] (%s) going to call computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     computeLoweredStoredProperties(decl);
   }
 
