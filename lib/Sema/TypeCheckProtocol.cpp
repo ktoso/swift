@@ -4185,16 +4185,17 @@ ResolveWitnessResult ConformanceChecker::resolveWitnessViaDerivation(
   // Try to match the derived requirement.
   auto match = matchWitness(ReqEnvironmentCache, Proto, Conformance, DC,
                             requirement, derived);
-  fprintf(stderr, "[%s:%d] (%s) derive KIND: %d\n", __FILE__, __LINE__, __FUNCTION__, match.Kind);
+  fprintf(stderr, "[%s:%d] (%s) derive, match KIND: %d\n", __FILE__, __LINE__, __FUNCTION__, match.Kind);
+  fprintf(stderr, "[%s:%d] (%s) derive, requirement:\n", __FILE__, __LINE__, __FUNCTION__);
+  requirement->dump();
+  fprintf(stderr, "[%s:%d] (%s) derive, DERIVED:\n", __FILE__, __LINE__, __FUNCTION__);
+  derived->dump();
+
   if (match.isViable()) {
     recordWitness(requirement, match);
     return ResolveWitnessResult::Success;
   }
 
-  fprintf(stderr, "[%s:%d] (%s) derive FAILED, requirement:\n", __FILE__, __LINE__, __FUNCTION__);
-  requirement->dump();
-  fprintf(stderr, "[%s:%d] (%s) derive DERIVED:\n", __FILE__, __LINE__, __FUNCTION__);
-  derived->dump();
 
   auto matchKind = static_cast<uint8_t>(match.Kind);
 

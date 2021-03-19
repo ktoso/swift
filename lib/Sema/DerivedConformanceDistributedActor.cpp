@@ -135,12 +135,15 @@ static Identifier getVarName(VarDecl *var) {
 /******************************************************************************/
 
 static Type
-getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
+getBoundPersonalityStorageType(ASTContext &C,
+                               DeclContext* parentDC,
+                               NominalTypeDecl *decl) {
   // === DistributedActorStorage<?>
   auto storageTypeDecl = C.getDistributedActorStorageDecl();
 
   // === locate the SYNTHESIZED: LocalStorage
   auto localStorageTypeDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+
 //  if (localStorageTypeDecls.size() > 1) {
 //    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
 //  }
@@ -170,8 +173,29 @@ getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
 //    if (isa<TypeAliasDecl>(localStorageType)) // TODO: doug, ??????
 //      localStorageType = localStorageType->getAnyNominal();
 
+//  auto boundStorageType = BoundGenericType::get(
+//      storageTypeDecl, /*Parent=*/Type(), {localStorageType});
+
+  auto rawTy = C.getStringDecl();
+
+  fprintf(stderr, "[%s:%d] (%s) STRING:\n", __FILE__, __LINE__, __FUNCTION__);
+  rawTy->dump();
+  fprintf(stderr, "[%s:%d] (%s) STRING getDeclaredInterfaceType:\n", __FILE__, __LINE__, __FUNCTION__);
+  rawTy->getDeclaredInterfaceType()->dump();
+  fprintf(stderr, "[%s:%d] (%s) localStorageDecl:\n", __FILE__, __LINE__, __FUNCTION__);
+  localStorageDecl->dump();
+  fprintf(stderr, "[%s:%d] (%s) localStorageDecl getDeclaredInterfaceType:\n", __FILE__, __LINE__, __FUNCTION__);
+  localStorageDecl->getDeclaredInterfaceType()->dump();
+  fprintf(stderr, "[%s:%d] (%s) localStorageDecl mapped getDeclaredInterfaceType:\n", __FILE__, __LINE__, __FUNCTION__);
+  decl->mapTypeIntoContext(localStorageDecl->getDeclaredInterfaceType())->dump();
+//  auto bareTypeExpr = TypeExpr::createImplicit(rawTy, C);
+//  auto typeExpr = new (C) DotSelfExpr(bareTypeExpr, SourceLoc(), SourceLoc());
+
   auto boundStorageType = BoundGenericType::get(
-      storageTypeDecl, /*Parent=*/Type(), {localStorageType});
+//      storageTypeDecl, /*Parent=*/Type(), {rawTy->getDeclaredInterfaceType()});
+//      storageTypeDecl, /*Parent=*/Type(), {localStorageDecl->getDeclaredInterfaceType()});
+      storageTypeDecl, /*Parent=*/Type(),
+      {decl->mapTypeIntoContext(localStorageDecl->getDeclaredInterfaceType())});
 
   return boundStorageType;
 }
@@ -198,30 +222,30 @@ getBoundPersonalityStorageType(ASTContext &C, NominalTypeDecl *decl) {
 /// Where the `distributedActorState` property wrapper is implemented as
 static std::pair<Type, TypeDecl *>
 deriveDistributedActorLocalStorageStruct(DerivedConformance &derived) {
-  auto actorDecl = dyn_cast<ClassDecl>(derived.Nominal);
-  assert(actorDecl->isDistributedActor());
+  auto *parentDC = derived.getConformanceContext();
+  auto nominal = dyn_cast<ClassDecl>(derived.Nominal);
+  auto &C = derived.Nominal->getASTContext();
+  assert(nominal->isDistributedActor());
 
   fprintf(stderr, "\n");
-  actorDecl->dump();
+  nominal->dump();
   fprintf(stderr, "[%s:%d] (%s) SYNTH STORAGE FOR ^^^^^^\n", __FILE__, __LINE__, __FUNCTION__);
 
-  auto &C = derived.Nominal->getASTContext();
 
   StructDecl *storageDecl = new (C) StructDecl(
       SourceLoc(), C.Id_DistributedActorLocalStorage, SourceLoc(),
       /*Inherited*/ {},
-      /*GenericParams*/ {}, actorDecl
+      /*GenericParams*/ {}, nominal
   );
   storageDecl->setImplicit();
 //  storageDecl->setSynthesized();
   // storageDecl->setAccess(AccessLevel::Private); // TODO: would love for these to be private (!!!)
-   storageDecl->setAccess(AccessLevel::Public); // TODO: would love for these to be private (!!!)
-//  storageDecl->copyFormalAccessFrom(actorDecl, /*sourceIsParentContext=*/true); // TODO: unfortunate
+  storageDecl->copyFormalAccessFrom(nominal, /*sourceIsParentContext=*/true); // TODO: unfortunate
   // storageDecl->setUserAccessible(false); // TODO: would be nice
 
   // mirror all stored properties from the 'distributed actor' to the storage struct.
   // This must not use 'getStoredProperties' as it would create a cycle.
-  for (auto *member : actorDecl->getMembers()) {
+  for (auto *member : nominal->getMembers()) {
     VarDecl *var = dyn_cast<VarDecl>(member);
     if (!var || var->isStatic() || !var->isUserAccessible())
       continue;
@@ -250,7 +274,9 @@ deriveDistributedActorLocalStorageStruct(DerivedConformance &derived) {
   derived.addMembersToConformanceContext({storageDecl});
 
   return std::make_pair(
-      storageDecl->getInterfaceType(),
+      parentDC->mapTypeIntoContext(
+          storageDecl->getInterfaceType()),
+//      storageDecl->getInterfaceType(),
       storageDecl
   );
 }
@@ -448,7 +474,7 @@ deriveDistributedActorFuncMapStorage(DerivedConformance &derived) {
   funcDecl->setBodySynthesizer(______synthesizeStubBody);
   funcDecl->copyFormalAccessFrom(nominal, /*sourceIsParentContext=*/true); // TODO: make private?
 
-//  funcDecl->setGenericSignature(); // FIXME: !!!!!
+//  funcDecl->setGenericSignature();
 
   fprintf(stderr, "\n", __FILE__, __LINE__, __FUNCTION__);
   funcDecl->dump();
@@ -475,19 +501,19 @@ deriveDistributedActorPropertyAddress(DerivedConformance &derived) {
 
   auto &C = derived.Nominal->getASTContext();
 
-    auto propertyType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+  auto propertyType = C.getActorAddressDecl()->getDeclaredInterfaceType();
 
-    VarDecl *propDecl;
-    PatternBindingDecl *pbDecl;
-    std::tie(propDecl, pbDecl) = createStoredProperty(
-        actorDecl, actorDecl, C,
-        VarDecl::Introducer::Let, C.Id_actorAddress,
-        propertyType, propertyType,
-        /*isStatic=*/false, /*isFinal=*/true);
+  VarDecl *propDecl;
+  PatternBindingDecl *pbDecl;
+  std::tie(propDecl, pbDecl) = createStoredProperty(
+      actorDecl, actorDecl, C,
+      VarDecl::Introducer::Let, C.Id_actorAddress,
+      propertyType, propertyType,
+      /*isStatic=*/false, /*isFinal=*/true);
 
-    // mark as @_distributedActorIndependent, allowing access to it from everywhere
-    propDecl->getAttrs().add(
-        new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
+  // mark as @_distributedActorIndependent, allowing access to it from everywhere
+  propDecl->getAttrs().add(
+      new(C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
 
 
   fprintf(stderr, "\n", __FILE__, __LINE__, __FUNCTION__);
@@ -542,12 +568,13 @@ deriveDistributedActorPropertyTransport(DerivedConformance &derived) {
 // ```
 static ValueDecl*
 deriveDistributedActorPropertyStorage(DerivedConformance &derived) {
+  auto *parentDC = derived.getConformanceContext();
   auto actorDecl = dyn_cast<ClassDecl>(derived.Nominal);
+  auto &C = derived.Nominal->getASTContext();
   assert(actorDecl->isDistributedActor());
 
-  auto &C = derived.Nominal->getASTContext();
 
-  auto boundPersonalityType = getBoundPersonalityStorageType(C, actorDecl);
+  auto boundPersonalityType = getBoundPersonalityStorageType(C, parentDC, actorDecl);
 
   VarDecl *propDecl;
   PatternBindingDecl *pbDecl;
