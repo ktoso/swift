@@ -6,8 +6,9 @@
 import _Concurrency
 
 distributed actor Person {
-  @DistributedActorValue
+//  @DistributedActorValue
   var name: String
+
   // TODO: allow default values here
   // var name: String = "Alice"
 
@@ -19,6 +20,10 @@ distributed actor Person {
 //      name: "Other Name"
 //    ))
 //  }
+
+  func hello(name: String) -> String {
+    "Hello \(name), from \(self.name)"
+  }
 }
 
 extension Person {

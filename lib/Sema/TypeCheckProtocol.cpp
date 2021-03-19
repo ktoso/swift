@@ -696,9 +696,10 @@ swift::matchWitness(
     auto witnessParams = witnessFnType->getParams();
 
     // If the number of parameters doesn't match, we're done.
-    if (reqParams.size() != witnessParams.size())
-      return RequirementMatch(witness, MatchKind::TypeConflict, 
+    if (reqParams.size() != witnessParams.size()) {
+      return RequirementMatch(witness, MatchKind::TypeConflict,
                               witnessType);
+      }
 
     ParameterList *witnessParamList = getParameterList(witness);
     assert(witnessParamList->size() == witnessParams.size());
@@ -710,11 +711,15 @@ swift::matchWitness(
     for (unsigned i = 0, n = reqParams.size(); i != n; ++i) {
       // Variadic bits must match.
       // FIXME: Specialize the match failure kind
-      if (reqParams[i].isVariadic() != witnessParams[i].isVariadic())
+      if (reqParams[i].isVariadic() != witnessParams[i].isVariadic()) {
+        fprintf(stderr, "[%s:%d] (%s) FAILING MATCH HERE\n", __FILE__, __LINE__, __FUNCTION__);
         return RequirementMatch(witness, MatchKind::TypeConflict, witnessType);
+      }
 
-      if (reqParams[i].isInOut() != witnessParams[i].isInOut())
+      if (reqParams[i].isInOut() != witnessParams[i].isInOut()) {
+        fprintf(stderr, "[%s:%d] (%s) FAILING MATCH HERE\n", __FILE__, __LINE__, __FUNCTION__);
         return RequirementMatch(witness, MatchKind::TypeConflict, witnessType);
+      }
 
       auto reqParamDecl = reqParamList->get(i);
       auto witnessParamDecl = witnessParamList->get(i);
@@ -736,8 +741,10 @@ swift::matchWitness(
           OptionalAdjustment(std::get<2>(types), i));
       }
 
-      if (!req->isObjC() && reqParamTypeIsIUO != witnessParamTypeIsIUO)
+      if (!req->isObjC() && reqParamTypeIsIUO != witnessParamTypeIsIUO) {
+        fprintf(stderr, "[%s:%d] (%s) FAILING MATCH HERE\n", __FILE__, __LINE__, __FUNCTION__);
         return RequirementMatch(witness, MatchKind::TypeConflict, witnessType);
+      }
 
       if (auto result = matchTypes(std::get<0>(types), std::get<1>(types))) {
         return std::move(result.getValue());
@@ -4178,22 +4185,28 @@ ResolveWitnessResult ConformanceChecker::resolveWitnessViaDerivation(
   // Try to match the derived requirement.
   auto match = matchWitness(ReqEnvironmentCache, Proto, Conformance, DC,
                             requirement, derived);
+  fprintf(stderr, "[%s:%d] (%s) derive KIND: %d\n", __FILE__, __LINE__, __FUNCTION__, match.Kind);
   if (match.isViable()) {
     recordWitness(requirement, match);
     return ResolveWitnessResult::Success;
   }
 
-  fprintf(stderr, "[%s:%d] (%s) derrive FAILED\n", __FILE__, __LINE__, __FUNCTION__);
+  fprintf(stderr, "[%s:%d] (%s) derive FAILED, requirement:\n", __FILE__, __LINE__, __FUNCTION__);
   requirement->dump();
+  fprintf(stderr, "[%s:%d] (%s) derive DERIVED:\n", __FILE__, __LINE__, __FUNCTION__);
+  derived->dump();
+
+  auto matchKind = static_cast<uint8_t>(match.Kind);
 
   // Derivation failed.
   diagnoseOrDefer(requirement, true,
-    [](NormalProtocolConformance *conformance) {
+    [matchKind](NormalProtocolConformance *conformance) {
       auto proto = conformance->getProtocol();
       auto &diags = proto->getASTContext().Diags;
       diags.diagnose(conformance->getLoc(), diag::protocol_derivation_is_broken,
                      proto->getDeclaredInterfaceType(),
-                     conformance->getType());
+                     conformance->getType(),
+                     matchKind);
     });
 
   return ResolveWitnessResult::ExplicitFailed;
