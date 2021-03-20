@@ -2533,7 +2533,7 @@ public:
       if (auto fType = Ty->getAs<AnyFunctionType>()) {
         if (!fType->getExtInfo().isNoEscape())
           PrintWithColorRAII(OS, ClosureModifierColor) << " escaping";
-        if (fType->getExtInfo().isConcurrent())
+        if (fType->getExtInfo().isSendable())
           PrintWithColorRAII(OS, ClosureModifierColor) << " concurrent";
       }
     }
@@ -3283,8 +3283,7 @@ static void dumpProtocolConformanceRec(
       }
     }
 
-    if (auto condReqs = normal->getConditionalRequirementsIfAvailableOrCached(
-            /*computeIfPossible=*/false)) {
+    if (auto condReqs = normal->getConditionalRequirementsIfAvailable()) {
       for (auto requirement : *condReqs) {
         out << '\n';
         out.indent(indent + 2);
@@ -3826,7 +3825,7 @@ namespace {
                    getSILFunctionTypeRepresentationString(representation));
 
       printFlag(!T->isNoEscape(), "escaping");
-      printFlag(T->isConcurrent(), "concurrent");
+      printFlag(T->isSendable(), "Sendable");
       printFlag(T->isAsync(), "async");
       printFlag(T->isThrowing(), "throws");
 
@@ -3841,6 +3840,11 @@ namespace {
         T->getClangTypeInfo().dump(os, ctx);
         printField("clang_type", os.str());
       }
+
+      if (Type globalActor = T->getGlobalActor()) {
+        printField("global_actor", globalActor.getString());
+      }
+
       printAnyFunctionParams(T->getParams(), "input");
       Indent -=2;
       printRec("output", T->getResult());
