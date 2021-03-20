@@ -44,5 +44,6 @@ KNOWN_SDK_TYPE_DECL(Concurrency, ActorTransport, ProtocolDecl, 0)
 KNOWN_SDK_TYPE_DECL(Concurrency, ActorAddress, StructDecl, 0)
 KNOWN_SDK_TYPE_DECL(Concurrency, ResolvedDistributedActor, EnumDecl, 1)
 KNOWN_SDK_TYPE_DECL(Concurrency, DistributedActorStorage, EnumDecl, 1)
+KNOWN_SDK_TYPE_DECL(Concurrency, FAKE_LocalStorage, StructDecl, 0)
 
 #undef KNOWN_SDK_TYPE_DECL

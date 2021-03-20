@@ -13,6 +13,10 @@
 import Swift
 @_implementationOnly import _SwiftConcurrencyShims
 
+public struct FAKE_LocalStorage {
+  public var name: String = ""
+}
+
 /// Common protocol to which all distributed actors conform.
 ///
 /// The \c DistributedActor protocol provides the core functionality of any
@@ -21,16 +25,15 @@ import Swift
 /// point. Actor classes implicitly conform to this protocol as part of their
 /// primary class definition.
 public protocol DistributedActor: Actor, Codable {
-  associatedtype DistributedActorLocalStorage
+  // associatedtype FAKE_LocalStorage // FIXME: <generics issue>
 
-  /// TODO: Customization point not implemented yet.
-  ///
   /// A distributed actor requires all types involved in a 'distributed func'
   /// definition to conform to 'DistributedSendable'.
   ///
   /// It defaults to 'Codable', however specific transports may require that
   /// their actors conform to a specific different type and use highly specialized
   /// serialization mechanisms.
+  // TODO: Customization point not implemented yet.
   typealias DistributedSendable = Codable // & Sendable
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
@@ -84,15 +87,15 @@ public protocol DistributedActor: Actor, Codable {
   // main.Person (internal):11:18: error: actor-isolated property 'storage' cannot be used to satisfy a protocol requirement
   //    internal var storage: DistributedActorStorage<String>
   //                 ^
-  @actorIndependent(unsafe) // FIXME: pretty nasty... on the local case this breaks isolation then
-  // NOT @_distributedActorIndependent on purpose, as it makes it not accessible
-  // from outside of the actor, which is good - it is effectively the
-  var storage: DistributedActorStorage<DistributedActorLocalStorage> { get set }
+//  @actorIndependent(unsafe) // FIXME: pretty nasty... on the local case this breaks isolation then
+//  // NOT @_distributedActorIndependent on purpose, as it makes it not accessible
+//  // from outside of the actor, which is good - it is effectively the
+//  var storage: DistributedActorStorage<FAKE_LocalStorage> { get set }
 
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
   // FIXME: can we hide this method from public API?
-  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T>
+  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<FAKE_LocalStorage, T>
 
 }
 
@@ -201,22 +204,22 @@ public struct DistributedActorValue<Value> {
     storage storageKeyPath: ReferenceWritableKeyPath<Myself, Self>
   ) -> Value {
     get {
-      guard case .local(let DistributedActorLocalStorage) = actor.storage else {
+//      guard case .local(let FAKE_LocalStorage) = actor.storage else {
         fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
-      }
+//      }
 
-      let kp: KeyPath<Myself.DistributedActorLocalStorage, Value> =
-        Myself._mapStorage(keyPath: wrappedKeyPath)
-      return DistributedActorLocalStorage[keyPath: kp]
+//      let kp: KeyPath<FAKE_LocalStorage, Value> =
+//        Myself._mapStorage(keyPath: wrappedKeyPath)
+//      return FAKE_LocalStorage[keyPath: kp]
     }
     
     set {
-      guard case .local(var DistributedActorLocalStorage) = actor.storage else {
+//      guard case .local(var FAKE_LocalStorage) = actor.storage else {
         fatalError("Unexpected access to property of *remote* distributed actor instance \(Myself.self)")
-      }
-      let kp: WritableKeyPath<Myself.DistributedActorLocalStorage, Value> =
-        Myself._mapStorage(keyPath: wrappedKeyPath) as! WritableKeyPath
-      DistributedActorLocalStorage[keyPath: kp] = newValue
+//      }
+//      let kp: WritableKeyPath<FAKE_LocalStorage, Value> =
+//        Myself._mapStorage(keyPath: wrappedKeyPath) as! WritableKeyPath
+//      FAKE_LocalStorage[keyPath: kp] = newValue
     }
   }
 

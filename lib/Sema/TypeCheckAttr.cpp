@@ -57,7 +57,7 @@ namespace {
         llvm::errs() << "Attribute '";
         attr->print(llvm::errs());
         llvm::errs() << "' has invalid location, failed to diagnose!\n";
-        assert(false && "Diagnosing attribute with invalid location");
+        // assert(false && "Diagnosing attribute with invalid location"); // FIXME do we really have to fail here?
       }
 #endif
       if (loc.isInvalid()) {

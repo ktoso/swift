@@ -28,10 +28,10 @@ distributed actor Person {
 
 extension Person {
   // compiler can synthesize this
-  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<DistributedActorLocalStorage, T> {
+  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<FAKE_LocalStorage, T> {
     switch keyPath {
     case \Person.name:
-      return \DistributedActorLocalStorage.name as! KeyPath<DistributedActorLocalStorage, T>
+      return \FAKE_LocalStorage.name as! KeyPath<FAKE_LocalStorage, T>
     default:
       fatalError("Bad key path: \(keyPath)")
     }

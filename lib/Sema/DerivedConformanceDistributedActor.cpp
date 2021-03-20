@@ -141,32 +141,34 @@ getBoundPersonalityStorageType(ASTContext &C,
   // === DistributedActorStorage<?>
   auto storageTypeDecl = C.getDistributedActorStorageDecl();
 
-  // === locate the SYNTHESIZED: LocalStorage
-  auto localStorageTypeDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
-
-//  if (localStorageTypeDecls.size() > 1) {
-//    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+//  // === TODO: locate the SYNTHESIZED: LocalStorage
+//  auto localStorageTypeDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+//
+////  if (localStorageTypeDecls.size() > 1) {
+////    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+////  }
+//  StructDecl *localStorageDecl = nullptr;
+//  for (auto decl : localStorageTypeDecls) {
+//    fprintf(stderr, "\n");
+//    fprintf(stderr, "[%s:%d] (%s) STORAGE DECL:\n", __FILE__, __LINE__, __FUNCTION__);
+//    decl->dump();
+//    fprintf(stderr, "\n");
+//    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
+//      localStorageDecl = structDecl;
+//      break;
+//    }
 //  }
-  StructDecl *localStorageDecl = nullptr;
-  for (auto decl : localStorageTypeDecls) {
-    fprintf(stderr, "\n");
-    fprintf(stderr, "[%s:%d] (%s) STORAGE DECL:\n", __FILE__, __LINE__, __FUNCTION__);
-    decl->dump();
-    fprintf(stderr, "\n");
-    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
-      localStorageDecl = structDecl;
-      break;
-    }
-  }
+//
+////  localStorageDecl->dump();
+////  fprintf(stderr, "[%s:%d] (%s) localStorageDecl ^^^^^^\n", __FILE__, __LINE__, __FUNCTION__);
+//  assert(localStorageDecl && "unable to lookup SYNTHESIZED struct DistributedActorLocalStorage!");
+////  TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localStorageDecl);
+////  if (!localStorageTypeDecl) {
+////    // TODO: diagnose here
+////    assert(false && "could not find DistributedActorLocalStorage in distributed actor");
+////  }
 
-//  localStorageDecl->dump();
-//  fprintf(stderr, "[%s:%d] (%s) localStorageDecl ^^^^^^\n", __FILE__, __LINE__, __FUNCTION__);
-  assert(localStorageDecl && "unable to lookup SYNTHESIZED struct DistributedActorLocalStorage!");
-//  TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localStorageDecl);
-//  if (!localStorageTypeDecl) {
-//    // TODO: diagnose here
-//    assert(false && "could not find DistributedActorLocalStorage in distributed actor");
-//  }
+  auto localStorageDecl = C.getFAKE_LocalStorageDecl();
 
   // === bind: DistributedActorStorage<DistributedActorLocalStorage>
   auto localStorageType = localStorageDecl->getDeclaredInterfaceType();
@@ -176,18 +178,6 @@ getBoundPersonalityStorageType(ASTContext &C,
 //  auto boundStorageType = BoundGenericType::get(
 //      storageTypeDecl, /*Parent=*/Type(), {localStorageType});
 
-  auto rawTy = C.getStringDecl();
-
-  fprintf(stderr, "[%s:%d] (%s) STRING:\n", __FILE__, __LINE__, __FUNCTION__);
-  rawTy->dump();
-  fprintf(stderr, "[%s:%d] (%s) STRING getDeclaredInterfaceType:\n", __FILE__, __LINE__, __FUNCTION__);
-  rawTy->getDeclaredInterfaceType()->dump();
-  fprintf(stderr, "[%s:%d] (%s) localStorageDecl:\n", __FILE__, __LINE__, __FUNCTION__);
-  localStorageDecl->dump();
-  fprintf(stderr, "[%s:%d] (%s) localStorageDecl getDeclaredInterfaceType:\n", __FILE__, __LINE__, __FUNCTION__);
-  localStorageDecl->getDeclaredInterfaceType()->dump();
-  fprintf(stderr, "[%s:%d] (%s) localStorageDecl mapped getDeclaredInterfaceType:\n", __FILE__, __LINE__, __FUNCTION__);
-  decl->mapTypeIntoContext(localStorageDecl->getDeclaredInterfaceType())->dump();
 //  auto bareTypeExpr = TypeExpr::createImplicit(rawTy, C);
 //  auto typeExpr = new (C) DotSelfExpr(bareTypeExpr, SourceLoc(), SourceLoc());
 
@@ -572,7 +562,6 @@ deriveDistributedActorPropertyStorage(DerivedConformance &derived) {
   auto actorDecl = dyn_cast<ClassDecl>(derived.Nominal);
   auto &C = derived.Nominal->getASTContext();
   assert(actorDecl->isDistributedActor());
-
 
   auto boundPersonalityType = getBoundPersonalityStorageType(C, parentDC, actorDecl);
 
