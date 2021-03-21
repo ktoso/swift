@@ -25,6 +25,7 @@
 namespace swift {
 
 class AbstractFunctionDecl;
+class ConstructorDecl;
 class ActorIsolation;
 class AnyFunctionType;
 class ASTContext;
@@ -51,6 +52,8 @@ void addAsyncNotes(AbstractFunctionDecl const* func);
 /// Check actor isolation rules.
 void checkTopLevelActorIsolation(TopLevelCodeDecl *decl);
 void checkFunctionActorIsolation(AbstractFunctionDecl *decl);
+void checkActorConstructor(ClassDecl *decl, ConstructorDecl *ctor);
+void checkActorConstructorBody(ClassDecl *decl, ConstructorDecl *ctor, BraceStmt *body);
 void checkInitializerActorIsolation(Initializer *init, Expr *expr);
 void checkEnumElementActorIsolation(EnumElementDecl *element, Expr *expr);
 void checkPropertyWrapperActorIsolation(
@@ -83,11 +86,17 @@ public:
     /// References to this entity are allowed from anywhere, but doing so
     /// may cross an actor boundary if it is not from within the same actor's
     /// isolation domain.
+    ///
+    /// The target actor may be a distributed actor.
     CrossActorSelf,
 
     /// References to this member of an actor are only permitted from within
     /// the actor's isolation domain.
     ActorSelf,
+
+    /// References to declarations that are part of a distributed actor are
+    /// only permitted if they are async.
+    DistributedActorSelf,
 
     /// References to a declaration that is part of a global actor are
     /// permitted from other declarations with that same global actor or
@@ -126,9 +135,15 @@ public:
 
   Kind getKind() const { return kind; }
 
+  bool isDistributedActor() {
+    return kind == DistributedActorSelf;
+  }
+
   /// Retrieve the actor type that the declaration is within.
   NominalTypeDecl *getActorType() const {
-    assert(kind == ActorSelf || kind == CrossActorSelf);
+    assert(kind == ActorSelf ||
+           kind == CrossActorSelf ||
+           kind == DistributedActorSelf);
     return data.actorType;
   }
 
@@ -153,6 +168,14 @@ public:
   static ActorIsolationRestriction forActorSelf(
       NominalTypeDecl *actor, bool isCrossActor) {
     ActorIsolationRestriction result(isCrossActor? CrossActorSelf : ActorSelf,
+                                     isCrossActor);
+    result.data.actorType = actor;
+    return result;
+  }
+
+  static ActorIsolationRestriction forDistributedActorSelf(
+      NominalTypeDecl *actor, bool isCrossActor) {
+    ActorIsolationRestriction result(DistributedActorSelf, // TODO: what about cross actor here...
                                      isCrossActor);
     result.data.actorType = actor;
     return result;
@@ -229,8 +252,8 @@ enum class SendableCheck {
 Optional<std::pair<CustomAttr *, NominalTypeDecl *>>
 checkGlobalActorAttributes(
     SourceLoc loc, DeclContext *dc, ArrayRef<CustomAttr *> attrs);
-
 /// Get the explicit global actor specified for a closure.
+
 Type getExplicitGlobalActor(ClosureExpr *closure);
 
 /// Check the correctness of the given Sendable conformance.

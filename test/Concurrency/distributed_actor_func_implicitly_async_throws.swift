@@ -1,0 +1,85 @@
+// RUN: %target-typecheck-verify-swift -enable-experimental-concurrency -enable-experimental-distributed
+// REQUIRES: concurrency
+
+distributed actor D {
+
+  func hello() {} // expected-note{{only 'distributed' functions can be called from outside the distributed actor}}
+  func helloAsync() async {} // expected-note{{only 'distributed' functions can be called from outside the distributed actor}}
+  func helloAsyncThrows() async throws {} // expected-note{{only 'distributed' functions can be called from outside the distributed actor}}
+
+  distributed func distHello() { } // ok
+  distributed func distHelloAsync() async { } // ok
+  distributed func distHelloThrows() throws { } // ok
+  distributed func distHelloAsyncThrows() async throws { } // ok
+}
+
+extension D {
+  static func distHello(actor: D) { } async throws { }
+  static func distHelloAsync(actor: D) async throws { }
+  static func distHelloThrows() async throws {}
+  static func distHelloAsyncThrows() async throws { }
+}
+
+func test_not_distributed_funcs(distributed: D) async {
+  distributed.hello() // expected-error{{only 'distributed' functions can be called from outside the distributed actor}}
+  distributed.helloAsync() // expected-error{{only 'distributed' functions can be called from outside the distributed actor}}
+  // expected-error@-1{{call is 'async' but is not marked with 'await'}} // TODO: no need to diagnose this, it is impossible to call anyway
+  distributed.helloAsyncThrows() // expected-error{{only 'distributed' functions can be called from outside the distributed actor}}
+  // expected-error@-1{{call is 'async' but is not marked with 'await'}} // TODO: no need to diagnose this, it is impossible to call anyway
+  // expected-error@-2{{call can throw, but it is not marked with 'try' and the error is not handled}} // TODO: no need to diagnose this, it is impossible to call anyway
+}
+
+func test_outside(distributed: D) async throws {
+  distributed.distHello() // expected-error{{call is 'async' but is not marked with 'await'}}
+  // expected-error@-1{{call can throw but is not marked with 'try'}}
+  // expected-note@-2{{did you mean to use 'try'?}}
+  // expected-note@-3{{did you mean to disable error propagation?}}
+  // expected-note@-4{{did you mean to handle error as optional value?}}
+  try distributed.distHello() // expected-error{{call is 'async' but is not marked with 'await'}}
+  await distributed.distHello() // expected-error{{call can throw but is not marked with 'try'}}
+  // expected-note@-1{{did you mean to use 'try'?}}
+  // expected-note@-2{{did you mean to disable error propagation?}}
+  // expected-note@-3{{did you mean to handle error as optional value?}}
+  try await distributed.distHello() // ok
+
+  distributed.distHelloAsync()// expected-error{{call is 'async' but is not marked with 'await'}}
+  // expected-error@-1{{call can throw but is not marked with 'try'}}
+  // expected-note@-2{{did you mean to use 'try'?}}
+  // expected-note@-3{{did you mean to disable error propagation?}}
+  // expected-note@-4{{did you mean to handle error as optional value?}}
+  try distributed.distHelloAsync() // expected-error{{call is 'async' but is not marked with 'await'}}
+  await distributed.distHelloAsync() // expected-error{{call can throw but is not marked with 'try'}}
+  // expected-note@-1{{did you mean to use 'try'?}}
+  // expected-note@-2{{did you mean to disable error propagation?}}
+  // expected-note@-3{{did you mean to handle error as optional value?}}
+  try await distributed.distHelloAsync() // ok
+
+  distributed.distHelloThrows() // expected-error{{call is 'async' but is not marked with 'await'}}
+  // expected-error@-1{{call can throw but is not marked with 'try'}}
+  // expected-note@-2{{did you mean to use 'try'?}}
+  // expected-note@-3{{did you mean to disable error propagation?}}
+  // expected-note@-4{{did you mean to handle error as optional value?}}
+  try distributed.distHelloThrows() // expected-error{{call is 'async' but is not marked with 'await'}}
+  await distributed.distHelloThrows() // expected-error{{call can throw but is not marked with 'try'}}
+  // expected-note@-1{{did you mean to use 'try'?}}
+  // expected-note@-2{{did you mean to disable error propagation?}}
+  // expected-note@-3{{did you mean to handle error as optional value?}}
+  try await distributed.distHelloThrows() // ok
+
+  distributed.distHelloAsyncThrows() // expected-error{{call is 'async' but is not marked with 'await'}}
+  // expected-error@-1{{call can throw but is not marked with 'try'}}
+  // expected-note@-2{{did you mean to use 'try'?}}
+  // expected-note@-3{{did you mean to disable error propagation?}}
+  // expected-note@-4{{did you mean to handle error as optional value?}}
+  try distributed.distHelloAsyncThrows() // expected-error{{call is 'async' but is not marked with 'await'}}
+  await distributed.distHelloAsyncThrows() // expected-error{{call can throw but is not marked with 'try'}}
+  // expected-note@-1{{did you mean to use 'try'?}}
+  // expected-note@-2{{did you mean to disable error propagation?}}
+  // expected-note@-3{{did you mean to handle error as optional value?}}
+  try await distributed.distHelloAsyncThrows() // ok
+
+  // special: the actorAddress may always be referred to
+  _ = distributed.actorAddress // ok
+  _ = distributed.actorTransport // ok
+}
+

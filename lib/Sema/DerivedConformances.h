@@ -283,6 +283,12 @@ public:
   /// Determine if \c Decodable can be derived for the given type.
   static bool canDeriveDecodable(NominalTypeDecl *NTD);
 
+  /// Determine if \c DistributedActor can be derived for the given type.
+  static bool canDeriveDistributedActor(NominalTypeDecl *nominal);
+
+  std::pair<Type, TypeDecl *>
+  deriveDistributedActorAssociatedType(AssociatedTypeDecl *assocType);
+
   /// Derive a CodingKey requirement for an enum type.
   ///
   /// \returns the derived member, which will also be added to the type.
@@ -297,6 +303,11 @@ public:
   ///
   /// \returns the derived member, which will also be added to the type.
   ValueDecl *deriveDecodable(ValueDecl *requirement);
+
+  /// Derive a DistributedActor requirement for an distributed actor.
+  ///
+  /// \returns the derived member, which will also be added to the type.
+  ValueDecl *deriveDistributedActor(ValueDecl *requirement);
 
   /// Declare a read-only property.
   std::pair<VarDecl *, PatternBindingDecl *>

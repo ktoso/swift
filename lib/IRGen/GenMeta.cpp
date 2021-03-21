@@ -5140,6 +5140,7 @@ SpecialProtocol irgen::getSpecialProtocolID(ProtocolDecl *P) {
   case KnownProtocolKind::Actor:
   case KnownProtocolKind::Sendable:
   case KnownProtocolKind::UnsafeSendable:
+  case KnownProtocolKind::DistributedActor:
     return SpecialProtocol::None;
   }
 

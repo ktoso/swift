@@ -497,10 +497,14 @@ protected:
     IsDebuggerAlias : 1
   );
 
-  SWIFT_INLINE_BITFIELD(NominalTypeDecl, GenericTypeDecl, 1+1+1,
+  SWIFT_INLINE_BITFIELD(NominalTypeDecl, GenericTypeDecl, 1+1+1+1,
     /// Whether we have already added implicitly-defined initializers
     /// to this declaration.
     AddedImplicitInitializers : 1,
+
+    /// Whether we have already added implicitly-defined distributed actor
+    /// storage properties and supporting structs and funcs to this declaration.
+    AddedDistributedActorStorage : 1,
 
     /// Whether there is are lazily-loaded conformances for this nominal type.
     HasLazyConformances : 1,
@@ -568,6 +572,8 @@ protected:
 
     /// Set when the class represents an actor
     IsActor : 1
+
+    // TODO: do we need distributed actor marker here?
   );
 
   SWIFT_INLINE_BITFIELD(
@@ -2291,6 +2297,8 @@ public:
   /// Is this declaration marked with 'dynamic'?
   bool isDynamic() const;
 
+  bool isDistributedActorIndependent() const;
+
 private:
   bool isObjCDynamic() const {
     return isObjC() && isDynamic();
@@ -3026,6 +3034,7 @@ protected:
     IterableDeclContext(IterableDeclContextKind::NominalTypeDecl)
   {
     Bits.NominalTypeDecl.AddedImplicitInitializers = false;
+    Bits.NominalTypeDecl.AddedDistributedActorStorage = false;
     ExtensionGeneration = 0;
     Bits.NominalTypeDecl.HasLazyConformances = false;
     Bits.NominalTypeDecl.IsComputingSemanticMembers = false;
@@ -3064,6 +3073,17 @@ public:
   /// Note that we have attempted to add implicit initializers.
   void setAddedImplicitInitializers() {
     Bits.NominalTypeDecl.AddedImplicitInitializers = true;
+  }
+
+  /// Determine whether we have already attempted to add any
+  /// implicitly-defined distributed-actor storage to this declaration.
+  bool addedDistributedActorStorage() const {
+    return Bits.NominalTypeDecl.AddedDistributedActorStorage;
+  }
+
+  /// Note that we have attempted to add implicit distributed actor storage.
+  void setAddedDistributedActorStorage() {
+    Bits.NominalTypeDecl.AddedDistributedActorStorage = true;
   }
 
   /// getDeclaredType - Retrieve the type declared by this entity, without
@@ -3108,6 +3128,11 @@ public:
   TinyPtrVector<ValueDecl *> lookupDirect(DeclName name,
                                           OptionSet<LookupDirectFlags> flags =
                                           OptionSet<LookupDirectFlags>());
+
+  /// Find the '_remote_<...>' counterpart function to a 'distributed func'.
+  ///
+  /// If the passed in function is not distributed this function returns null.
+  AbstractFunctionDecl* lookupDirectRemoteFunc(AbstractFunctionDecl *func);
 
   /// Collect the set of protocols to which this type should implicitly
   /// conform, such as AnyObject (for classes).
@@ -3164,6 +3189,9 @@ public:
   /// either an actor type or a protocol whose `Self` type conforms to the
   /// `Actor` protocol.
   bool isActor() const;
+
+  /// Whether the class is an distributed actor.
+  bool isDistributedActor() const;
 
   /// Return the range of semantics attributes attached to this NominalTypeDecl.
   auto getSemanticsAttrs() const
@@ -3232,6 +3260,8 @@ public:
   /// \returns the static 'shared' property for a global actor, or \c nullptr
   /// for types that are not global actors.
   VarDecl *getGlobalActorInstance() const;
+
+  bool hasDistributedActorLocalInitializer() const;
 
   /// Whether this type is a global actor, which can be used as an
   /// attribute to decorate declarations for inclusion in the actor-isolated
@@ -3714,7 +3744,7 @@ public:
 
   /// Whether the class was explicitly declared with the `actor` keyword.
   bool isExplicitActor() const { return Bits.ClassDecl.IsActor; }
-
+  
   /// Does this class explicitly declare any of the methods that
   /// would prevent it from being a default actor?
   bool hasExplicitCustomActorMethods() const;
@@ -3943,6 +3973,7 @@ enum class KnownDerivableProtocolKind : uint8_t {
   Decodable,
   AdditiveArithmetic,
   Differentiable,
+  DistributedActor,
 };
 
 /// ProtocolDecl - A declaration of a protocol, for example:
@@ -4626,6 +4657,8 @@ public:
 
   bool hasAnyNativeDynamicAccessors() const;
 
+  bool isDistributedActorIndependent() const;
+
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) {
     return D->getKind() >= DeclKind::First_AbstractStorageDecl &&
@@ -5078,13 +5111,22 @@ public:
     return getAttrs().getAttributes<SemanticsAttr>();
   }
 
-  /// Returns true if this VarDelc has the string \p attrValue as a semantics
+  /// Returns true if this VarDecl has the string \p attrValue as a semantics
   /// attribute.
   bool hasSemanticsAttr(StringRef attrValue) const {
     return llvm::any_of(getSemanticsAttrs(), [&](const SemanticsAttr *attr) {
       return attrValue.equals(attr->Value);
     });
   }
+
+  /// Is a distributed actor property, and should therefore be isolated in
+  /// its personality storage.
+  ///
+  /// This automatically excludes the "special" stored properties, such as:
+  /// transport, address and storage/personality.
+  bool isDistributedActorStoredProperty() const;
+
+  //  bool isDistributedActorIndependent() const;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { 
@@ -5769,6 +5811,9 @@ public:
 
   /// Returns if the function is 'rethrows' or 'reasync'.
   bool hasPolymorphicEffect(EffectKind kind) const;
+
+  /// Returns 'true' if the function is 'distributed'.
+  bool isDistributed() const;
 
   PolymorphicEffectKind getPolymorphicEffectKind(EffectKind kind) const;
 
@@ -6598,7 +6643,21 @@ enum class CtorInitializerKind {
   ///
   /// FIXME: Arguably, structs and enums only have factory initializers, and
   /// using designated initializers for them is a misnomer.
-  Factory
+  Factory,
+
+  /// the init(transport:) initializer of a distributed actor.
+
+  /// It is similar to designated however we do allow end-users to define
+  /// designated initializers as usual.
+  ///
+  /// This is so that distributed actor declarations are able to initialize their
+  /// fields, but are also forced to invoke the self.init(transport:) initializer
+  /// (which is the DesignatedDistributedLocal initializer).
+  DesignatedDistributedLocal, // FIXME: rename DistributedLocal
+
+  /// the init(resolve:using:) initializer of a distributed actor.
+  DistributedResolve,
+
 };
 
 /// Specifies the kind of initialization call performed within the body
@@ -6703,7 +6762,9 @@ public:
 
   /// Whether this is a designated initializer.
   bool isDesignatedInit() const {
-    return getInitKind() == CtorInitializerKind::Designated;
+    return getInitKind() == CtorInitializerKind::Designated ||
+           getInitKind() == CtorInitializerKind::DesignatedDistributedLocal ||
+           getInitKind() == CtorInitializerKind::DistributedResolve;
   }
 
   /// Whether this is a convenience initializer.
@@ -6716,6 +6777,8 @@ public:
   bool isFactoryInit() const {
     switch (getInitKind()) {
     case CtorInitializerKind::Designated:
+    case CtorInitializerKind::DesignatedDistributedLocal:
+    case CtorInitializerKind::DistributedResolve:
     case CtorInitializerKind::Convenience:
       return false;
         
@@ -6730,6 +6793,8 @@ public:
   bool isInheritable() const {
     switch (getInitKind()) {
     case CtorInitializerKind::Designated:
+    case CtorInitializerKind::DesignatedDistributedLocal:
+    case CtorInitializerKind::DistributedResolve:
     case CtorInitializerKind::Factory:
       return false;
 
@@ -6739,6 +6804,18 @@ public:
     }
     llvm_unreachable("bad CtorInitializerKind");
   }
+
+  /// Checks if the initializer is a distributed actor's 'local' initializer:
+  /// ```
+  /// init(transport: ActorTransport)
+  /// ```
+  bool isDistributedActorLocalInit() const;
+
+  /// Checks if the initializer is a distributed actor's 'resolve' initializer:
+  /// ```
+  /// init(resolve address: ActorAddress, using transport: ActorTransport)
+  /// ```
+  bool isDistributedActorResolveInit() const;
 
   /// Determine if this is a failable initializer.
   bool isFailable() const {

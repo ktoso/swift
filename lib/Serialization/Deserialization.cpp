@@ -1140,6 +1140,8 @@ getActualCtorInitializerKind(uint8_t raw) {
   CASE(Convenience)
   CASE(Factory)
   CASE(ConvenienceFactory)
+  CASE(DesignatedDistributedLocal)
+  CASE(DistributedResolve)
 #undef CASE
   }
   return None;
@@ -4288,6 +4290,14 @@ llvm::Error DeclDeserializer::deserializeDeclCommon() {
         serialization::decls_block::ActorIndependentDeclAttrLayout::readRecord(
             scratch, kind);
         Attr = new (ctx) ActorIndependentAttr((ActorIndependentKind)kind);
+        break;
+      }
+
+      case decls_block::DistributedActor_DECL_ATTR: {
+        unsigned kind;
+        serialization::decls_block::DistributedActorDeclAttrLayout::readRecord(
+            scratch, kind);
+        Attr = new (ctx) DistributedActorAttr((DistributedActorKind)kind);
         break;
       }
 

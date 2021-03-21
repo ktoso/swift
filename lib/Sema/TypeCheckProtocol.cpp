@@ -696,9 +696,10 @@ swift::matchWitness(
     auto witnessParams = witnessFnType->getParams();
 
     // If the number of parameters doesn't match, we're done.
-    if (reqParams.size() != witnessParams.size())
-      return RequirementMatch(witness, MatchKind::TypeConflict, 
+    if (reqParams.size() != witnessParams.size()) {
+      return RequirementMatch(witness, MatchKind::TypeConflict,
                               witnessType);
+      }
 
     ParameterList *witnessParamList = getParameterList(witness);
     assert(witnessParamList->size() == witnessParams.size());
@@ -710,11 +711,15 @@ swift::matchWitness(
     for (unsigned i = 0, n = reqParams.size(); i != n; ++i) {
       // Variadic bits must match.
       // FIXME: Specialize the match failure kind
-      if (reqParams[i].isVariadic() != witnessParams[i].isVariadic())
+      if (reqParams[i].isVariadic() != witnessParams[i].isVariadic()) {
+        fprintf(stderr, "[%s:%d] (%s) FAILING MATCH HERE\n", __FILE__, __LINE__, __FUNCTION__);
         return RequirementMatch(witness, MatchKind::TypeConflict, witnessType);
+      }
 
-      if (reqParams[i].isInOut() != witnessParams[i].isInOut())
+      if (reqParams[i].isInOut() != witnessParams[i].isInOut()) {
+        fprintf(stderr, "[%s:%d] (%s) FAILING MATCH HERE\n", __FILE__, __LINE__, __FUNCTION__);
         return RequirementMatch(witness, MatchKind::TypeConflict, witnessType);
+      }
 
       auto reqParamDecl = reqParamList->get(i);
       auto witnessParamDecl = witnessParamList->get(i);
@@ -736,8 +741,10 @@ swift::matchWitness(
           OptionalAdjustment(std::get<2>(types), i));
       }
 
-      if (!req->isObjC() && reqParamTypeIsIUO != witnessParamTypeIsIUO)
+      if (!req->isObjC() && reqParamTypeIsIUO != witnessParamTypeIsIUO) {
+        fprintf(stderr, "[%s:%d] (%s) FAILING MATCH HERE\n", __FILE__, __LINE__, __FUNCTION__);
         return RequirementMatch(witness, MatchKind::TypeConflict, witnessType);
+      }
 
       if (auto result = matchTypes(std::get<0>(types), std::get<1>(types))) {
         return std::move(result.getValue());
@@ -1818,6 +1825,7 @@ checkIndividualConformance(NormalProtocolConformance *conformance,
   std::vector<MissingWitness> revivedMissingWitnesses;
   switch (conformance->getState()) {
     case ProtocolConformanceState::Incomplete:
+      fprintf(stderr, "[%s:%d] (%s) incomplete\n", __FILE__, __LINE__, __FUNCTION__);
       if (conformance->isInvalid()) {
         // Revive registered missing witnesses to handle it below.
         if (auto delayed = getASTContext().takeDelayedMissingWitnesses(
@@ -2728,6 +2736,29 @@ bool ConformanceChecker::checkActorIsolation(
   Type witnessGlobalActor;
   switch (auto witnessRestriction =
               ActorIsolationRestriction::forDeclaration(witness)) {
+  case ActorIsolationRestriction::DistributedActorSelf: {
+    if (witness->isSynthesized()) {
+      // Some of our synthesized properties get special treatment,
+      // they are always available, regardless if the actor is remote even.
+      auto &C = requirement->getASTContext();
+
+      // actorAddress is special, it is *always* available.
+      // even if the actor is 'remote' it is always available and immutable.
+      if (witness->getName() == C.Id_actorAddress &&
+          witness->getInterfaceType()->isEqual(
+              C.getActorAddressDecl()->getDeclaredInterfaceType()))
+        return false;
+
+      // TODO: we don't *really* need to expose the transport like that... reconsider?
+      if (witness->getName() == C.Id_actorTransport &&
+          witness->getInterfaceType()->isEqual(
+              C.getActorTransportDecl()->getDeclaredInterfaceType()))
+        return false;
+    }
+
+    // continue checking ActorSelf rules
+    LLVM_FALLTHROUGH;
+  }
   case ActorIsolationRestriction::ActorSelf: {
     // An actor-isolated witness can only conform to an actor-isolated
     // requirement.
@@ -2793,6 +2824,7 @@ bool ConformanceChecker::checkActorIsolation(
   bool requirementIsUnsafe = false;
   switch (auto requirementIsolation = getActorIsolation(requirement)) {
   case ActorIsolation::ActorInstance:
+  case ActorIsolation::DistributedActorInstance:
     llvm_unreachable("There are not actor protocols");
 
   case ActorIsolation::GlobalActorUnsafe:
@@ -4140,6 +4172,7 @@ ResolveWitnessResult ConformanceChecker::resolveWitnessViaDerivation(
   // Find the declaration that derives the protocol conformance.
   NominalTypeDecl *derivingTypeDecl = nullptr;
   auto *nominal = Adoptee->getAnyNominal();
+  fprintf(stderr, "[%s:%d] (%s) going to call >>> DerivedConformance::derivesProtocolConformance(DC, nominal, Proto)\n", __FILE__, __LINE__, __FUNCTION__);
   if (DerivedConformance::derivesProtocolConformance(DC, nominal, Proto))
     derivingTypeDecl = nominal;
 
@@ -4156,19 +4189,29 @@ ResolveWitnessResult ConformanceChecker::resolveWitnessViaDerivation(
   // Try to match the derived requirement.
   auto match = matchWitness(ReqEnvironmentCache, Proto, Conformance, DC,
                             requirement, derived);
+  fprintf(stderr, "[%s:%d] (%s) derive, match KIND: %d\n", __FILE__, __LINE__, __FUNCTION__, match.Kind);
+  fprintf(stderr, "[%s:%d] (%s) derive, requirement:\n", __FILE__, __LINE__, __FUNCTION__);
+  requirement->dump();
+  fprintf(stderr, "[%s:%d] (%s) derive, DERIVED:\n", __FILE__, __LINE__, __FUNCTION__);
+  derived->dump();
+
   if (match.isViable()) {
     recordWitness(requirement, match);
     return ResolveWitnessResult::Success;
   }
 
+
+  auto matchKind = static_cast<uint8_t>(match.Kind);
+
   // Derivation failed.
   diagnoseOrDefer(requirement, true,
-    [](NormalProtocolConformance *conformance) {
+    [matchKind](NormalProtocolConformance *conformance) {
       auto proto = conformance->getProtocol();
       auto &diags = proto->getASTContext().Diags;
       diags.diagnose(conformance->getLoc(), diag::protocol_derivation_is_broken,
                      proto->getDeclaredInterfaceType(),
-                     conformance->getType());
+                     conformance->getType(),
+                     matchKind);
     });
 
   return ResolveWitnessResult::ExplicitFailed;
@@ -4473,6 +4516,7 @@ void ConformanceChecker::ensureRequirementsAreSatisfied() {
       proto->getASTContext().Diags.diagnose(Loc, diag::type_does_not_conform,
                                             Adoptee,
                                             Proto->getDeclaredInterfaceType());
+      assert(false);
       Conformance->setInvalid();
     }
     return;
@@ -5084,6 +5128,7 @@ ModuleDecl::conformsToProtocol(Type sourceTy, ProtocolDecl *targetProtocol) {
 }
 
 void TypeChecker::checkConformance(NormalProtocolConformance *conformance) {
+  fprintf(stderr, "[%s:%d] (%s) running TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
   MultiConformanceChecker checker(conformance->getProtocol()->getASTContext());
   checker.addConformance(conformance);
   checker.checkAllConformances();
@@ -6194,6 +6239,12 @@ ValueDecl *TypeChecker::deriveProtocolRequirement(DeclContext *DC,
   case KnownDerivableProtocolKind::Differentiable:
     return derived.deriveDifferentiable(Requirement);
 
+  case KnownDerivableProtocolKind::DistributedActor:
+//    return derived.deriveDistributedActor(Requirement);
+//    Requirement->dump();
+//    fprintf(stderr, "[%s:%d] (%s) COULD SYNTHESIZE HERE, SKIPPING\n", __FILE__, __LINE__, __FUNCTION__);
+//    return nullptr;
+
   case KnownDerivableProtocolKind::OptionSet:
       llvm_unreachable(
           "When possible, OptionSet is derived via memberwise init synthesis");
@@ -6223,6 +6274,9 @@ TypeChecker::deriveTypeWitness(DeclContext *DC,
     return std::make_pair(derived.deriveCaseIterable(AssocType), nullptr);
   case KnownProtocolKind::Differentiable:
     return derived.deriveDifferentiable(AssocType);
+  case KnownProtocolKind::DistributedActor:
+    fprintf(stderr, "[%s:%d] (%s) call >>>> deriveDistributedActorAssociatedType\n", __FILE__, __LINE__, __FUNCTION__);
+    return derived.deriveDistributedActorAssociatedType(AssocType);
   default:
     return std::make_pair(nullptr, nullptr);
   }

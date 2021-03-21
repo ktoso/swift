@@ -454,6 +454,7 @@ void addImplicitDynamicAttribute(Decl *D);
 void checkDeclAttributes(Decl *D);
 void checkClosureAttributes(ClosureExpr *closure);
 void checkParameterList(ParameterList *params, DeclContext *owner);
+void checkResultType(Type resultType, DeclContext *owner);
 
 void diagnoseDuplicateBoundVars(Pattern *pattern);
 
@@ -540,8 +541,13 @@ bool checkContextualRequirements(GenericTypeDecl *decl,
                                  SourceLoc loc,
                                  DeclContext *dc);
 
+
+/// Add synthesized storage properties and supporting structures to a
+/// distributed actor decl.
+void addImplicitDistributedActorStorage(NominalTypeDecl *decl);
+
 /// Add any implicitly-defined constructors required for the given
-/// struct or class.
+/// struct, class or actor.
 void addImplicitConstructors(NominalTypeDecl *typeDecl);
 
 /// Fold the given sequence expression into an (unchecked) expression

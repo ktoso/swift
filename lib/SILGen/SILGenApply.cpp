@@ -1050,7 +1050,12 @@ public:
       return;
     }
 
-    auto constant = SILDeclRef(afd).asForeign(requiresForeignEntryPoint(afd));
+    SILDeclRef constant = SILDeclRef(afd);
+    if (afd->getAttrs().hasAttribute<DistributedActorAttr>()) {
+      constant = constant.asDistributed(true);
+    } else {
+      constant = constant.asForeign(requiresForeignEntryPoint(afd));
+    }
 
     auto subs = e->getDeclRef().getSubstitutions();
 
@@ -3651,6 +3656,7 @@ class CallEmission {
   Callee callee;
   FormalEvaluationScope initialWritebackScope;
   bool implicitlyAsync;
+  bool implicitlyThrows;
 
 public:
   /// Create an emission for a call of the given callee.
@@ -3699,6 +3705,12 @@ public:
   /// implicitly async, i.e., it requires a hop_to_executor prior to 
   /// invoking the sync callee, etc.
   void setImplicitlyAsync(bool flag) { implicitlyAsync = flag; }
+
+  /// Sets a flag that indicates whether this call be treated as being
+  /// implicitly throws, i.e., the call may be delegating to a proxy function
+  /// which actually is throwing, regardless whether or not the actual target
+  /// function can throw or not.
+  void setImplicitlyThrows(bool flag) { implicitlyThrows = flag; }
 
   CleanupHandle applyCoroutine(SmallVectorImpl<ManagedValue> &yields);
 
@@ -4958,6 +4970,11 @@ RValue SILGenFunction::emitApplyMethod(SILLocation loc, ConcreteDeclRef declRef,
   // Form the reference to the method.
   auto callRef = SILDeclRef(call, SILDeclRef::Kind::Func)
                      .asForeign(requiresForeignEntryPoint(declRef.getDecl()));
+
+  if (call->getAttrs().hasAttribute<DistributedActorAttr>()) {
+    callRef = callRef.asDistributed(true);
+  }
+
   auto declRefConstant = getConstantInfo(getTypeExpansionContext(), callRef);
   auto subs = declRef.getSubstitutions();
   bool throws = false;

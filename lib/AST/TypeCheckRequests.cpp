@@ -551,6 +551,10 @@ void swift::simple_display(
     out << "convenience_factory"; break;
   case CtorInitializerKind::Factory:
     out << "factory"; break;
+  case CtorInitializerKind::DesignatedDistributedLocal:
+    out << "designated_distributed_local"; break;
+  case CtorInitializerKind::DistributedResolve:
+    out << "distributed_resolve"; break;
   }
   out << " }";
 }
@@ -1098,6 +1102,12 @@ void swift::simple_display(llvm::raw_ostream &out,
   case ImplicitMemberAction::ResolveDecodable:
     out << "resolve Decodable.init(from:)";
     break;
+  case ImplicitMemberAction::ResolveDistributedActorInit:
+    out << "resolve DistributedActorInit";
+    break;
+  case ImplicitMemberAction::ResolveDistributedActorProperties:
+    out << "resolve DistributedActorProperties";
+    break;
   }
 }
 
@@ -1525,6 +1535,7 @@ void CustomAttrTypeRequest::cacheResult(Type value) const {
 bool ActorIsolation::requiresSubstitution() const {
   switch (kind) {
   case ActorInstance:
+  case DistributedActorInstance:
   case Independent:
   case IndependentUnsafe:
   case Unspecified:
@@ -1540,6 +1551,7 @@ bool ActorIsolation::requiresSubstitution() const {
 ActorIsolation ActorIsolation::subst(SubstitutionMap subs) const {
   switch (kind) {
   case ActorInstance:
+  case DistributedActorInstance:
   case Independent:
   case IndependentUnsafe:
   case Unspecified:
@@ -1558,6 +1570,10 @@ void swift::simple_display(
   switch (state) {
     case ActorIsolation::ActorInstance:
       out << "actor-isolated to instance of " << state.getActor()->getName();
+      break;
+
+    case ActorIsolation::DistributedActorInstance:
+      out << "distributed-actor-isolated to instance of " << state.getActor()->getName();
       break;
 
     case ActorIsolation::Independent:

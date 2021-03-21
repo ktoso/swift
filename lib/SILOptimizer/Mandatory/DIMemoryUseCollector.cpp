@@ -1486,8 +1486,17 @@ collectDelegatingInitUses(const DIMemoryObjectInfo &TheMemory,
     // for the dynamic type of that uninitialized object.
     if (isa<LoadInst>(User)) {
       auto UserVal = cast<SingleValueInstruction>(User);
-      if (UserVal->hasOneUse()
-          && isa<ValueMetatypeInst>(UserVal->getSingleUse()->get())) {
+      bool onlyUseIsValueMetatype = true;
+      for (auto use : UserVal->getUses()) {
+        // A taking or copying load is supposed to destroy the value after
+        // use, which we can turn into a no-op.
+        if (isa<ValueMetatypeInst>(use->getUser())
+            || isa<DestroyValueInst>(use->getUser()))
+          continue;
+        onlyUseIsValueMetatype = false;
+        break;
+      }
+      if (onlyUseIsValueMetatype) {
         Kind = DIUseKind::LoadForTypeOfSelf;
       }
     }
@@ -1784,6 +1793,14 @@ static bool shouldPerformClassInitSelf(const DIMemoryObjectInfo &MemoryInfo) {
   return MemoryInfo.isNonDelegatingInit() &&
          MemoryInfo.getASTType()->getClassOrBoundGenericClass() != nullptr &&
          MemoryInfo.isDerivedClassSelfOnly();
+
+//  if (!MemoryInfo.isNonDelegatingInit())
+//    return false;
+//
+// if (auto classDecl = MemoryInfo.getASTType()->getClassOrBoundGenericClass()) {
+//   return !classDecl->isDistributedActor() && // FIXME: HACK, this disables checking completely for distributed actors ENTIRELY OMG
+//    MemoryInfo.isDerivedClassSelfOnly();
+// }
 }
 
 /// Analyze all uses of the specified allocation instruction (alloc_box,
@@ -1793,6 +1810,9 @@ void swift::ownership::collectDIElementUsesFrom(
     const DIMemoryObjectInfo &MemoryInfo, DIElementUseInfo &UseInfo) {
 
   if (shouldPerformClassInitSelf(MemoryInfo)) {
+//    if (auto classDecl = MemoryInfo.getASTType()->getClassOrBoundGenericClass())
+//      fprintf(stderr, "[%s:%d] (%s) shouldPerformClassInitSelf on %s\n", __FILE__, __LINE__, __FUNCTION__,
+//              classDecl->getBaseName());
     ClassInitElementUseCollector UseCollector(MemoryInfo, UseInfo);
     UseCollector.collectClassInitSelfUses();
     gatherDestroysOfContainer(MemoryInfo, UseInfo);
@@ -1800,6 +1820,7 @@ void swift::ownership::collectDIElementUsesFrom(
   }
 
   if (MemoryInfo.isDelegatingInit()) {
+    if (auto classDecl = MemoryInfo.getASTType()->getClassOrBoundGenericClass())
     // When we're analyzing a delegating constructor, we aren't field sensitive
     // at all. Just treat all members of self as uses of the single
     // non-field-sensitive value.

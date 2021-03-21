@@ -496,6 +496,18 @@ void swift_defaultActor_initialize(DefaultActor *actor);
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_defaultActor_destroy(DefaultActor *actor);
 
+/// Allocate proxy appropriate for this actor.
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+void* swift_distributedActor_createProxy(Metadata const *actorType);
+
+/// Initialize the runtime storage for a distributed remote actor.
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+void swift_distributedActor_remote_initialize(DefaultActor *actor);
+
+/// Destroy the runtime storage for a default actor.
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+void swift_distributedActor_destroy(DefaultActor *actor);
+
 /// Enqueue a job on the default actor implementation.
 ///
 /// The job must be ready to run.  Notably, if it's a task, that
@@ -510,6 +522,10 @@ void swift_defaultActor_destroy(DefaultActor *actor);
 /// execution.
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_defaultActor_enqueue(Job *job, DefaultActor *actor);
+
+/// Check if the actor is a distributed 'remote' actor instance.
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+bool swift_distributed_actor_is_remote(DefaultActor *actor);
 
 /// Resume a task from its continuation, given a normal result value.
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)

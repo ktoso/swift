@@ -2790,6 +2790,10 @@ bool ValueDecl::isDynamic() const {
     getAttrs().hasAttribute<DynamicAttr>());
 }
 
+bool ValueDecl::isDistributedActorIndependent() const {
+  return getAttrs().hasAttribute<DistributedActorIndependentAttr>();
+}
+
 bool ValueDecl::isObjCDynamicInGenericClass() const {
   if (!isObjCDynamic())
     return false;
@@ -3771,6 +3775,15 @@ bool NominalTypeDecl::isActor() const {
                            false);
 }
 
+bool NominalTypeDecl::isDistributedActor() const {
+  if (!isActor())
+    return false;
+
+  auto mutableThis = const_cast<NominalTypeDecl *>(this);
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsDistributedActorRequest{mutableThis},
+                           false);
+}
 
 GenericTypeDecl::GenericTypeDecl(DeclKind K, DeclContext *DC,
                                  Identifier name, SourceLoc nameLoc,
@@ -4077,6 +4090,13 @@ ConstructorDecl *NominalTypeDecl::getDefaultInitializer() const {
                            SynthesizeDefaultInitRequest{mutableThis}, nullptr);
 }
 
+bool NominalTypeDecl::hasDistributedActorLocalInitializer() const {
+  auto &ctx = getASTContext();
+  auto *mutableThis = const_cast<NominalTypeDecl *>(this);
+  return evaluateOrDefault(ctx.evaluator, HasDistributedActorLocalInitRequest{mutableThis},
+                           false);
+}
+
 void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
   // Silently break cycles here because we can't be sure when and where a
   // request to synthesize will come from yet.
@@ -4100,15 +4120,27 @@ void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
   } else {
     auto argumentNames = member.getArgumentNames();
     if (!member.isCompoundName() || argumentNames.size() == 1) {
-      if (baseName == DeclBaseName::createConstructor() &&
-          (member.isSimpleName() || argumentNames.front() == Context.Id_from)) {
-        action.emplace(ImplicitMemberAction::ResolveDecodable);
+      if (baseName == DeclBaseName::createConstructor()) {
+        if ((member.isSimpleName() || argumentNames.front() == Context.Id_from)) {
+          action.emplace(ImplicitMemberAction::ResolveDecodable);
+        } else if (argumentNames[0] == Context.Id_transport) {
+          action.emplace(ImplicitMemberAction::ResolveDistributedActorInit);
+        }
       } else if (!baseName.isSpecial() &&
-                 baseName.getIdentifier() == Context.Id_encode &&
-                 (member.isSimpleName() ||
-                  argumentNames.front() == Context.Id_to)) {
+           baseName.getIdentifier() == Context.Id_encode &&
+           (member.isSimpleName() || argumentNames.front() == Context.Id_to)) {
         action.emplace(ImplicitMemberAction::ResolveEncodable);
       }
+    } else if (!member.isCompoundName() || argumentNames.size() == 2) {
+      if (baseName == DeclBaseName::createConstructor() &&
+          argumentNames[0] == Context.Id_resolve &&
+          argumentNames[1] == Context.Id_using) {
+        action.emplace(ImplicitMemberAction::ResolveDistributedActorInit);
+      }
+    } else if (member.isSimpleName() &&
+               baseName.getKind() == DeclBaseName::Kind::Normal &&
+               baseName == "actorAddress") {
+      assert(false && "address!!!!!!!!!!!!!!!!!!!!!!!!");
     }
   }
 
@@ -5085,7 +5117,10 @@ Optional<KnownDerivableProtocolKind>
     return KnownDerivableProtocolKind::AdditiveArithmetic;
   case KnownProtocolKind::Differentiable:
     return KnownDerivableProtocolKind::Differentiable;
-  default: return None;
+  case KnownProtocolKind::DistributedActor:
+    return KnownDerivableProtocolKind::DistributedActor;
+  default:
+    return None;
   }
 }
 
@@ -5125,6 +5160,10 @@ bool AbstractStorageDecl::hasAnyNativeDynamicAccessors() const {
       return true;
   }
   return false;
+}
+
+bool AbstractStorageDecl::isDistributedActorIndependent() const {
+  return getAttrs().hasAttribute<DistributedActorIndependentAttr>();
 }
 
 void AbstractStorageDecl::setAccessors(SourceLoc lbraceLoc,
@@ -5809,6 +5848,23 @@ bool VarDecl::isMemberwiseInitialized(bool preferDeclaredProperties) const {
 
 bool VarDecl::isAsyncLet() const {
   return getAttrs().hasAttribute<AsyncAttr>();
+}
+
+bool VarDecl::isDistributedActorStoredProperty() const {
+  if (auto classDecl = dyn_cast<ClassDecl>(getDeclContext())) {
+    if (!classDecl->isDistributedActor())
+      return false;
+    if (isDistributedActorIndependent())
+      return false;
+
+    auto &C = getASTContext();
+    auto name = getBaseName();
+    return name != C.Id_actorTransport &&
+           name != C.Id_actorAddress &&
+           name != C.Id_storage;
+  }
+
+  return false;
 }
 
 void ParamDecl::setSpecifier(Specifier specifier) {
@@ -6863,6 +6919,17 @@ bool AbstractFunctionDecl::canBeAsyncHandler() const {
                            false);
 }
 
+bool AbstractFunctionDecl::isDistributed() const {
+  auto func = dyn_cast<FuncDecl>(this);
+  if (!func)
+    return false;
+
+  auto mutableFunc = const_cast<FuncDecl *>(func);
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsDistributedFuncRequest{mutableFunc},
+                           false);
+}
+
 BraceStmt *AbstractFunctionDecl::getBody(bool canSynthesize) const {
   if ((getBodyKind() == BodyKind::Synthesize ||
        getBodyKind() == BodyKind::Unparsed) &&
@@ -7613,6 +7680,61 @@ bool ConstructorDecl::isObjCZeroParameterWithLongSelector() const {
 
   return params->get(0)->getInterfaceType()->isVoid();
 }
+
+bool ConstructorDecl::isDistributedActorLocalInit() const {
+  // Only a `distributed actor` may have its specialized initializers.
+  if (auto clazz = dyn_cast<ClassDecl>(getParent()))
+    if (!clazz->isDistributedActor())
+      return false;
+
+  auto name = getName();
+  auto argumentNames = name.getArgumentNames();
+
+  // the signature must be:
+  //    init(transport: ActorAddress)
+  if (argumentNames.size() != 1)
+    return false;
+
+  auto &C = getASTContext();
+  if (argumentNames[0] != C.Id_transport)
+    return false;
+
+  auto *params = getParameters();
+  assert(params->size() == 1);
+
+  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+  return params->get(0)->getInterfaceType()->isEqual(transportType);
+}
+
+bool ConstructorDecl::isDistributedActorResolveInit() const {
+  // Only a `distributed actor` may have its specialized initializers.
+  if (auto clazz = dyn_cast<ClassDecl>(getParent()))
+    if (!clazz->isDistributedActor())
+      return false;
+
+  auto name = getName();
+  auto argumentNames = name.getArgumentNames();
+
+  // the signature must be:
+  //    init(resolve address: ActorAddress, using transport: ActorTransport) throws
+  if (argumentNames.size() != 2)
+    return false;
+
+  auto &C = getASTContext();
+  if (argumentNames[0] != C.Id_resolve ||
+      argumentNames[1] != C.Id_using)
+    return false;
+
+  auto *params = getParameters();
+  assert(params->size() == 2);
+
+  auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+  auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+
+  return params->get(0)->getInterfaceType()->isEqual(addressType) &&
+         params->get(1)->getInterfaceType()->isEqual(transportType);
+}
+
 
 DestructorDecl::DestructorDecl(SourceLoc DestructorLoc, DeclContext *Parent)
   : AbstractFunctionDecl(DeclKind::Destructor, Parent,

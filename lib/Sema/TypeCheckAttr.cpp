@@ -57,7 +57,8 @@ namespace {
         llvm::errs() << "Attribute '";
         attr->print(llvm::errs());
         llvm::errs() << "' has invalid location, failed to diagnose!\n";
-        assert(false && "Diagnosing attribute with invalid location");
+        D->dump();
+        assert(false && "Diagnosing attribute with invalid location"); // FIXME do we really have to fail here?
       }
 #endif
       if (loc.isInvalid()) {
@@ -274,7 +275,9 @@ public:
 
   void visitAsyncHandlerAttr(AsyncHandlerAttr *attr);
   void visitActorAttr(ActorAttr *attr);
+  void visitDistributedActorAttr(DistributedActorAttr *attr);
   void visitActorIndependentAttr(ActorIndependentAttr *attr);
+  void visitDistributedActorIndependentAttr(DistributedActorIndependentAttr *attr);
   void visitGlobalActorAttr(GlobalActorAttr *attr);
   void visitAsyncAttr(AsyncAttr *attr);
   void visitMarkerAttr(MarkerAttr *attr);
@@ -1177,10 +1180,10 @@ void TypeChecker::checkDeclAttributes(Decl *D) {
     if (!OnlyKind.empty())
       Checker.diagnoseAndRemoveAttr(attr, diag::attr_only_one_decl_kind,
                                     attr, OnlyKind);
-    else if (attr->isDeclModifier())
-      Checker.diagnoseAndRemoveAttr(attr, diag::invalid_decl_modifier, attr);
-    else
-      Checker.diagnoseAndRemoveAttr(attr, diag::invalid_decl_attribute, attr);
+//    else if (attr->isDeclModifier())
+//      Checker.diagnoseAndRemoveAttr(attr, diag::invalid_decl_modifier, attr);
+//    else
+//      Checker.diagnoseAndRemoveAttr(attr, diag::invalid_decl_attribute, attr);
   }
   Checker.checkOriginalDefinedInAttrs(D, ODIAttrs);
 }
@@ -5369,11 +5372,64 @@ void AttributeChecker::visitActorAttr(ActorAttr *attr) {
   (void)classDecl->isActor();
 }
 
+void AttributeChecker::visitDistributedActorAttr(DistributedActorAttr *attr) {
+  auto dc = D->getDeclContext();
+
+  // distributed can be applied to actor class definitions and async functions
+  if (auto varDecl = dyn_cast<VarDecl>(D)) {
+    // distributed can not be applied to stored properties
+    diagnoseAndRemoveAttr(attr, diag::distributed_actor_property);
+    return;
+  }
+
+  // distributed can only be declared on an `actor class`
+  if (auto classDecl = dyn_cast<ClassDecl>(D)) {
+    if (!classDecl->isActor()) {
+      diagnoseAndRemoveAttr(attr, diag::distributed_actor_not_actor);
+      return;
+    } else {
+      // good: `distributed actor`
+      return;
+    }
+  } else if (dyn_cast<StructDecl>(D) || dyn_cast<EnumDecl>(D)) {
+    diagnoseAndRemoveAttr(attr, diag::distributed_actor_func_not_in_distributed_actor);
+    return;
+  }
+
+  if (auto funcDecl = dyn_cast<AbstractFunctionDecl>(D)) {
+    // distributed functions must not be static
+    if (funcDecl->isStatic()) {
+      diagnoseAndRemoveAttr(attr, diag::distributed_actor_func_static);
+      return;
+    }
+
+    // distributed func must be declared inside an distributed actor
+    if (dc->getSelfClassDecl() &&
+        !dc->getSelfClassDecl()->isDistributedActor()) {
+      diagnoseAndRemoveAttr(attr, diag::distributed_actor_func_not_in_distributed_actor);
+      return;
+    } else if (dc->getSelfStructDecl() || dc->getSelfEnumDecl()) {
+      diagnoseAndRemoveAttr(attr, diag::distributed_actor_func_not_in_distributed_actor);
+      return;
+    }
+  }
+}
+
 void AttributeChecker::visitActorIndependentAttr(ActorIndependentAttr *attr) {
   // @actorIndependent can be applied to global and static/class variables
   // that do not have storage.
   auto dc = D->getDeclContext();
+
+
   if (auto var = dyn_cast<VarDecl>(D)) {
+    var->dump();
+    fprintf(stderr, "[%s:%d] (%s) has @actorIndependent...\n", __FILE__, __LINE__, __FUNCTION__);
+
+//    if (var->getAttrs().hasAttribute<ActorIsolation::DistributedActorInstance>()) {
+//      fprintf(stderr, "[%s:%d] (%s) has @_distributedActorIndependent\n", __FILE__, __LINE__, __FUNCTION__);
+//      return;
+//    }
+
     // @actorIndependent is meaningless on a `let`.
     if (var->isLet()) {
       diagnoseAndRemoveAttr(attr, diag::actorindependent_let);
@@ -5411,11 +5467,27 @@ void AttributeChecker::visitActorIndependentAttr(ActorIndependentAttr *attr) {
   }
 }
 
+void AttributeChecker::visitDistributedActorIndependentAttr(DistributedActorIndependentAttr *attr) {
+  auto dc = D->getDeclContext();
+
+  if (auto var = dyn_cast<VarDecl>(D)) {
+    var->dump();
+    fprintf(stderr, "[%s:%d] (%s) add @_distributedActorIndependent...\n", __FILE__, __LINE__, __FUNCTION__);
+  }
+
+  // TODO: we could restrict it only being okey on synthesized things?
+}
+
 void AttributeChecker::visitNonisolatedAttr(NonisolatedAttr *attr) {
   // 'nonisolated' can be applied to global and static/class variables
   // that do not have storage.
   auto dc = D->getDeclContext();
+
   if (auto var = dyn_cast<VarDecl>(D)) {
+
+    var->dump();
+    fprintf(stderr, "[%s:%d] (%s) add 'nonisolated'...\n", __FILE__, __LINE__, __FUNCTION__);
+
     // 'nonisolated' is meaningless on a `let`.
     if (var->isLet()) {
       diagnoseAndRemoveAttr(attr, diag::nonisolated_let);

@@ -173,6 +173,9 @@ static bool isBarrier(SILInstruction *inst) {
     case BuiltinValueKind::ConvertTaskToJob:
     case BuiltinValueKind::InitializeDefaultActor:
     case BuiltinValueKind::DestroyDefaultActor:
+    case BuiltinValueKind::InitializeDistributedRemoteActor:
+    case BuiltinValueKind::CreateDistributedActorProxy:
+    case BuiltinValueKind::DestroyDistributedActor:
     case BuiltinValueKind::AutoDiffProjectTopLevelSubcontext:
     case BuiltinValueKind::AutoDiffAllocateSubcontext:
       return true;

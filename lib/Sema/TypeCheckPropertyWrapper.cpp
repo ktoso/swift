@@ -85,6 +85,7 @@ static VarDecl *findValueProperty(ASTContext &ctx, NominalTypeDecl *nominal,
   // The property must not be isolated to an actor instance.
   switch (auto isolation = getActorIsolation(var)) {
   case ActorIsolation::ActorInstance:
+  case ActorIsolation::DistributedActorInstance:
     var->diagnose(
         diag::actor_instance_property_wrapper, var->getName(),
         nominal->getName());
@@ -406,6 +407,23 @@ AttachedPropertyWrappersRequest::evaluate(Evaluator &evaluator,
   ASTContext &ctx = var->getASTContext();
   auto dc = var->getDeclContext();
   llvm::TinyPtrVector<CustomAttr *> result;
+
+  // if the property is declared in a 'distributed actor' synthesize
+  // @distributedActorValue for it, which will implement and enforce the
+  // storage implementation by delegating to `self.$personality`.
+  if (auto classDecl = dyn_cast<ClassDecl>(dc))
+    // FIXME: this automatically applies the property wrapper, but it crashes on a SourceLoc() in TupleExpr() then!!!!!!!!!!
+//    if (var->isDistributedActorStoredProperty()) {
+////    if (classDecl->isDistributedActor()) {
+//      fprintf(stderr, "[%s:%d] (%s) DIST STORED PROPERTY [%s]\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+//      auto distributedActorStorageType =
+//          ctx.getDistributedActorStorageDecl()->getDeclaredInterfaceType();
+//      auto typeExpr = TypeExpr::createImplicit(distributedActorStorageType, ctx);
+//      auto distStorageAttr = CustomAttr::create(
+//          ctx, SourceLoc(), typeExpr, /*implicit=*/true);
+//      result.push_back(distStorageAttr);
+//    }
+
   for (auto attr : var->getAttrs().getAttributes<CustomAttr>()) {
     auto mutableAttr = const_cast<CustomAttr *>(attr);
     // Figure out which nominal declaration this custom attribute refers to.
@@ -649,6 +667,12 @@ Expr *swift::buildPropertyWrapperInitCall(
   auto wrapperAttrs = var->getAttachedPropertyWrappers();
   Expr *initializer = value;
   ApplyExpr *innermostInit = nullptr;
+
+  fprintf(stderr, "[%s:%d] (%s) buildPropertyWrapperInitCall, value:\n", __FILE__, __LINE__, __FUNCTION__);
+  value->dump();
+  fprintf(stderr, "[%s:%d] (%s) buildPropertyWrapperInitCall, var:\n", __FILE__, __LINE__, __FUNCTION__);
+  var->dump();
+  fprintf(stderr, "\n");
 
   // Projected-value initializers don't compose, so no need to iterate
   // over the wrapper attributes.

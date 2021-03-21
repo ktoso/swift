@@ -445,6 +445,18 @@ InitKindRequest::evaluate(Evaluator &evaluator, ConstructorDecl *decl) const {
       }
     }
 
+    // the init(transport:) initializer of a distributed actor is special, as
+    // it ties the actors lifecycle with the transport. As such, it must always
+    // be invoked by any other initializer, just like a designated initializer.
+    if (auto clazz = dyn_cast<ClassDecl>(decl->getDeclContext())) {
+      if (clazz->isDistributedActor()) {
+        if (decl->isDistributedActorLocalInit())
+          return CtorInitializerKind::DesignatedDistributedLocal; // TODO: DistributedLocal
+        if (decl->isDistributedActorResolveInit())
+          return CtorInitializerKind::DistributedResolve;
+      }
+    }
+
     if (decl->getDeclContext()->getExtendedProtocolDecl()) {
       return CtorInitializerKind::Convenience;
     }
@@ -2641,6 +2653,7 @@ static ArrayRef<Decl *> evaluateMembersRequest(
       continue;
     }
 
+    fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
     TypeChecker::checkConformance(conformance->getRootNormalConformance());
   }
 

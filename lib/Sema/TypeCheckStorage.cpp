@@ -102,6 +102,7 @@ static bool hasStoredProperties(NominalTypeDecl *decl) {
 }
 
 static void computeLoweredStoredProperties(NominalTypeDecl *decl) {
+//  fprintf(stderr, "[%s:%d] (%s) computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
   // Just walk over the members of the type, forcing backing storage
   // for lazy properties and property wrappers to be synthesized.
   for (auto *member : decl->getMembers()) {
@@ -118,17 +119,36 @@ static void computeLoweredStoredProperties(NominalTypeDecl *decl) {
     }
   }
 
-  // If this is an actor class, check conformance to the Actor protocol to
-  // ensure that the actor storage will get created (if needed).
   if (auto classDecl = dyn_cast<ClassDecl>(decl)) {
+    // If this is an actor class, check conformance to the Actor protocol to
+    // ensure that the actor storage will get created (if needed).
     if (classDecl->isActor()) {
       ASTContext &ctx = decl->getASTContext();
+
       if (auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor)) {
         SmallVector<ProtocolConformance *, 1> conformances;
         classDecl->lookupConformance(
             decl->getModuleContext(), actorProto, conformances);
-        for (auto conformance : conformances)
+        for (auto conformance : conformances) {
+          conformance->dump();
+          fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
           TypeChecker::checkConformance(conformance->getRootNormalConformance());
+        }
+      }
+
+      // If this is a distributed actor, synthesize its special stored properties.
+      if (classDecl->isDistributedActor()) {
+        fprintf(stderr, "[%s:%d] (%s) checking dist conformance\n", __FILE__, __LINE__, __FUNCTION__);
+        if (auto actorProto = ctx.getProtocol(KnownProtocolKind::DistributedActor)) {
+          SmallVector<ProtocolConformance *, 1> conformances;
+          classDecl->lookupConformance(
+              decl->getModuleContext(), actorProto, conformances);
+          for (auto conformance : conformances) {
+            conformance->dump();
+            fprintf(stderr, "[%s:%d] (%s) going to call TypeChecker::checkConformance\n", __FILE__, __LINE__, __FUNCTION__);
+            TypeChecker::checkConformance(conformance->getRootNormalConformance());
+          }
+        }
       }
     }
   }
@@ -144,14 +164,22 @@ StoredPropertiesRequest::evaluate(Evaluator &evaluator,
 
   // Unless we're in a source file we don't have to do anything
   // special to lower lazy properties and property wrappers.
-  if (isa<SourceFile>(decl->getModuleScopeContext()))
+  if (isa<SourceFile>(decl->getModuleScopeContext())) {
+//    fprintf(stderr, "[%s:%d] (%s) going to call >>> computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     computeLoweredStoredProperties(decl);
+  }
+
+  // FIXME: do we need to ensure we have the synth in here???????? !!!!!!!!!!!!!
 
   for (auto *member : decl->getMembers()) {
-    if (auto *var = dyn_cast<VarDecl>(member))
+    if (auto *var = dyn_cast<VarDecl>(member)) {
       if (!var->isStatic() && var->hasStorage()) {
+//        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] STORED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
         results.push_back(var);
+      } else {
+//        fprintf(stderr, "[%s:%d] (%s) FOUND VAR: [%s] SKIPPED\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
       }
+    }
   }
 
   return decl->getASTContext().AllocateCopy(results);
@@ -167,8 +195,10 @@ StoredPropertiesAndMissingMembersRequest::evaluate(Evaluator &evaluator,
 
   // Unless we're in a source file we don't have to do anything
   // special to lower lazy properties and property wrappers.
-  if (isa<SourceFile>(decl->getModuleScopeContext()))
+  if (isa<SourceFile>(decl->getModuleScopeContext())) {
+//    fprintf(stderr, "[%s:%d] (%s) going to call computeLoweredStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     computeLoweredStoredProperties(decl);
+  }
 
   for (auto *member : decl->getMembers()) {
     if (auto *var = dyn_cast<VarDecl>(member))
@@ -3027,6 +3057,38 @@ static void finishPropertyWrapperImplInfo(VarDecl *var,
   }
 }
 
+static void finishDistributedActorPropertyImplInfo(VarDecl *var,
+                                                   StorageImplInfo &info) {
+  auto parentSF = var->getDeclContext()->getParentSourceFile();
+  if (!parentSF)
+    return;
+
+  bool wrapperSetterIsUsable = false;
+  if (var->getParsedAccessor(AccessorKind::Set)) {
+    wrapperSetterIsUsable = true;
+  } else if (parentSF && parentSF->Kind != SourceFileKind::Interface
+             && !var->isLet()) {
+    if (auto comp = var->getPropertyWrapperMutability()) {
+      wrapperSetterIsUsable =
+        comp->Setter != PropertyWrapperMutability::DoesntExist;
+    } else {
+      wrapperSetterIsUsable = true;
+    }
+  }
+
+  if (!wrapperSetterIsUsable) {
+    info = StorageImplInfo::getImmutableComputed();
+    return;
+  }
+
+  if (var->hasObservers() || var->getDeclContext()->isLocalContext()) {
+    info = StorageImplInfo::getMutableComputed();
+  } else {
+    info = StorageImplInfo(ReadImplKind::Get, WriteImplKind::Set,
+                           ReadWriteImplKind::Modify);
+  }
+}
+
 static void finishNSManagedImplInfo(VarDecl *var,
                                     StorageImplInfo &info) {
   auto *attr = var->getAttrs().getAttribute<NSManagedAttr>();
@@ -3091,6 +3153,9 @@ static void finishStorageImplInfo(AbstractStorageDecl *storage,
     } else if (var->hasAttachedPropertyWrapper()) {
       finishPropertyWrapperImplInfo(var, info);
     }
+//    else if (var->isDistributedActorStoredProperty()) { // FIXME: !!!!!!
+//      finishDistributedActorPropertyImplInfo(var, info);
+//    }
   }
 
   if (isa<ProtocolDecl>(dc))

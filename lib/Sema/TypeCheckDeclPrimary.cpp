@@ -354,6 +354,18 @@ static void installCodingKeysIfNecessary(NominalTypeDecl *NTD) {
   (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
 }
 
+static void installDistributedActorInits(NominalTypeDecl *NTD) {
+  auto req =
+    ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActorInit};
+  (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
+}
+
+static void installDistributedActorProperties(NominalTypeDecl *NTD) {
+  auto req =
+    ResolveImplicitMemberRequest{NTD, ImplicitMemberAction::ResolveDistributedActorProperties};
+  (void)evaluateOrDefault(NTD->getASTContext().evaluator, req, {});
+}
+
 // Check for static properties that produce empty option sets
 // using a rawValue initializer with a value of '0'
 static void checkForEmptyOptionSet(const VarDecl *VD) {
@@ -1217,8 +1229,13 @@ static std::string getFixItStringForDecodable(ClassDecl *CD,
 /// Diagnose a class that does not have any initializers.
 static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
   ASTContext &C = classDecl->getASTContext();
-  C.Diags.diagnose(classDecl, diag::class_without_init,
-                   classDecl->getDeclaredType());
+
+  if (!classDecl->isDistributedActor()) {
+    /// Distributed actors are classes which get automatically synthesized initializers,
+    /// as long as they are all valid, we're good; and we definitely have *some* inits.
+    C.Diags.diagnose(classDecl, diag::class_without_init,
+                     classDecl->getDeclaredType());
+  }
 
   // HACK: We've got a special case to look out for and diagnose specifically to
   // improve the experience of seeing this, and mitigate some confusion.
@@ -1319,9 +1336,32 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
     if (pbd->isStatic() || !pbd->hasStorage() ||
         pbd->isDefaultInitializable() || pbd->isInvalid())
       continue;
-   
+
+    if (auto var = pbd->getSingleVar())
+//      fprintf(stderr, "[%s:%d] (%s) checking %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+
+      if (classDecl->isDistributedActor()) {
+      // we may have synthesized properties that do not have initial values,
+      // however we guarantee they will be initialized in other ways, i.e. the
+      // distributed actor initializers have strong guarantees about initializing
+      // the transport and address fields of a 'distributed actor'.
+      if (auto var = pbd->getSingleVar()) {
+        if (var->isSynthesized()) {
+          if (var->getBaseName() == C.Id_actorAddress || // FIXME: need to check it's the specific fields
+              var->getBaseName() == C.Id_actorTransport ||
+              var->getBaseName() == C.Id_storage) {
+//            fprintf(stderr, "[%s:%d] (%s) checking, was distributed actor synth property %s\n", __FILE__, __LINE__, __FUNCTION__, var->getBaseName());
+            continue;
+          }
+        }
+      }
+    }
+
     for (auto idx : range(pbd->getNumPatternEntries())) {
-      if (pbd->isInitialized(idx)) continue;
+      if (pbd->isInitialized(idx)) {
+//        fprintf(stderr, "[%s:%d] (%s) is initialized\n", __FILE__, __LINE__, __FUNCTION__);
+        continue;
+      }
 
       auto *pattern = pbd->getPattern(idx);
       SmallVector<VarDecl *, 4> vars;
@@ -1368,6 +1408,7 @@ static void diagnoseClassWithoutInitializers(ClassDecl *classDecl) {
 }
 
 static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
+//  fprintf(stderr, "[%s:%d] (%s) \n", __FILE__, __LINE__, __FUNCTION__);
   if (auto *SF = classDecl->getParentSourceFile()) {
     // Allow classes without initializers in SIL and module interface files.
     switch (SF->Kind) {
@@ -1393,12 +1434,67 @@ static void maybeDiagnoseClassWithoutInitializers(ClassDecl *classDecl) {
     return;
 
   for (auto member : classDecl->lookupDirect(DeclBaseName::createConstructor())) {
+//    fprintf(stderr, "[%s:%d] (%s) ctor \n", __FILE__, __LINE__, __FUNCTION__);
     auto ctor = dyn_cast<ConstructorDecl>(member);
-    if (ctor && ctor->isDesignatedInit())
+    if (ctor && ctor->isDesignatedInit()) {
+//      fprintf(stderr, "[%s:%d] (%s) return, is designated \n", __FILE__, __LINE__, __FUNCTION__);
       return;
+    }
   }
 
   diagnoseClassWithoutInitializers(classDecl);
+}
+
+//void TypeChecker::checkParameterList(ParameterList *params,
+//                                     DeclContext *owner) {
+//  for (auto param: *params) {
+//    checkDeclAttributes(param);
+//
+//    // async autoclosures can only occur as parameters to async functions.
+//    if (param->isAutoClosure()) {
+//      if (auto fnType = param->getInterfaceType()->getAs<FunctionType>()) {
+//        if (fnType->isAsync() &&
+//            !(isa<AbstractFunctionDecl>(owner) &&
+//              cast<AbstractFunctionDecl>(owner)->isAsyncContext())) {
+//          param->diagnose(diag::async_autoclosure_nonasync_function);
+//          if (auto func = dyn_cast<FuncDecl>(owner))
+//            addAsyncNotes(func);
+//        }
+//      }
+//    }
+//  }
+//
+//  // For source compatibility, allow duplicate internal parameter names
+//  // on protocol requirements.
+//  //
+//  // FIXME: Consider turning this into a warning or error if we do
+//  // another -swift-version.
+//  if (!isa<ProtocolDecl>(owner->getParent())) {
+//    // Check for duplicate parameter names.
+//    diagnoseDuplicateDecls(*params);
+//  }
+//}
+
+void TypeChecker::checkResultType(Type resultType,
+                                  DeclContext *owner) {
+//  // Only distributed functions have special requirements on return types.
+//  if (!owner->isDistributed())
+//    return;
+//
+//  auto conformanceDC = owner->getConformanceContext();
+//
+//  // Result type of distributed functions must be Codable.
+//  auto target =
+//      conformanceDC->mapTypeIntoContext(it->second->getValueInterfaceType());
+//  if (TypeChecker::conformsToProtocol(target, derived.Protocol, conformanceDC)
+//      .isInvalid()) {
+//    TypeLoc typeLoc = {
+//        it->second->getTypeReprOrParentPatternTypeRepr(),
+//        it->second->getType(),
+//    };
+//    it->second->diagnose(diag::codable_non_conforming_property_here,
+//                         derived.getProtocolType(), typeLoc);
+//    propertiesAreValid = false;
 }
 
 void TypeChecker::diagnoseDuplicateBoundVars(Pattern *pattern) {
@@ -2290,6 +2386,7 @@ public:
     (void)CD->getSuperclassDecl();
 
     // Force lowering of stored properties.
+    fprintf(stderr, "[%s:%d] (%s) going to call >>> getStoredProperties\n", __FILE__, __LINE__, __FUNCTION__);
     (void) CD->getStoredProperties();
 
     // Force creation of an implicit destructor, if any.
@@ -2301,6 +2398,9 @@ public:
       visit(Member);
 
     TypeChecker::checkPatternBindingCaptures(CD);
+
+//    fprintf(stderr, "[%s:%d] (%s) going to call >>> installDistributedActorInits\n", __FILE__, __LINE__, __FUNCTION__);
+//    installDistributedActorInits(CD);
 
     // If this class requires all of its stored properties to have
     // in-class initializers, diagnose this now.
@@ -2563,6 +2663,7 @@ public:
       checkAccessControl(FD);
 
       TypeChecker::checkParameterList(FD->getParameters(), FD);
+      TypeChecker::checkResultType(FD->getResultInterfaceType(), FD);
     }
 
     TypeChecker::checkDeclAttributes(FD);

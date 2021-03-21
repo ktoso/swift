@@ -1818,6 +1818,24 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
     break;
   }
 
+  case DAK_DistributedActor: {
+    if (!consumeIf(tok::l_paren)) {
+      if (!DiscardAttribute) {
+        AttrRange = SourceRange(Loc, Tok.getRange().getStart());
+        Attributes.add(new (Context) DistributedActorAttr(AtLoc, AttrRange,
+                                                          DistributedActorKind::Default));
+      }
+      break;
+    }
+
+    // We do not (yet) support any additional options for distributed.
+    return false;
+  }
+  case DAK_DistributedActorIndependent: {
+    // TODO: this is declared as UserInaccessible attr, so why are we forced to parse anyway?
+    // llvm_unreachable("DAK_DistributedActorIndependent should never be declared in source."); // FIXME: re-enable this!!!!!
+  }
+
   case DAK_Optimize: {
     if (!consumeIf(tok::l_paren)) {
       diagnose(Loc, diag::attr_expected_lparen, AttrName,
@@ -3557,6 +3575,7 @@ ParserStatus Parser::parseDeclAttributeList(DeclAttributes &Attributes) {
 //      '__consuming'
 //      'convenience'
 //      'actor'
+//      'distributed'
 bool Parser::parseDeclModifierList(DeclAttributes &Attributes,
                                    SourceLoc &StaticLoc,
                                    StaticSpellingKind &StaticSpelling) {
@@ -3637,6 +3656,15 @@ bool Parser::parseDeclModifierList(DeclAttributes &Attributes,
           diag.fixItReplace(classLoc, "actor")
               .fixItRemove(actorLoc);
         Attributes.add(new (Context) ActorAttr({}, Tok.getLoc()));
+        consumeToken();
+        continue;
+      }
+
+      if (Kind == DAK_DistributedActor &&
+          !shouldParseExperimentalDistributed()) {
+        // 'distributed' requires the experimental distributed flag to be set
+        SourceLoc distributedLoc = Tok.getLoc();
+        diagnose(distributedLoc, diag::attr_requires_distributed);
         consumeToken();
         continue;
       }

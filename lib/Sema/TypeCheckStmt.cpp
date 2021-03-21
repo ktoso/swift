@@ -1724,6 +1724,9 @@ static void checkClassConstructorBody(ClassDecl *classDecl,
     if (classDecl->getForeignClassKind() == ClassDecl::ForeignKind::CFType) {
       ctor->diagnose(diag::delegating_designated_init_in_extension,
                      ctor->getDeclContext()->getDeclaredInterfaceType());
+    } else if (classDecl->isDistributedActor()) {
+//      fprintf(stderr, "[%s:%d] (%s) class is distributed actor though, so it's okey\n", __FILE__, __LINE__, __FUNCTION__);
+      return; // ok
     } else {
       ctor->diagnose(diag::delegating_designated_init,
                      ctor->getDeclContext()->getDeclaredInterfaceType())
@@ -1732,6 +1735,9 @@ static void checkClassConstructorBody(ClassDecl *classDecl,
 
     ctx.Diags.diagnose(initKindAndExpr.initExpr->getLoc(), diag::delegation_here);
   }
+
+  if (classDecl->isActor())
+    checkActorConstructorBody(classDecl, ctor, body);
 
   // An inlinable constructor in a class must always be delegating,
   // unless the class is '@_fixed_layout'.
@@ -1942,7 +1948,7 @@ TypeCheckFunctionBodyRequest::evaluate(Evaluator &evaluator,
   BraceStmt *body = AFD->getBody();
   assert(body && "Expected body to type-check");
 
-  // It's possible we sythesized an already type-checked body, in which case
+  // It's possible we synthesized an already type-checked body, in which case
   // we're done.
   if (AFD->isBodyTypeChecked())
     return body;
@@ -2023,6 +2029,7 @@ TypeCheckFunctionBodyRequest::evaluate(Evaluator &evaluator,
   // Class constructor checking.
   if (auto *ctor = dyn_cast<ConstructorDecl>(AFD)) {
     if (auto classDecl = ctor->getDeclContext()->getSelfClassDecl()) {
+      checkActorConstructor(classDecl, ctor);
       checkClassConstructorBody(classDecl, ctor, body);
     }
   }

@@ -12,12 +12,14 @@ add_swift_host_library(swiftSema STATIC
   CSFix.cpp
   CSDiagnostics.cpp
   CodeSynthesis.cpp
+  CodeSynthesisDistributedActor.cpp
   ConstantnessSemaDiagnostics.cpp
   Constraint.cpp
   ConstraintGraph.cpp
   ConstraintLocator.cpp
   ConstraintSystem.cpp
   DebuggerTestingTransform.cpp
+  DerivedConformanceDistributedActor.cpp
   DerivedConformanceAdditiveArithmetic.cpp
   DerivedConformanceCaseIterable.cpp
   DerivedConformanceCodable.cpp

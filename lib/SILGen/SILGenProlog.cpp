@@ -477,6 +477,11 @@ void SILGenFunction::emitProlog(CaptureInfo captureInfo,
       case ActorIsolation::GlobalActorUnsafe:
         break;
 
+      case ActorIsolation::DistributedActorInstance: {
+        // TODO: perhaps here we can emit our special handling to make a message?
+        LLVM_FALLTHROUGH;
+      }
+
       case ActorIsolation::ActorInstance: {
         assert(selfParam && "no self parameter for ActorInstance isolation");
         ManagedValue selfArg = ManagedValue::forUnmanaged(F.getSelfArgument());
@@ -569,7 +574,8 @@ ExecutorBreadcrumb SILGenFunction::emitHopToTargetActor(SILLocation loc,
   case ActorIsolation::IndependentUnsafe:
     break;
 
-  case ActorIsolation::ActorInstance: {
+  case ActorIsolation::ActorInstance:
+  case ActorIsolation::DistributedActorInstance: {
     // "self" here means the actor instance's "self" value.
     assert(maybeSelf.hasValue() && "actor-instance but no self provided?");
     auto self = maybeSelf.getValue();

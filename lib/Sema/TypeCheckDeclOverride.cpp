@@ -1535,6 +1535,8 @@ namespace  {
     UNINTERESTING_ATTR(OriginallyDefinedIn)
     UNINTERESTING_ATTR(Actor)
     UNINTERESTING_ATTR(ActorIndependent)
+    UNINTERESTING_ATTR(DistributedActor)
+    UNINTERESTING_ATTR(DistributedActorIndependent)
     UNINTERESTING_ATTR(GlobalActor)
     UNINTERESTING_ATTR(Async)
     UNINTERESTING_ATTR(Sendable)

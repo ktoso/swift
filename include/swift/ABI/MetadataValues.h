@@ -47,6 +47,17 @@ enum {
   /// in a default actor.
   NumWords_DefaultActor = 10,
 
+  /// The number of words (in addition to heap object header)
+  /// in a distributed *remote* (proxy) actor.
+  ///
+  /// It must be greater than:
+  /// NumWords =
+  ///   NumWords_DefaultActor
+  ///   + (sizeof(ActorTransport) == 88)
+  ///   + transport pointer
+  ///   + $impl pointer
+  NumWords_DistributedRemoteActor = 10 + 11 + 2 + 2 + 4/*reserved*/,
+
   /// The number of words in a task group.
   NumWords_TaskGroup = 32,
 };
@@ -123,6 +134,9 @@ const size_t MaximumAlignment = 16;
 
 /// The alignment of a DefaultActor.
 const size_t Alignment_DefaultActor = MaximumAlignment;
+
+/// The alignment of a DistributedActorProxy.
+const size_t Alignment_DistributedActorProxy = MaximumAlignment;
 
 /// The alignment of a TaskGroup.
 const size_t Alignment_TaskGroup = MaximumAlignment;

@@ -23,6 +23,7 @@
 #include "swift/Runtime/ThreadLocal.h"
 #include "swift/ABI/Task.h"
 #include "swift/ABI/Actor.h"
+#include "swift/ABI/DistributedActor.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "TaskPrivate.h"
 
@@ -404,6 +405,7 @@ class DefaultActorImpl : public HeapObject {
       Status_width = 2,
 
       HasActiveInlineJob = 2,
+      IsDistributedRemote = 3,
 
       MaxPriority = 8,
       MaxPriority_width = JobFlags::Priority_width,
@@ -420,6 +422,12 @@ class DefaultActorImpl : public HeapObject {
     /// in the actor?
     FLAGSET_DEFINE_FLAG_ACCESSORS(HasActiveInlineJob,
                                   hasActiveInlineJob, setHasActiveInlineJob)
+
+    /// Is the actor a distributed 'remote' actor?
+    /// I.e. it does not have storage for user-defined properties and all
+    /// function call must be transformed into $distributed_ function calls.
+    FLAGSET_DEFINE_FLAG_ACCESSORS(IsDistributedRemote,
+                                  isDistributedRemote, setIsDistributedRemote)
 
     /// What is the maximum priority of jobs that are currently running
     /// or enqueued on this actor?
@@ -448,10 +456,13 @@ class DefaultActorImpl : public HeapObject {
   };
 
 public:
-
   /// Properly construct an actor, except for the heap header.
-  void initialize() {
-    new (&CurrentState) std::atomic<State>(State{JobRef(), Flags()});
+  /// \param isDistributedRemote When true sets the IsDistributedRemote flag
+  void initialize(bool isDistributedRemote = false) {
+    // TODO: this is just a simple implementation, rather we would want to allocate a proxy
+    auto flags = Flags();
+    flags.setIsDistributedRemote(isDistributedRemote);
+    new (&CurrentState) std::atomic<State>(State{JobRef(), flags});
   }
 
   /// Properly destruct an actor, except for the heap header.
@@ -471,6 +482,12 @@ public:
 
   /// Claim the next job off the actor or give it up.
   Job *claimNextJobOrGiveUp(bool actorIsOwned, RunningJobInfo runner);
+
+  /// Check if the actor is actually a distributed *remote* actor.
+  ///
+  /// Note that a distributed *local* actor instance is the same as any other
+  /// ordinary default (local) actor, and no special handling is needed for them.
+  bool isDistributedRemote();
 
 private:
   /// Schedule an inline processing job.  This can generally only be
@@ -1365,8 +1382,53 @@ void swift::swift_defaultActor_destroy(DefaultActor *_actor) {
   asImpl(_actor)->destroy();
 }
 
+enum {
+    DISTRIBUTED_ACTOR_ADDRESS_SIZE = 88,
+};
+
+// TODO: make it accept the metatype?
+void* swift::swift_distributedActor_createProxy(Metadata const *actorType) {
+  fprintf(stderr, "[%s:%d] (%s) creating proxy...\n", __FILE__, __LINE__, __FUNCTION__);
+  // Figure out the size to allocate.
+  // TODO: this is likely slightly wrong?
+  size_t headerSize = sizeof(DistributedRemoteActor);
+//  headerSize += DISTRIBUTED_ACTOR_ADDRESS_SIZE; // must be the size of `ActorAddress`
+//  headerSize += sizeof(uintptr_t); // size of pointer to `ActorTransport`
+
+  headerSize = llvm::alignTo(headerSize, llvm::Align(Alignment_DistributedActorProxy));
+  size_t amountToAllocate = headerSize;
+
+  assert(amountToAllocate % MaximumAlignment == 0);
+
+  void *allocation = malloc(amountToAllocate);
+
+  DistributedRemoteActor *proxy =
+      reinterpret_cast<DistributedRemoteActor*>(
+          reinterpret_cast<char*>(allocation) + headerSize);
+
+  return allocation;
+}
+
+// TODO: most likely where we'd need to create the "proxy instance" instead?
+void swift::swift_distributedActor_remote_initialize(DefaultActor *_actor) {
+  auto actor = asImpl(_actor);
+  actor->initialize(/*remote=*/true);
+}
+
+void swift::swift_distributedActor_destroy(DefaultActor *_actor) {
+  // TODO: need to resign the address before we destroy:
+  //       something like: actor.transport.resignAddress(actor.address)
+
+  // FIXME: if this is a proxy, we would destroy a bit differently I guess? less memory was allocated etc.
+  asImpl(_actor)->destroy(); // today we just replicate what defaultActor_destroy does
+}
+
 void swift::swift_defaultActor_enqueue(Job *job, DefaultActor *_actor) {
   asImpl(_actor)->enqueue(job);
+}
+
+bool swift::swift_distributed_actor_is_remote(DefaultActor *_actor) {
+  return asImpl(_actor)->isDistributedRemote();
 }
 
 /// FIXME: only exists for the quick-and-dirty MainActor implementation.
@@ -1540,4 +1602,13 @@ void swift::swift_task_enqueue(Job *job, ExecutorRef executor) {
   // FIXME: call the general method.
   return asImpl(reinterpret_cast<DefaultActor*>(executor.getRawValue()))
     ->enqueue(job);
+}
+
+/*****************************************************************************/
+/***************************** DISTRIBUTED ACTOR *****************************/
+/*****************************************************************************/
+
+bool DefaultActorImpl::isDistributedRemote() {
+  auto state = CurrentState.load(std::memory_order_relaxed);
+  return state.Flags.isDistributedRemote() == 1;
 }

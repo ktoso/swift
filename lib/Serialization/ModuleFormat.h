@@ -321,6 +321,8 @@ enum CtorInitializerKind : uint8_t {
   Convenience = 1,
   Factory = 2,
   ConvenienceFactory = 3,
+  DesignatedDistributedLocal = 4,
+  DistributedResolve = 5,
 };
 using CtorInitializerKindField = BCFixed<2>;
 
@@ -1849,6 +1851,13 @@ namespace decls_block {
     ActorIndependent_DECL_ATTR,
     BCFixed<1>  // unsafe flag
   >;
+
+  using DistributedActorDeclAttrLayout = BCRecordLayout<
+    DistributedActor_DECL_ATTR,
+    BCFixed<1>  // default flag
+  >;
+  using DistributedActorIndependentDeclAttrLayout
+    = BCRecordLayout<DistributedActor_DECL_ATTR>;
 
   using OptimizeDeclAttrLayout = BCRecordLayout<
     Optimize_DECL_ATTR,
