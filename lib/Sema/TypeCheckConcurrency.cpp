@@ -376,6 +376,12 @@ bool IsActorRequest::evaluate(
   return isExplicitActor;
 }
 
+// TODO: has to mirror IsActor more closely?
+bool IsDistributedActorRequest::evaluate(
+    Evaluator &evaluator, NominalTypeDecl *decl) const {
+  return decl->getAttrs().hasAttribute<DistributedActorAttr>();
+}
+
 bool IsDefaultActorRequest::evaluate(
     Evaluator &evaluator, ClassDecl *classDecl) const {
   // If the class isn't an actor class, it's not a default actor.
@@ -403,11 +409,6 @@ bool IsDefaultActorRequest::evaluate(
     return false;
 
   return true;
-}
-
-bool IsDistributedActorRequest::evaluate(
-    Evaluator &evaluator, ClassDecl *classDecl) const {
-  return classDecl->getAttrs().hasAttribute<DistributedActorAttr>();
 }
 
 bool IsDistributedFuncRequest::evaluate(
@@ -1646,7 +1647,7 @@ namespace {
         }
         case ActorIsolationRestriction::CrossActorSelf:
         case ActorIsolationRestriction::ActorSelf:
-        case ActorIsolationRestriction::DistributedActor: {
+        case ActorIsolationRestriction::DistributedActorSelf: {
           if (isPartialApply) {
             // The partially applied InoutArg is a property of actor. This
             // can really only happen when the property is a struct with a
@@ -2166,7 +2167,8 @@ namespace {
             }
             LLVM_FALLTHROUGH; // otherwise, it's invalid so diagnose it.
 
-          case ActorIsolationRestriction::ActorSelf: {
+          case ActorIsolationRestriction::ActorSelf:
+          case ActorIsolationRestriction::DistributedActorSelf: {
             auto decl = concDecl.getDecl();
             ctx.Diags.diagnose(component.getLoc(),
                                diag::actor_isolated_keypath_component,
@@ -2213,7 +2215,7 @@ namespace {
 
       case ActorIsolationRestriction::CrossActorSelf:
       case ActorIsolationRestriction::ActorSelf:
-      case ActorIsolationRestriction::DistributedActor: // TODO: is it DistributedActorSelf?
+      case ActorIsolationRestriction::DistributedActorSelf:
         llvm_unreachable("non-member reference into an actor");
 
       case ActorIsolationRestriction::GlobalActorUnsafe:
@@ -2304,7 +2306,7 @@ namespace {
             ConcurrentReferenceKind::CrossActor);
       }
 
-      case ActorIsolationRestriction::DistributedActor: {
+      case ActorIsolationRestriction::DistributedActorSelf: {
         /// mark for later diagnostics that we have we're in a distributed actor.
         isDistributedActor = true;
 
@@ -2868,6 +2870,7 @@ static Optional<ActorIsolation> getIsolationFromWitnessedRequirements(
       auto requirementIsolation = getActorIsolation(requirement);
       switch (requirementIsolation) {
       case ActorIsolation::ActorInstance:
+      case ActorIsolation::DistributedActorInstance:
       case ActorIsolation::Unspecified:
         continue;
 
@@ -2971,7 +2974,7 @@ ActorIsolation ActorIsolationRequest::evaluate(
   // which are part of actor-isolated state.
   if (auto nominal = value->getDeclContext()->getSelfNominalTypeDecl()) {
     if (nominal->isActor() && value->isInstanceMember()) {
-      defaultIsolation = classDecl->isDistributedActor() ?
+      defaultIsolation = nominal->isDistributedActor() ?
                          ActorIsolation::forDistributedActorInstance(nominal) :
                          ActorIsolation::forActorInstance(nominal);
     } else if (nominal->isActor() && isa<ConstructorDecl>(value)) {

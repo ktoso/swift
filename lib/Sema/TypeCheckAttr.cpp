@@ -5456,6 +5456,12 @@ void AttributeChecker::visitActorIndependentAttr(ActorIndependentAttr *attr) {
   }
 }
 
+void AttributeChecker::visitDistributedActorIndependentAttr(DistributedActorIndependentAttr *attr) {
+  // nothing here
+
+  // TODO: we could restrict it only being okey on synthesized things?
+}
+
 void AttributeChecker::visitNonisolatedAttr(NonisolatedAttr *attr) {
   // 'nonisolated' can be applied to global and static/class variables
   // that do not have storage.

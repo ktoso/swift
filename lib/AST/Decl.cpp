@@ -3775,6 +3775,15 @@ bool NominalTypeDecl::isActor() const {
                            false);
 }
 
+bool NominalTypeDecl::isDistributedActor() const {
+  if (!isActor())
+    return false;
+
+  auto mutableThis = const_cast<NominalTypeDecl *>(this);
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsDistributedActorRequest{mutableThis},
+                           false);
+}
 
 GenericTypeDecl::GenericTypeDecl(DeclKind K, DeclContext *DC,
                                  Identifier name, SourceLoc nameLoc,
@@ -4239,13 +4248,6 @@ bool ClassDecl::isDefaultActor() const {
   auto mutableThis = const_cast<ClassDecl *>(this);
   return evaluateOrDefault(getASTContext().evaluator,
                            IsDefaultActorRequest{mutableThis},
-                           false);
-}
-
-bool ClassDecl::isDistributedActor() const {
-  auto mutableThis = const_cast<ClassDecl *>(this);
-  return evaluateOrDefault(getASTContext().evaluator,
-                           IsDistributedActorRequest{mutableThis},
                            false);
 }
 

@@ -3190,6 +3190,9 @@ public:
   /// `Actor` protocol.
   bool isActor() const;
 
+  /// Whether the class is an distributed actor.
+  bool isDistributedActor() const;
+
   /// Return the range of semantics attributes attached to this NominalTypeDecl.
   auto getSemanticsAttrs() const
       -> decltype(getAttrs().getSemanticsAttrs()) {
@@ -3742,9 +3745,6 @@ public:
   /// Whether the class was explicitly declared with the `actor` keyword.
   bool isExplicitActor() const { return Bits.ClassDecl.IsActor; }
   
-  /// Whether the class is an distributed actor.
-  bool isDistributedActor() const; // TODO: define it on NominalType instead?
-
   /// Does this class explicitly declare any of the methods that
   /// would prevent it from being a default actor?
   bool hasExplicitCustomActorMethods() const;

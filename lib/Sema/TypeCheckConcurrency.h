@@ -86,11 +86,17 @@ public:
     /// References to this entity are allowed from anywhere, but doing so
     /// may cross an actor boundary if it is not from within the same actor's
     /// isolation domain.
+    ///
+    /// The target actor may be a distributed actor.
     CrossActorSelf,
 
     /// References to this member of an actor are only permitted from within
     /// the actor's isolation domain.
     ActorSelf,
+
+    /// References to declarations that are part of a distributed actor are
+    /// only permitted if they are async.
+    DistributedActorSelf,
 
     /// References to a declaration that is part of a global actor are
     /// permitted from other declarations with that same global actor or
@@ -102,10 +108,6 @@ public:
     /// are permitted from elsewhere as a cross-actor reference, but
     /// contexts with unspecified isolation won't diagnose anything.
     GlobalActorUnsafe,
-
-    /// References to declarations that are part of a distributed actor are
-    /// only permitted if they are async.
-    DistributedActor, // TODO: should it be DistributedActorSelf? Self things are the same as a local actor hmm
   };
 
 private:
@@ -133,11 +135,15 @@ public:
 
   Kind getKind() const { return kind; }
 
+  bool isDistributedActor() {
+    return kind == DistributedActorSelf;
+  }
+
   /// Retrieve the actor type that the declaration is within.
   NominalTypeDecl *getActorType() const {
-    assert(kind == ActorSelf || 
-           kind == CrossActorSelf || 
-           kind == DistributedActor); // TODO: DistributedActorSelf
+    assert(kind == ActorSelf ||
+           kind == CrossActorSelf ||
+           kind == DistributedActorSelf);
     return data.actorType;
   }
 
@@ -169,7 +175,8 @@ public:
 
   static ActorIsolationRestriction forDistributedActorSelf(
       NominalTypeDecl *actor, bool isCrossActor) {
-    ActorIsolationRestriction result(DistributedActor, isCrossActor);
+    ActorIsolationRestriction result(DistributedActorSelf, // TODO: what about cross actor here...
+                                     isCrossActor);
     result.data.actorType = actor;
     return result;
   }

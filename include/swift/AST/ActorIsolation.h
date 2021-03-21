@@ -103,13 +103,16 @@ public:
     return ActorIsolation(ActorInstance, actor);
   }
 
+  // TODO: we could merge this into forActorInstance and do if actor->isDistributed
+  //       but we have to change how the sources are organized I guess since we forward
+  //       declared the NominalTypeDecl here.
+  static ActorIsolation forDistributedActorInstance(NominalTypeDecl *actor) {
+    return ActorIsolation(DistributedActorInstance, actor);
+  }
+
   static ActorIsolation forGlobalActor(Type globalActor, bool unsafe) {
     return ActorIsolation(
         unsafe ? GlobalActorUnsafe : GlobalActor, globalActor);
-  }
-
-  static ActorIsolation forDistributedActorInstance(ClassDecl *actor) {
-    return ActorIsolation(DistributedActorInstance, actor);
   }
 
   Kind getKind() const { return kind; }

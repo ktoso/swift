@@ -34,7 +34,7 @@ public protocol DistributedActor: Actor, Codable {
   /// their actors conform to a specific different type and use highly specialized
   /// serialization mechanisms.
   // TODO: Customization point not implemented yet.
-  typealias DistributedSendable = Codable // & Sendable
+  typealias DistributedSendable = Sendable & Codable
 
   /// Creates new (local) distributed actor instance, bound to the passed transport.
   ///
@@ -69,7 +69,7 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
-  var actorTransport: ActorTransport { get }
+  nonisolated var actorTransport: ActorTransport { get }
 
   /// Logical address which this distributed actor represents.
   ///
@@ -77,7 +77,7 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
-  var actorAddress: ActorAddress { get }
+  nonisolated var actorAddress: ActorAddress { get }
 
   // === Storage mechanism internals -------------------------------------------
 
@@ -128,7 +128,7 @@ extension DistributedActor {
 /***************************** Actor Transport ********************************/
 /******************************************************************************/
 
-public protocol ActorTransport: ConcurrentValue {
+public protocol ActorTransport: Sendable {
   /// Resolve a local or remote actor address to a real actor instance, or throw if unable to.
   /// The returned value is either a local actor or proxy to a remote actor.
   func resolve<Act>(address: ActorAddress, as actorType: Act.Type)
@@ -231,7 +231,7 @@ public struct DistributedActorValue<Value> {
 /***************************** Actor Address **********************************/
 /******************************************************************************/
 
-public struct ActorAddress: Codable, ConcurrentValue, Equatable {
+public struct ActorAddress: Codable, Sendable, Equatable {
   /// Uniquely specifies the actor transport and the protocol used by it.
   ///
   /// E.g. "xpc", "specific-clustering-protocol" etc.

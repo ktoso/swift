@@ -701,6 +701,27 @@ bool SILDeclRef::isDistributedThunk() const {
     return false;
   if (!hasDecl())
     return false;
+
+  // FIXME: remove this, it should work for all distributed functions but we
+  //       have trouble in SIL distributed func generation for non-async
+  //       non-throwing functions for now.
+  if (auto func = getFuncDecl()) {
+    if (!func->hasThrows()) {
+      fprintf(stderr, "[%s:%d] (%s) FIXME !!!! func '%s' is missing 'throws',"
+                      "and will not get DistributedThunk generated, "
+                      "because SIL is not able to\n",
+                      __FILE__, __LINE__, __FUNCTION__, func->getName());
+      return false;
+    }
+
+    if (!func->hasAsync()) {
+      fprintf(stderr, "[%s:%d] (%s) FIXME !!!! func '%s' is missing 'async', "
+                      "and will not get DistributedThunk generated, "
+                      "because SIL is not able to\n",
+                      __FILE__, __LINE__, __FUNCTION__, func->getName());
+      return false;
+    }
+  }
   return kind == Kind::Func;
 }
 
