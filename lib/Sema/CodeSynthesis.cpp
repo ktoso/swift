@@ -1150,26 +1150,47 @@ static bool shouldAttemptInitializerSynthesis(const NominalTypeDecl *decl) {
   return true;
 }
 
+static bool shouldAttemptDistributedActorStorageSynthesis(const NominalTypeDecl *decl) {
+  // Don't synthesize initializers for imported decls.
+  if (decl->hasClangNode())
+    return false;
+
+  // Don't attempt if we know the decl is invalid.
+  if (decl->isInvalid())
+    return false;
+
+  return true;
+}
+
 void TypeChecker::addImplicitDistributedActorStorage(NominalTypeDecl *decl) {
-//  // If we already added implicit storage, we're done.
-//  if (decl->addedDistributedActorStorage()) {
-//    fprintf(stderr, "[%s:%d] (%s) ALREADY ADDED STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
-//    return;
-//  }
-//
-//  if (!shouldAttemptInitializerSynthesis(decl)) {
-//    fprintf(stderr, "[%s:%d] (%s) SET(true) ALREADY ADDED STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
-//    decl->setAddedDistributedActorStorage();
-//    return;
-//  }
-//
-//  auto *classDecl = dyn_cast<ClassDecl>(decl);
-//  if (classDecl && classDecl->isDistributedActor()) {
-//    fprintf(stderr, "[%s:%d] (%s) going to call >>> .............. xxxxxx ..............\n", __FILE__, __LINE__, __FUNCTION__);
-////    addImplicitDistributedActorLocalStorageStruct(classDecl);
-////    addImplicitDistributedActorTypeAliases(classDecl);
-//    addImplicitDistributedActorStoredProperties(classDecl);
-//  }
+  {
+    auto *classDecl = dyn_cast<ClassDecl>(decl);
+    if (!classDecl)
+      return;
+
+    if (!classDecl->isDistributedActor())
+      return;
+
+    // If we already added implicit storage, we're done.
+    if (decl->addedDistributedActorStorage()) {
+      fprintf(stderr, "[%s:%d] (%s) ALREADY ADDED STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
+      return;
+    }
+
+    if (!shouldAttemptDistributedActorStorageSynthesis(decl)) {
+      fprintf(stderr, "[%s:%d] (%s) SET(true) ALREADY ADDED STORAGE\n", __FILE__, __LINE__, __FUNCTION__);
+      decl->setAddedDistributedActorStorage();
+      return;
+    }
+
+    decl->setAddedDistributedActorStorage();
+
+    fprintf(stderr, "[%s:%d] (%s) going to call >>> .............. xxxxxx ..............\n", __FILE__, __LINE__,
+            __FUNCTION__);
+//    addImplicitDistributedActorLocalStorageStruct(classDecl);
+//    addImplicitDistributedActorTypeAliases(classDecl);
+    addImplicitDistributedActorStoredProperties(classDecl);
+  }
 }
 
 void TypeChecker::addImplicitConstructors(NominalTypeDecl *decl) {

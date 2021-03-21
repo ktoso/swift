@@ -852,14 +852,14 @@ EnumElementDecl *ASTContext::getOptionalNoneDecl() const {
   return getImpl().OptionalNoneDecl;
 }
 
-EnumElementDecl *ASTContext::getDistributedActorPersonaLocalDecl() const {
+EnumElementDecl *ASTContext::getDistributedActorPersonalityLocalDecl() const {
   if (!getImpl().DistributedActorPersonaLocalDecl)
     getImpl().DistributedActorPersonaLocalDecl =
         getDistributedActorStorageDecl()->getUniqueElement(/*hasVal*/true);
   return getImpl().DistributedActorPersonaLocalDecl;
 }
 
-EnumElementDecl *ASTContext::getDistributedActorPersonaRemoteDecl() const {
+EnumElementDecl *ASTContext::getDistributedActorPersonalityRemoteDecl() const {
   if (!getImpl().DistributedActorPersonaRemoteDecl)
     getImpl().DistributedActorPersonaRemoteDecl =
         getDistributedActorStorageDecl()->getUniqueElement(/*hasVal*/false);

@@ -2345,9 +2345,10 @@ namespace {
             // it wasn't a function (including a distributed function),
             // so we need to perform some more checks
             if (auto var = dyn_cast<VarDecl>(member)) {
+              var->dump();
               // @_distributedActorIndependent decls are accessible always,
               // regardless of distributed actor-isolation; e.g. actorAddress
-              if (member->getAttrs().hasAttribute<DistributedActorIndependentAttr>())
+              if (var->getAttrs().hasAttribute<DistributedActorIndependentAttr>())
                 return false;
 
               // otherwise, no other properties are accessible on a distributed actor
@@ -2991,10 +2992,19 @@ ActorIsolation ActorIsolationRequest::evaluate(
     switch (inferred) {
     // FIXME: if the context is 'unsafe', is it fine to infer the 'safe' one?
     case ActorIsolation::IndependentUnsafe:
-    case ActorIsolation::Independent:
-      value->getAttrs().add(new (ctx) ActorIndependentAttr(
-                              ActorIndependentKind::Safe, /*IsImplicit=*/true));
+    case ActorIsolation::Independent: {
+      auto var = dyn_cast<VarDecl>(value);
+      if (var && var->isLet()) {
+        // do nothing, @actorIndependent on `let` is meaningless and would
+        // trigger an error later on in type checking attributes.
+      } else {
+        value->dump();
+        fprintf(stderr, "[%s:%d] (%s) ADDING ActorIndependentAttr\n", __FILE__, __LINE__, __FUNCTION__);
+        value->getAttrs().add(new(ctx) ActorIndependentAttr(
+            ActorIndependentKind::Safe, /*IsImplicit=*/true));
+      }
       break;
+    }
 
     case ActorIsolation::GlobalActorUnsafe:
       if (!propagateUnsafe && !value->hasClangNode()) {

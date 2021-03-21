@@ -20,6 +20,10 @@ distributed actor class DistributedActor_0 { // expected-warning{{'actor class' 
   distributed func okey() {}
 }
 
+extension DistributedActor_0 {
+  static func okey(actor: Self) async throws { }
+}
+
 distributed actor DistributedActor_1 {
 
   let name: String = "alice" // expected-note{{distributed actor state is only available within the actor instance}}

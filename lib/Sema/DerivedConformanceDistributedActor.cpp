@@ -286,23 +286,25 @@ getBoundKeyPathLocalStorageToT(ASTContext &C, NominalTypeDecl *decl, Type generi
   keyPathDecl->dump();
 
   // === locate the synthesized: DistributedActorLocalStorage
-  // TODO: make getLocalStorageDecl func here, we do this a few times
-  auto localStorageDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
-//  if (localStorageDecls.size() > 1) {
-//    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+//  // TODO: make getLocalStorageDecl func here, we do this a few times
+////  auto localStorageDecls = decl->lookupDirect(DeclName(C.Id_DistributedActorLocalStorage));
+//  auto localStorageDecls = C.getFAKE_LocalStorageDecl();
+////  if (localStorageDecls.size() > 1) {
+////    assert(false && "Only a single DistributedActorLocalStorage type may be declared!");
+////  }
+//  StructDecl *localStorageDecl = nullptr;
+//  for (auto decl : localStorageDecls) {
+//    fprintf(stderr, "\n");
+//    fprintf(stderr, "[%s:%d] (%s) DECL:\n", __FILE__, __LINE__, __FUNCTION__);
+//    decl->dump();
+//    fprintf(stderr, "\n");
+//
+//    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
+//      localStorageDecl = structDecl;
+//      break;
+//    }
 //  }
-  StructDecl *localStorageDecl = nullptr;
-  for (auto decl : localStorageDecls) {
-    fprintf(stderr, "\n");
-    fprintf(stderr, "[%s:%d] (%s) DECL:\n", __FILE__, __LINE__, __FUNCTION__);
-    decl->dump();
-    fprintf(stderr, "\n");
-
-    if (auto structDecl = dyn_cast<StructDecl>(decl)) {
-      localStorageDecl = structDecl;
-      break;
-    }
-  }
+  auto *localStorageDecl = C.getFAKE_LocalStorageDecl();
   assert(localStorageDecl && "unable to lookup synthesized struct DistributedActorLocalStorage!");
 //  TypeDecl *localStorageTypeDecl = dyn_cast<TypeDecl>(localkeyPathDecl);
 //  if (!localStorageTypeDecl) {

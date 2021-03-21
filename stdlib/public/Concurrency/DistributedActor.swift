@@ -69,6 +69,8 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
+  // @_distributedActorIndependent
+  @actorIndependent
   nonisolated var actorTransport: ActorTransport { get }
 
   /// Logical address which this distributed actor represents.
@@ -77,6 +79,8 @@ public protocol DistributedActor: Actor, Codable {
   ///
   /// ### Synthesis
   /// Implementation synthesized by the compiler.
+  // @_distributedActorIndependent
+  @actorIndependent
   nonisolated var actorAddress: ActorAddress { get }
 
   // === Storage mechanism internals -------------------------------------------
@@ -87,15 +91,15 @@ public protocol DistributedActor: Actor, Codable {
   // main.Person (internal):11:18: error: actor-isolated property 'storage' cannot be used to satisfy a protocol requirement
   //    internal var storage: DistributedActorStorage<String>
   //                 ^
-//  @actorIndependent(unsafe) // FIXME: pretty nasty... on the local case this breaks isolation then
+//  nonisolated // FIXME: pretty nasty... on the local case this breaks isolation then
 //  // NOT @_distributedActorIndependent on purpose, as it makes it not accessible
 //  // from outside of the actor, which is good - it is effectively the
 //  var storage: DistributedActorStorage<FAKE_LocalStorage> { get set }
 
-  /// ### Synthesis
-  /// Implementation synthesized by the compiler.
-  // FIXME: can we hide this method from public API?
-  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<FAKE_LocalStorage, T>
+//  /// ### Synthesis
+//  /// Implementation synthesized by the compiler.
+//  // FIXME: can we hide this method from public API?
+//  static func _mapStorage<T>(keyPath: AnyKeyPath) -> KeyPath<FAKE_LocalStorage, T>
 
 }
 

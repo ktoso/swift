@@ -1833,7 +1833,7 @@ bool Parser::parseNewDeclAttribute(DeclAttributes &Attributes, SourceLoc AtLoc,
   }
   case DAK_DistributedActorIndependent: {
     // TODO: this is declared as UserInaccessible attr, so why are we forced to parse anyway?
-    llvm_unreachable("DAK_DistributedActorIndependent should never be declared in source.");
+    // llvm_unreachable("DAK_DistributedActorIndependent should never be declared in source."); // FIXME: re-enable this!!!!!
   }
 
   case DAK_Optimize: {

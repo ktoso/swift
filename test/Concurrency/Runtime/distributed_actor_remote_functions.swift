@@ -8,8 +8,13 @@ import _Concurrency
 
 struct Boom: Error {}
 
-distributed actor SomeSpecificDistributedActor {
+distributed actor MaybeRemoteActor {
   let state: String = "hi there"
+
+//  @_distributedActorIndependent
+//  let actorTransport: ActorTransport
+//  @_distributedActorIndependent
+//  let actorAddress: ActorAddress
 
   distributed func helloAsyncThrows() async throws -> String {
     "local(\(#function))"
@@ -39,31 +44,31 @@ distributed actor SomeSpecificDistributedActor {
 
 }
 
-extension SomeSpecificDistributedActor {
+extension MaybeRemoteActor {
 
-  static func _remote_helloAsyncThrows(actor: SomeSpecificDistributedActor) async throws -> String {
+  static func _remote_helloAsyncThrows(actor: MaybeRemoteActor) async throws -> String {
     return "remote(\(#function)) (address: \(actor.actorAddress))"
   }
 
-//  static func _remote_helloAsync(actor: SomeSpecificDistributedActor) async throws -> String {
+//  static func _remote_helloAsync(actor: MaybeRemoteActor) async throws -> String {
 //    return "remote(\(#function)) (address: \(actor.actorAddress))"
 //  }
 //
-//  static func _remote_helloThrows(actor: SomeSpecificDistributedActor) async throws -> String {
+//  static func _remote_helloThrows(actor: MaybeRemoteActor) async throws -> String {
 //    return "remote(\(#function)) (address: \(actor.actorAddress))"
 //  }
 //
-//  static func _remote_hello(actor: SomeSpecificDistributedActor) async throws -> String {
+//  static func _remote_hello(actor: MaybeRemoteActor) async throws -> String {
 //    return "remote(\(#function)) (address: \(actor.actorAddress))"
 //  }
 //
 //  // === errors
 //
-//  static func _remote_helloThrowsImplBoom(actor: SomeSpecificDistributedActor) async throws -> String {
+//  static func _remote_helloThrowsImplBoom(actor: MaybeRemoteActor) async throws -> String {
 //    return "remote(\(#function)) (address: \(actor.actorAddress))"
 //  }
 //
-//  static func _remote_helloThrowsTransportBoom(actor: SomeSpecificDistributedActor) async throws -> String {
+//  static func _remote_helloThrowsTransportBoom(actor: MaybeRemoteActor) async throws -> String {
 //    throw Boom()
 //  }
 }
@@ -90,7 +95,7 @@ let address = ActorAddress(parse: "")
 let transport = FakeTransport()
 
 func test_remote_invoke() async {
-  func check(actor: SomeSpecificDistributedActor) async {
+  func check(actor: MaybeRemoteActor) async {
     let personality = __isRemoteActor(actor) ? "remote" : "local"
 
     let h1 = try! await actor.helloAsyncThrows()
@@ -121,10 +126,10 @@ func test_remote_invoke() async {
 //    }
   }
 
-  let remote = try! SomeSpecificDistributedActor(resolve: address, using: transport)
+  let remote = try! MaybeRemoteActor(resolve: address, using: transport)
   assert(__isRemoteActor(remote) == true, "should be remote")
 
-  let local = SomeSpecificDistributedActor(transport: transport)
+  let local = MaybeRemoteActor(transport: transport)
   assert(__isRemoteActor(local) == false, "should be local")
 
   print("local isRemote: \(__isRemoteActor(local))")

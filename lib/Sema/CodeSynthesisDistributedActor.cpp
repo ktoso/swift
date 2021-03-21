@@ -890,66 +890,66 @@ createStoredProperty(ValueDecl *parent, DeclContext *parentDC, ASTContext &ctx,
   return {propDecl, pbDecl};
 }
 
-///// Adds the following, fairly special, properties to each distributed actor:
-///// - actorTransport
-///// - actorAddress
-///// - storage
-//static void addImplicitDistributedActorStoredProperties(ClassDecl *actorDecl) {
-//  fprintf(stderr, "\n");
-//  actorDecl->dump();
-//  fprintf(stderr, "[%s:%d] (%s) SYNTH PROPERTIES FOR ^^^^\n", __FILE__, __LINE__, __FUNCTION__);
-//
-//  assert(actorDecl->isDistributedActor());
-//  auto &C = actorDecl->getASTContext();
-//
-//  // ```
-//  // @_distributedActorIndependent
-//  // let actorAddress: ActorAddress
-//  // ```
-//  // (no need for @actorIndependent because it is an immutable let)
-//  {
-//    auto propertyType = C.getActorAddressDecl()->getDeclaredInterfaceType();
-//
-//    VarDecl *propDecl;
-//    PatternBindingDecl *pbDecl;
-//    std::tie(propDecl, pbDecl) = createStoredProperty(
-//        actorDecl, actorDecl, C,
-//        VarDecl::Introducer::Let, C.Id_actorAddress,
-//        propertyType, propertyType,
-//        /*isStatic=*/false, /*isFinal=*/true);
-//
-//    // mark as @_distributedActorIndependent, allowing access to it from everywhere
-//    propDecl->getAttrs().add(
-//        new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
-//
-//    actorDecl->addMember(propDecl);
-//    actorDecl->addMember(pbDecl);
-//  }
-//
-//  // ```
-//  // @_distributedActorIndependent
-//  // let actorTransport: ActorTransport
-//  // ```
-//  // (no need for @actorIndependent because it is an immutable let)
-//  {
-//    auto propertyType = C.getActorTransportDecl()->getDeclaredInterfaceType();
-//
-//    VarDecl *propDecl;
-//    PatternBindingDecl *pbDecl;
-//    std::tie(propDecl, pbDecl) = createStoredProperty(
-//        actorDecl, actorDecl, C,
-//        VarDecl::Introducer::Let, C.Id_actorTransport,
-//        propertyType, propertyType,
-//        /*isStatic=*/false, /*isFinal=*/true);
-//
-//    // mark as @_distributedActorIndependent, allowing access to it from everywhere
-//    propDecl->getAttrs().add(
-//        new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
-//
-//    actorDecl->addMember(propDecl);
-//    actorDecl->addMember(pbDecl);
-//  }
-//
+/// Adds the following, fairly special, properties to each distributed actor:
+/// - actorTransport
+/// - actorAddress
+/// - storage
+static void addImplicitDistributedActorStoredProperties(ClassDecl *actorDecl) {
+  fprintf(stderr, "\n");
+  actorDecl->dump();
+  fprintf(stderr, "[%s:%d] (%s) SYNTH PROPERTIES FOR ^^^^\n", __FILE__, __LINE__, __FUNCTION__);
+
+  assert(actorDecl->isDistributedActor());
+  auto &C = actorDecl->getASTContext();
+
+  // ```
+  // @_distributedActorIndependent
+  // let actorAddress: ActorAddress
+  // ```
+  // (no need for @actorIndependent because it is an immutable let)
+  {
+    auto propertyType = C.getActorAddressDecl()->getDeclaredInterfaceType();
+
+    VarDecl *propDecl;
+    PatternBindingDecl *pbDecl;
+    std::tie(propDecl, pbDecl) = createStoredProperty(
+        actorDecl, actorDecl, C,
+        VarDecl::Introducer::Let, C.Id_actorAddress,
+        propertyType, propertyType,
+        /*isStatic=*/false, /*isFinal=*/true);
+
+    // mark as @_distributedActorIndependent, allowing access to it from everywhere
+    propDecl->getAttrs().add(
+        new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
+
+    actorDecl->addMember(propDecl);
+    actorDecl->addMember(pbDecl);
+  }
+
+  // ```
+  // @_distributedActorIndependent
+  // let actorTransport: ActorTransport
+  // ```
+  // (no need for @actorIndependent because it is an immutable let)
+  {
+    auto propertyType = C.getActorTransportDecl()->getDeclaredInterfaceType();
+
+    VarDecl *propDecl;
+    PatternBindingDecl *pbDecl;
+    std::tie(propDecl, pbDecl) = createStoredProperty(
+        actorDecl, actorDecl, C,
+        VarDecl::Introducer::Let, C.Id_actorTransport,
+        propertyType, propertyType,
+        /*isStatic=*/false, /*isFinal=*/true);
+
+    // mark as @_distributedActorIndependent, allowing access to it from everywhere
+    propDecl->getAttrs().add(
+        new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
+
+    actorDecl->addMember(propDecl);
+    actorDecl->addMember(pbDecl);
+  }
+
 //  // ```
 //  // private var storage: DistributedActorStorage<LocalStorage>
 //  // ```
@@ -976,7 +976,7 @@ createStoredProperty(ValueDecl *parent, DeclContext *parentDC, ASTContext &ctx,
 //    actorDecl->addMember(propDecl);
 //    actorDecl->addMember(pbDecl);
 //  }
-//}
+}
 
 /******************************************************************************/
 /***************************** STORAGE STRUCT *********************************/

@@ -646,7 +646,7 @@ CONTEXTUAL_DECL_ATTR(distributed, DistributedActor,
 
 DECL_ATTR(_distributedActorIndependent, DistributedActorIndependent, // TODO: change to distributedActorNonIsolated I guess
   OnFunc | OnVar |
-  ConcurrencyOnly | DistributedOnly | UserInaccessible |
+  ConcurrencyOnly | DistributedOnly | // UserInaccessible | // FIXME: distributed feature, must not be user accessible!!!
   ABIStableToAdd | ABIStableToRemove |
   APIBreakingToAdd | APIBreakingToRemove,
   114)

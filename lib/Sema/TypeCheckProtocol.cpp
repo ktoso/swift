@@ -4516,6 +4516,7 @@ void ConformanceChecker::ensureRequirementsAreSatisfied() {
       proto->getASTContext().Diags.diagnose(Loc, diag::type_does_not_conform,
                                             Adoptee,
                                             Proto->getDeclaredInterfaceType());
+      assert(false);
       Conformance->setInvalid();
     }
     return;
@@ -6239,7 +6240,7 @@ ValueDecl *TypeChecker::deriveProtocolRequirement(DeclContext *DC,
     return derived.deriveDifferentiable(Requirement);
 
   case KnownDerivableProtocolKind::DistributedActor:
-    return derived.deriveDistributedActor(Requirement);
+//    return derived.deriveDistributedActor(Requirement);
 //    Requirement->dump();
 //    fprintf(stderr, "[%s:%d] (%s) COULD SYNTHESIZE HERE, SKIPPING\n", __FILE__, __LINE__, __FUNCTION__);
 //    return nullptr;

@@ -492,10 +492,10 @@ public:
   EnumElementDecl *getOptionalNoneDecl() const;
 
   /// Retrieve the declaration of _Concurrency.DistributedActorPersona.Local.
-  EnumElementDecl *getDistributedActorPersonaLocalDecl() const;
+  EnumElementDecl *getDistributedActorPersonalityLocalDecl() const;
 
   /// Retrieve the declaration of _Concurrency.DistributedActorPersona.Remote.
-  EnumElementDecl *getDistributedActorPersonaRemoteDecl() const;
+  EnumElementDecl *getDistributedActorPersonalityRemoteDecl() const;
 
   /// Retrieve the declaration of the "pointee" property of a pointer type.
   VarDecl *getPointerPointeePropertyDecl(PointerTypeKind ptrKind) const;

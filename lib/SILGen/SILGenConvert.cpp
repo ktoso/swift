@@ -275,8 +275,8 @@ SILGenFunction::emitPreconditionOptionalHasValue(SILLocation loc,
 //
 ////  auto someDecl = getASTContext().getOptionalSomeDecl();
 ////  auto noneDecl = getASTContext().getOptionalNoneDecl();
-//  auto remoteDecl = getASTContext().getDistributedActorPersonaRemoteDecl();
-//  auto localDecl = getASTContext().getDistributedActorPersonaLocalDecl();
+//  auto remoteDecl = getASTContext().getDistributedActorPersonalityRemoteDecl();
+//  auto localDecl = getASTContext().getDistributedActorPersonalityLocalDecl();
 //
 //  // If we have an object, make sure the object is at +1. All switch_enum of
 //  // objects is done at +1.
