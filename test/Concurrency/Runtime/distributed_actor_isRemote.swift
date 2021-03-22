@@ -41,7 +41,7 @@ let transport = FakeTransport()
 
 func test_remote() async {
   let local = SomeSpecificDistributedActor(transport: transport)
-  _ = local.actorAddress
+  _ = local.$address
   assert(__isLocalActor(local) == true, "should be local")
   assert(__isRemoteActor(local) == false, "should be local")
 

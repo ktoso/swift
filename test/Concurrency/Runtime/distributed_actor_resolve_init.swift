@@ -5,39 +5,8 @@
 
 import _Concurrency
 
-//protocol DA {
-//  var address: ActorAddress { get }
-//
-//}
-//
-//class MANUAL: DA {
-//  // @derived
-//  let address: ActorAddress
-//
-//  init( actorAddress: ActorAddress) {
-//    self.address = actorAddress
-//  }
-//}
-
-
-distributed actor SomeSpecificDistributedActor {
-//  // @derived let actorTransport: ActorTransport
-//  // @derived let actorAddress: ActorAddress
-
-//  // @derived
-//  required init(transport: ActorTransport) {
-//    self.$transport = transport
-//    self.$address = ActorAddress(parse: "xxx")
-//  }
-//  // @derived
-//  required init(resolve address: ActorAddress, using transport: ActorTransport) {
-//    self.$address = address
-//    self.$transport = transport
-//  }
-
-//  distributed func hello() async throws {
-//    // print("hello from \(self.$address)")
-//  }
+distributed actor DA {
+  let name = "name"
 }
 
 // ==== Fake Transport ---------------------------------------------------------
@@ -61,12 +30,12 @@ let address = ActorAddress(parse: "")
 let transport = FakeTransport()
 
 func test_initializers() {
-  _ = SomeSpecificDistributedActor(transport: transport)
-  _ = try! SomeSpecificDistributedActor(resolve: address, using: transport)
+  _ = DA(transport: transport)
+  _ = try! DA(resolve: address, using: transport)
 }
 
 func test_address() {
-  let actor = SomeSpecificDistributedActor(transport: transport)
+  let actor = DA(transport: transport)
   _ = actor.$address
 }
 

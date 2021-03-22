@@ -598,6 +598,7 @@ public:
         isInSILMode() || L->isSwiftInterface())
       return;
 
+    assert(false);
     diagnose(tok.getLoc(), diag::dollar_identifier_decl,
              Context.getIdentifier(tok.getText()));
   }
