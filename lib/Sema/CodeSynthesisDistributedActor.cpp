@@ -166,7 +166,6 @@ createBody_DistributedActor_init_transport(AbstractFunctionDecl *initDecl, void 
   // === `transport.actorReady(self)`
   {
     // Bound transport.actorReady(self) call
-    auto addressType = C.getActorAddressDecl()->getDeclaredInterfaceType();
     auto selfType = funcDC->getInnermostTypeContext()->getSelfTypeInContext();
     auto *callExpr = createCall_DistributedActor_transport_actorReady(C, funcDC,
         /*base=*/transportExpr,
@@ -192,8 +191,6 @@ createDistributedActor_init_local(ClassDecl *classDecl,
                                   ASTContext &ctx) {
   auto &C = ctx;
 
-  fprintf(stderr, "[%s:%d] (%s) create\n", __FILE__, __LINE__, __FUNCTION__);
-
 //  auto conformanceDC = derived.getConformanceContext();
   auto conformanceDC = classDecl;
 
@@ -201,7 +198,6 @@ createDistributedActor_init_local(ClassDecl *classDecl,
   //
   // Params: (transport transport: ActorTransport)
   auto transportType = C.getActorTransportDecl()->getDeclaredInterfaceType();
-  fprintf(stderr, "[%s:%d] (%s) got transport\n", __FILE__, __LINE__, __FUNCTION__);
   auto *transportParamDecl = new (C) ParamDecl(
       SourceLoc(), SourceLoc(), C.Id_transport,
       SourceLoc(), C.Id_transport, conformanceDC);
@@ -370,7 +366,6 @@ createDistributedActorInit(ClassDecl *classDecl,
                            ASTContext &ctx) {
   assert(classDecl->isDistributedActor());
 
-  auto &C = ctx;
   const auto name = requirement->getName();
   auto argumentNames = name.getArgumentNames();
 
