@@ -554,6 +554,145 @@ static void addImplicitDistributedActorStoredProperties(ClassDecl *decl) {
 }
 
 /******************************************************************************/
+/*************************** _REMOTE_ FUNCTIONS *******************************/
+/******************************************************************************/
+
+/// Synthesizes the for `_remote_xxx` functions.
+///
+/// Create a stub body that emits a fatal error message.
+static std::pair<BraceStmt *, bool>
+synthesizeRemoteFuncStubBody(AbstractFunctionDecl *func, void *) {
+  auto classDecl = func->getDeclContext()->getSelfClassDecl();
+  auto &ctx = func->getASTContext();
+
+  auto *staticStringDecl = ctx.getStaticStringDecl();
+  auto staticStringType = staticStringDecl->getDeclaredInterfaceType();
+  auto staticStringInit = ctx.getStringBuiltinInitDecl(staticStringDecl);
+
+  auto *uintDecl = ctx.getUIntDecl();
+  auto uintType = uintDecl->getDeclaredInterfaceType();
+  auto uintInit = ctx.getIntBuiltinInitDecl(uintDecl);
+
+  auto missingTransportDecl = ctx.getMissingDistributedActorTransport();
+
+  // Create a call to Swift._missingDistributedActorTransport // TODO: move to `Distributed` module
+  auto loc = func->getLoc();
+  Expr *ref = new (ctx) DeclRefExpr(missingTransportDecl,
+                                    DeclNameLoc(loc), /*Implicit=*/true);
+  ref->setType(missingTransportDecl->getInterfaceType()
+                   ->removeArgumentLabels(1));
+
+  llvm::SmallString<64> buffer;
+  StringRef fullClassName = ctx.AllocateCopy(
+      (classDecl->getModuleContext()->getName().str() +
+       "." +
+       classDecl->getName().str()).toStringRef(buffer));
+
+  auto *className = new (ctx) StringLiteralExpr(fullClassName, loc,
+      /*Implicit=*/true);
+  className->setBuiltinInitializer(staticStringInit);
+  assert(isa<ConstructorDecl>(className->getBuiltinInitializer().getDecl()));
+  className->setType(staticStringType);
+
+  auto *funcName = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::Function, loc, /*Implicit=*/true);
+  funcName->setType(staticStringType);
+  funcName->setBuiltinInitializer(staticStringInit);
+
+  auto *file = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::FileID, loc, /*Implicit=*/true);
+  file->setType(staticStringType);
+  file->setBuiltinInitializer(staticStringInit);
+
+  auto *line = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::Line, loc, /*Implicit=*/true);
+  line->setType(uintType);
+  line->setBuiltinInitializer(uintInit);
+
+  auto *column = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::Column, loc, /*Implicit=*/true);
+  column->setType(uintType);
+  column->setBuiltinInitializer(uintInit);
+
+  auto *call = CallExpr::createImplicit(
+      ctx, ref, { className, funcName, file, line, column }, {});
+  call->setType(ctx.getNeverType());
+  call->setThrows(false);
+
+  SmallVector<ASTNode, 2> stmts;
+  stmts.push_back(call); // something() -> Never
+  // stmts.push_back(new (ctx) ReturnStmt(SourceLoc(), /*Result=*/nullptr)); // FIXME: this causes 'different types for return type: String vs. ()'
+  auto body = BraceStmt::create(ctx, SourceLoc(), stmts, SourceLoc(),
+                                /*implicit=*/true);
+
+  return { body, /*isTypeChecked=*/true };
+}
+
+/// Create a remote stub for the passed in \c func.
+/// The remote stub function is not user accessible and mirrors the API of
+/// the local function. It is always throwing, async, and user-inaccessible.
+///
+/// ```
+/// // func greet(name: String) { ... }
+/// dynamic <access> func _remote_greet(name: String) async throws {
+///     fatalError(...)
+/// }
+/// ```
+///
+/// and is intended to be replaced by a transport library by providing an
+/// appropriate @_dynamicReplacement function.
+static void addImplicitRemoteActorFunction(ClassDecl *decl, FuncDecl *func) {
+  auto &C = decl->getASTContext();
+  auto parentDC = decl;
+
+  auto localFuncName = func->getBaseIdentifier().str().str();
+  auto remoteFuncIdent = C.getIdentifier("_remote_" + localFuncName);
+
+  auto params = func->getParameters();
+  auto genericParams = func->getGenericParams();
+  auto resultTy = func->getResultInterfaceType();
+
+  DeclName name(C, remoteFuncIdent, params);
+  auto *const remoteFuncDecl = FuncDecl::createImplicit(
+      C, StaticSpellingKind::None, name, /*NameLoc=*/SourceLoc(),
+      /*Async=*/true, /*Throws=*/true,
+      /*GenericParams=*/genericParams, params,
+      resultTy, parentDC);
+
+  // *dynamic* because we'll be replacing it with specific transports
+  remoteFuncDecl->getAttrs().add(
+      new (C) DynamicAttr(/*implicit=*/true));
+
+  // @_distributedActorIndependent
+  remoteFuncDecl->getAttrs().add(
+      new (C) DistributedActorIndependentAttr(/*IsImplicit=*/true));
+
+  // users should never have to access this function directly;
+  // it is only invoked from our distributed function thunk if the actor is remote.
+  remoteFuncDecl->setUserAccessible(false);
+  remoteFuncDecl->setSynthesized();
+
+  remoteFuncDecl->setBodySynthesizer(&synthesizeRemoteFuncStubBody);
+
+  // same access control as the original function is fine
+  remoteFuncDecl->copyFormalAccessFrom(func, /*sourceIsParentContext=*/false);
+
+  decl->addMember(remoteFuncDecl);
+}
+
+/// Synthesize dynamic _remote stub functions for each encountered distributed function.
+static void addImplicitRemoteActorFunctions(ClassDecl *decl) {
+  assert(decl->isDistributedActor());
+
+  for (auto member : decl->getMembers()) {
+    auto func = dyn_cast<FuncDecl>(member);
+    if (func && func->isDistributed()) {
+      addImplicitRemoteActorFunction(decl, func);
+    }
+  }
+}
+
+/******************************************************************************/
 /************************ SYNTHESIS ENTRY POINT *******************************/
 /******************************************************************************/
 
@@ -573,4 +712,5 @@ static void addImplicitDistributedActorMembersToClass(ClassDecl *decl) {
 
   addImplicitDistributedActorConstructors(decl);
   addImplicitDistributedActorStoredProperties(decl);
+  addImplicitRemoteActorFunctions(decl);
 }

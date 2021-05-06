@@ -4,6 +4,9 @@
 // REQUIRES: concurrency
 // REQUIRES: distributed
 
+// UNSUPPORTED: use_os_stdlib
+// UNSUPPORTED: back_deployment_runtime
+
 import _Distributed
 
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)

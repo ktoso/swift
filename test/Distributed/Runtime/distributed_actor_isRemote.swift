@@ -4,6 +4,9 @@
 // REQUIRES: concurrency
 // REQUIRES: distributed
 
+// UNSUPPORTED: use_os_stdlib
+// UNSUPPORTED: back_deployment_runtime
+
 import _Distributed
 
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)
@@ -15,8 +18,10 @@ distributed actor SomeSpecificDistributedActor {
 
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)
 extension SomeSpecificDistributedActor {
-  static func _remote_hello(actor: SomeSpecificDistributedActor) async throws -> String {
-    return "remote impl (address: \(actor.actorAddress))"
+  @_dynamicReplacement(for: _remote_hello())
+  func _cluster_remote_hello() async throws -> String {
+    // ... invoke transport here ...
+    return "remote impl (address: \(self.actorAddress))"
   }
 }
 

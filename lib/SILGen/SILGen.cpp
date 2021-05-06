@@ -841,7 +841,7 @@ void SILGenModule::emitFunctionDefinition(SILDeclRef constant, SILFunction *f) {
     f->setThunk(IsThunk);
 
     SILGenFunction(*this, *f, dc).emitDistributedThunk(constant);
-
+    assert(f);
     postEmitFunction(constant, f);
     return;
   }

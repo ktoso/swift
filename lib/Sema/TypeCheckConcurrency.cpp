@@ -177,44 +177,45 @@ static bool checkDistributedFunc(FuncDecl *func, bool diagnose) {
     }
   }
 
+  // FIXME: can remove this now since we synthesize them
   // === Each distributed function must have a static _remote_<func_name> counterpart
   ClassDecl *actorDecl = dyn_cast<ClassDecl>(func->getParent());
   assert(actorDecl && actorDecl->isDistributedActor());
 
-  auto remoteFuncDecl = actorDecl->lookupDirectRemoteFunc(func);
-  if (!remoteFuncDecl) {
-    if (diagnose) {
-      auto localFuncName = func->getBaseIdentifier().str().str();
-      func->diagnose(
-          diag::distributed_actor_func_missing_remote_func,
-          C.getIdentifier("_remote_" + localFuncName));
-    }
-    return true;
-  }
-
-  if (!remoteFuncDecl->isStatic()) {
-    if (diagnose)
-      func->diagnose(
-          diag::distributed_actor_remote_func_is_not_static,
-          remoteFuncDecl->getName());
-    return true;
-  }
-
-  if (!remoteFuncDecl->hasAsync() || !remoteFuncDecl->hasThrows()) {
-    if (diagnose)
-      func->diagnose(
-          diag::distributed_actor_remote_func_is_not_async_throws,
-          remoteFuncDecl->getName());
-    return true;
-  }
-
-  if (remoteFuncDecl->isDistributed()) {
-    if (diagnose)
-      func->diagnose(
-          diag::distributed_actor_remote_func_must_not_be_distributed,
-          remoteFuncDecl->getName());
-    return true;
-  }
+//  auto remoteFuncDecl = actorDecl->lookupDirectRemoteFunc(func);
+//  if (!remoteFuncDecl) {
+//    if (diagnose) {
+//      auto localFuncName = func->getBaseIdentifier().str().str();
+//      func->diagnose(
+//          diag::distributed_actor_func_missing_remote_func,
+//          C.getIdentifier("_remote_" + localFuncName));
+//    }
+//    return true;
+//  }
+//
+//  if (!remoteFuncDecl->isStatic()) {
+//    if (diagnose)
+//      func->diagnose(
+//          diag::distributed_actor_remote_func_is_not_static,
+//          remoteFuncDecl->getName());
+//    return true;
+//  }
+//
+//  if (!remoteFuncDecl->hasAsync() || !remoteFuncDecl->hasThrows()) {
+//    if (diagnose)
+//      func->diagnose(
+//          diag::distributed_actor_remote_func_is_not_async_throws,
+//          remoteFuncDecl->getName());
+//    return true;
+//  }
+//
+//  if (remoteFuncDecl->isDistributed()) {
+//    if (diagnose)
+//      func->diagnose(
+//          diag::distributed_actor_remote_func_must_not_be_distributed,
+//          remoteFuncDecl->getName());
+//    return true;
+//  }
 
   return false;
 }

@@ -11,6 +11,17 @@ import _Distributed
 
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)
 distributed actor LocalWorker {
+  distributed func function() async throws -> String {
+    ""
+  }
+}
+
+@available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)
+extension LocalWorker {
+  @_dynamicReplacement(for: _remote_function)
+  func _cluster_remote_function() async throws -> String {
+    "Replaced"
+  }
 }
 
 // ==== Fake Transport ---------------------------------------------------------
@@ -46,17 +57,23 @@ struct FakeTransport: ActorTransport {
 // ==== Execute ----------------------------------------------------------------
 
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)
-func test() {
+func test() async throws {
+  let address = ActorAddress(parse: "")
   let transport = FakeTransport()
 
-  _ = LocalWorker(transport: transport)
+  let worker = try! LocalWorker(resolve: address, using: transport)
+//  let worker = LocalWorker()
+//  let x = try await worker._remote_function()
+  let x = try await worker.function()
+  print("call: \(x)")
   // CHECK: assign type:LocalWorker, address:[[ADDRESS:.*]]
   // CHECK: ready actor:main.LocalWorker, address:[[ADDRESS]]
+  // CHECK: Replaced
 }
 
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, *)
 @main struct Main {
   static func main() async {
-    test()
+    try! await test()
   }
 }
