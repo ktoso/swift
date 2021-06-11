@@ -223,7 +223,7 @@ public struct TaskGroup<ChildTaskResult> {
 
     // Create the asynchronous task future.
     let (childTask, _) = Builtin.createAsyncTaskGroupFuture(
-      Int(flags.bits), _group, operation)
+      Int(flags.bits), _group, /*options*/nil, operation) // TODO: pass executor option and enqueue right away in there
 
     // Attach it to the group's task record in the current task.
     _taskGroupAttachChild(group: _group, child: childTask)
@@ -268,7 +268,7 @@ public struct TaskGroup<ChildTaskResult> {
 
     // Create the asynchronous task future.
     let (childTask, _) = Builtin.createAsyncTaskGroupFuture(
-      Int(flags.bits), _group, operation)
+      Int(flags.bits), _group, /*options*/nil, operation) // TODO: pass executor in options and enqueue there right away rather than here from Swift
 
     // Attach it to the group's task record in the current task.
     _taskGroupAttachChild(group: _group, child: childTask)
@@ -466,7 +466,7 @@ public struct ThrowingTaskGroup<ChildTaskResult, Failure: Error> {
 
     // Create the asynchronous task future.
     let (childTask, _) = Builtin.createAsyncTaskGroupFuture(
-      Int(flags.bits), _group, operation)
+      Int(flags.bits), _group, /*options*/nil, operation) // TODO: pass executor here, and enqueue inside rather than separately here in Swift
 
     // Attach it to the group's task record in the current task.
     _taskGroupAttachChild(group: _group, child: childTask)
@@ -511,7 +511,7 @@ public struct ThrowingTaskGroup<ChildTaskResult, Failure: Error> {
 
     // Create the asynchronous task future.
     let (childTask, _) = Builtin.createAsyncTaskGroupFuture(
-      Int(flags.bits), _group, operation)
+      Int(flags.bits), _group, /*options*/nil, operation) // TODO: pass executor here, and enqueue inside rather than separately here in Swift
 
     // Attach it to the group's task record in the current task.
     _taskGroupAttachChild(group: _group, child: childTask)

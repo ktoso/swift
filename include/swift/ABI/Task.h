@@ -529,6 +529,73 @@ inline void Job::runInFullyEstablishedContext() {
     return runSimpleInFullyEstablishedContext(); // 'return' forces tail call
 }
 
+// ==== ------------------------------------------------------------------------
+// ==== Task Options, for creating and waiting on tasks
+
+/// Flags for task option records.
+class TaskOptionRecordFlags : public FlagSet<size_t> {
+public:
+  enum {
+    Kind           = 0,
+    Kind_width     = 8,
+  };
+
+  explicit TaskOptionRecordFlags(size_t bits) : FlagSet(bits) {}
+  constexpr TaskOptionRecordFlags() {}
+  TaskOptionRecordFlags(TaskOptionRecordKind kind) {
+    setKind(kind);
+  }
+
+  FLAGSET_DEFINE_FIELD_ACCESSORS(Kind, Kind_width, TaskOptionRecordKind,
+                                 getKind, setKind)
+};
+
+/// The abstract base class for all options that may be used
+/// to configure a newly spawned task.
+class TaskOptionRecord {
+public:
+  TaskOptionRecordFlags Flags;
+  TaskOptionRecord *Parent;
+
+  TaskOptionRecord(TaskOptionRecordKind kind,
+                   TaskOptionRecord *parent = nullptr)
+  : Flags(kind) {
+    Parent = parent;
+  }
+
+  TaskOptionRecord(const TaskOptionRecord &) = delete;
+  TaskOptionRecord &operator=(const TaskOptionRecord &) = delete;
+
+  TaskOptionRecordKind getKind() const {
+    return Flags.getKind();
+  }
+
+  TaskOptionRecord *getParent() const {
+    return Parent;
+  }
+
+};
+
+/// Task option to specify on what executor the task should be executed.
+///
+/// Not passing this option implies that that a "best guess" or good default
+/// executor should be used instead, most often this may mean the global
+/// concurrent executor, or the enclosing actor's executor.
+class ExecutorTaskOptionRecord : public TaskOptionRecord {
+  ExecutorRef *Executor;
+
+public:
+  ExecutorTaskOptionRecord(ExecutorRef *executor)
+    : TaskOptionRecord(TaskOptionRecordKind::Executor),
+      Executor(executor) {}
+
+  ExecutorRef *getExecutor() const {
+    return Executor;
+  }
+};
+
+// ==== ------------------------------------------------------------------------
+
 /// An asynchronous context within a task.  Generally contexts are
 /// allocated using the task-local stack alloc/dealloc operations, but
 /// there's no guarantee of that, and the ABI is designed to permit

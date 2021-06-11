@@ -2101,6 +2101,12 @@ enum class TaskStatusRecordKind : uint8_t {
   Private_RecordLock = 192
 };
 
+/// Kinds of option records that can be passed to creating asynchronous tasks.
+enum class TaskOptionRecordKind : uint8_t {
+  /// Request a task to be kicked off, or resumed, on a specific executor.
+  Executor = 0,
+};
+
 /// Flags for cancellation records.
 class TaskStatusRecordFlags : public FlagSet<size_t> {
 public:
