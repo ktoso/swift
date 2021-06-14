@@ -2125,6 +2125,24 @@ public:
                                  getKind, setKind)
 };
 
+/// Flags for task option records.
+class TaskOptionRecordFlags : public FlagSet<size_t> {
+public:
+  enum {
+    Kind           = 0,
+    Kind_width     = 8,
+  };
+
+  explicit TaskOptionRecordFlags(size_t bits) : FlagSet(bits) {}
+  constexpr TaskOptionRecordFlags() {}
+  TaskOptionRecordFlags(TaskOptionRecordKind kind) {
+    setKind(kind);
+  }
+
+  FLAGSET_DEFINE_FIELD_ACCESSORS(Kind, Kind_width, TaskOptionRecordKind,
+                                 getKind, setKind)
+};
+
 /// Kinds of async context.
 enum class AsyncContextKind {
   /// An ordinary asynchronous function.

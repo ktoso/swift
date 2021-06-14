@@ -27,6 +27,7 @@
 
 namespace swift {
 class DefaultActor;
+class TaskOptionRecord;
 
 struct SwiftError;
 
