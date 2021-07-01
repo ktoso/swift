@@ -24,6 +24,17 @@ distributed actor DA_userDefined2 {
   }
 }
 
+@available(SwiftStdlib 5.5, *)
+distributed actor DA_state {
+  var name = "Hello"
+  var age = 42
+
+  deinit {
+    print("Deinitializing \(self.actorAddress)")
+    return
+  }
+}
+
 // ==== Fake Transport ---------------------------------------------------------
 
 @available(SwiftStdlib 5.5, *)
@@ -59,6 +70,7 @@ struct FakeTransport: ActorTransport {
 @available(SwiftStdlib 5.5, *)
 func test() {
   let transport = FakeTransport()
+  let address = FakeTransport()
 
   _ = DA(transport: transport)
   // CHECK: assign type:DA, address:[[ADDRESS:.*]]
@@ -76,6 +88,19 @@ func test() {
   // CHECK: ready actor:main.DA_userDefined2, address:[[ADDRESS]]
   // CHECK: Deinitializing [[ADDRESS]]
   // CHECK-NEXT: resign address:[[ADDRESS]]
+
+  // resign must happen as the _last thing_ after user-deinit completed
+  _ = DA_state(transport: transport)
+  // CHECK: assign type:DA_state, address:[[ADDRESS:.*]]
+  // CHECK: ready actor:main.DA_state, address:[[ADDRESS]]
+  // CHECK: Deinitializing [[ADDRESS]]
+  // CHECK-NEXT: resign address:[[ADDRESS]]
+
+  // a remote actor should not resign it's address, it was never "assigned" it
+  _ = DA(resolve: transport: transport)
+  // CHECK: assign type:DA_state, address:[[ADDRESS:.*]]
+  // CHECK: ready actor:main.DA_state, address:[[ADDRESS]]
+  // CHECK: Deinitializing [[ADDRESS]]
 }
 
 @available(SwiftStdlib 5.5, *)
