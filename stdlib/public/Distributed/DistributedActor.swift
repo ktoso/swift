@@ -116,6 +116,18 @@ extension DistributedActor {
   }
 }
 
+/// Runs the 'body' closure if and only if the passed 'actor' is a local instance.
+///
+/// Returns `nil` if the actor was remote.
+@discardableResult
+@available(SwiftStdlib 5.5, *)
+public func withLocalDistributedActor<Act, T>(
+    _ actor: Act,
+    _ body: (isolated Act) async throws -> T
+) async rethrows -> T? where Act: DistributedActor {
+  fatalError()
+}
+
 /******************************************************************************/
 /***************************** Actor Identity *********************************/
 /******************************************************************************/

@@ -11,3 +11,11 @@ import _Distributed
 public distributed actor MyActor {
     // nothing
 }
+
+//// FIXME(distributed): rdar://83345965
+//@available(SwiftStdlib 5.5, *)
+//distributed actor TestGeneric<M: Codable> {
+//    distributed func echo(message: M) -> M {
+//    message
+//  }
+//}
