@@ -160,8 +160,9 @@ bool swift::checkDistributedFunction(FuncDecl *func, bool diagnose) {
   ClassDecl *actorDecl = dyn_cast<ClassDecl>(func->getParent());
   assert(actorDecl && actorDecl->isDistributedActor());
 
-  // _remote function for a distributed function must not be implemented by end-users,
-  // it must be the specific implementation synthesized by the compiler.
+  // _remote function for a distributed function must not be implemented by
+  // end-users, it must be the specific implementation synthesized by the
+  // compiler.
   auto remoteFuncDecl = actorDecl->lookupDirectRemoteFunc(func);
   if (remoteFuncDecl && !remoteFuncDecl->isSynthesized()) {
     if (diagnose) {

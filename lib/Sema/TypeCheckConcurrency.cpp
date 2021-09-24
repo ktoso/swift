@@ -755,25 +755,25 @@ namespace {
       Isolated = 0,
 
       /// It is not an isolated parameter at all.
-      NonIsolatedParameter,
+      NonIsolatedParameter = 1,
 
       // It is within a Sendable function.
-      SendableFunction,
+      SendableFunction = 2,
 
       // It is within a Sendable closure.
-      SendableClosure,
+      SendableClosure = 3,
 
       // It is within an 'async let' initializer.
-      AsyncLet,
+      AsyncLet = 4,
 
       // It is within a global actor.
-      GlobalActor,
+      GlobalActor = 5,
 
       // It is within the main actor.
-      MainActor,
+      MainActor = 6,
 
       // It is within a nonisolated context.
-      NonIsolatedContext,
+      NonIsolatedContext = 7,
     };
 
     VarDecl * const actor;
@@ -2207,9 +2207,9 @@ namespace {
         return false;
 
       auto member = memberRef.getDecl();
-      switch (auto isolation =
-                  ActorIsolationRestriction::forDeclaration(
-                    memberRef, getDeclContext())) {
+      auto isolation =
+          ActorIsolationRestriction::forDeclaration(memberRef, getDeclContext());
+      switch (isolation) {
       case ActorIsolationRestriction::Unrestricted: {
         // If a cross-actor reference is to an isolated actor, it's not
         // crossing actors.
@@ -2224,6 +2224,7 @@ namespace {
         // distributed actor, in which case we need to diagnose it.
         if (auto classDecl = dyn_cast<ClassDecl>(member->getDeclContext())) {
           if (classDecl->isDistributedActor()) {
+            fprintf(stderr, "[%s:%d] (%s) HERE\n", __FILE__, __LINE__, __FUNCTION__);
             ctx.Diags.diagnose(memberLoc, diag::distributed_actor_isolated_method);
             noteIsolatedActorMember(member, context);
             return true;
@@ -2256,10 +2257,19 @@ namespace {
         // We'll want to tighten this up once we decide exactly
         // how the model should go.
         auto isolatedActor = getIsolatedActor(base);
+        fprintf(stderr, "[%s:%d] (%s) isolatedActor = %p\n", __FILE__, __LINE__, __FUNCTION__, isolatedActor.actor);
+        fprintf(stderr, "[%s:%d] (%s) IS ISOLATED = %s\n", __FILE__, __LINE__, __FUNCTION__, isolatedActor.isIsolated() ? "true" : "false");
+        fprintf(stderr, "[%s:%d] (%s) ISOLATED KIND = %d\n", __FILE__, __LINE__, __FUNCTION__, isolatedActor.kind);
+        fprintf(stderr, "[%s:%d] (%s) BASE ======\n", __FILE__, __LINE__, __FUNCTION__);
+        base->dump();
+        fprintf(stderr, "[%s:%d] (%s) BASE ^^^^^^\n", __FILE__, __LINE__, __FUNCTION__);
+        fprintf(stderr, "[%s:%d] (%s) CONTEXT ======\n", __FILE__, __LINE__, __FUNCTION__);
+        if (context) {
+          context->dump();
+        }
+        fprintf(stderr, "[%s:%d] (%s) CONTEXT ^^^^^^\n", __FILE__, __LINE__, __FUNCTION__);
         if (!isolatedActor &&
-            !(isolatedActor.isActorSelf() &&
-              member->isInstanceMember() &&
-              isActorInitOrDeInitContext(getDeclContext()))) {
+            !(isolatedActor.isActorSelf() && member->isInstanceMember() && isActorInitOrDeInitContext(getDeclContext()))) {
           // cross actor invocation is only ok for a distributed or static func
           if (auto func = dyn_cast<FuncDecl>(member)) {
             if (func->isStatic()) {
@@ -2274,8 +2284,23 @@ namespace {
 
               // distributed func reference, that passes all checks, great!
               continueToCheckingLocalIsolation = true;
+            } else if (isolatedActor.isIsolated()) {
+              fprintf(stderr, "[%s:%d] (%s) WAS ISOLATED, NO MORE CHECKS\n", __FILE__, __LINE__, __FUNCTION__);
+              return false;
+            } else if (isolatedActor.kind == ReferencedActor::Kind::NonIsolatedContext && isolatedActor.actor) {
+              fprintf(stderr, "[%s:%d] (%s) ITS OKEY %d\n", __FILE__, __LINE__, __FUNCTION__, isolatedActor.kind);
+              fprintf(stderr, "[%s:%d] (%s) DIAGNOSE, ISOLATED KIND: %d\n", __FILE__, __LINE__, __FUNCTION__, isolatedActor.kind);
+              fprintf(stderr, "[%s:%d] (%s) ACTOR:\n", __FILE__, __LINE__, __FUNCTION__);
+              isolatedActor.actor->dump();
+              fprintf(stderr, "[%s:%d] (%s) ^^^ ^^^ ^^^ ACTOR ^^^ ^^^ ^^^ ^^^\n", __FILE__, __LINE__, __FUNCTION__);
+
             } else {
               // the func is neither static or distributed
+              fprintf(stderr, "[%s:%d] (%s) DIAGNOSE, ISOLATED KIND: %d\n", __FILE__, __LINE__, __FUNCTION__, isolatedActor.kind);
+              fprintf(stderr, "[%s:%d] (%s) ACTOR:\n", __FILE__, __LINE__, __FUNCTION__);
+              isolatedActor.actor->dump();
+              fprintf(stderr, "[%s:%d] (%s) ^^^ ^^^ ^^^ ACTOR ^^^ ^^^ ^^^ ^^^\n", __FILE__, __LINE__, __FUNCTION__);
+
               ctx.Diags.diagnose(memberLoc, diag::distributed_actor_isolated_method);
               // TODO: offer a fixit to add 'distributed' on the member; how to test fixits? See also https://github.com/apple/swift/pull/35930/files
               noteIsolatedActorMember(member, context);
@@ -2300,6 +2325,7 @@ namespace {
 
               // otherwise, no other properties are accessible on a distributed actor
               if (!continueToCheckingLocalIsolation) {
+                fprintf(stderr, "[%s:%d] (%s) DIAGNOSE SECOND\n", __FILE__, __LINE__, __FUNCTION__);
                 ctx.Diags.diagnose(
                     memberLoc, diag::distributed_actor_isolated_non_self_reference,
                     member->getDescriptiveKind(),

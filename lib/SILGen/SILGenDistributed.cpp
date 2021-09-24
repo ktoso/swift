@@ -38,7 +38,7 @@ using namespace Lowering;
 
 /// Emit the following branch SIL instruction:
 /// \verbatim
-/// if __isRemoteActor(self) {
+/// if _isRemoteDistributedActor(self) {
 ///   <isRemoteBB>
 /// } else {
 ///   <isLocalBB>
@@ -736,7 +736,7 @@ void SILGenFunction::emitDistributedActor_resignAddress(
   auto isRemoteBB = createBasicBlock();
   auto isLocalBB = createBasicBlock();
 
-  // if __isRemoteActor(self) {
+  // if _isRemoteDistributedActor(self) {
   //   ...
   // } else {
   //   ...
@@ -799,7 +799,7 @@ void SILGenFunction::emitDistributedActorClassMemberDestruction(
   auto isLocalBB = createBasicBlock();
   auto remoteMemberDestroyBB = createBasicBlock();
 
-  // if __isRemoteActor(self) {
+  // if _isRemoteDistributedActor(self) {
   //   ...
   // } else {
   //   ...
@@ -809,7 +809,7 @@ void SILGenFunction::emitDistributedActorClassMemberDestruction(
                                 /*if remote*/remoteMemberDestroyBB,
                                 /*if local*/isLocalBB);
 
-  // // if __isRemoteActor(self)
+  // // if _isRemoteDistributedActor(self)
   // {
   //  // destroy only self.id and self.actorTransport
   // }
@@ -845,7 +845,7 @@ void SILGenFunction::emitDistributedThunk(SILDeclRef thunk) {
   // Check if actor is local or remote and call respective function
   //
   // func X_distributedThunk(...) async throws -> T {
-  //   if __isRemoteActor(self) {
+  //   if _isRemoteDistributedActor(self) {
   //     return try await self._remote_X(...)
   //   } else {
   //     return try await self.X(...)
@@ -891,7 +891,7 @@ void SILGenFunction::emitDistributedThunk(SILDeclRef thunk) {
   auto selfValue = ManagedValue::forUnmanaged(params[params.size() - 1]); // TODO(distributed): getSelfArgument instead
   auto selfTy = selfVarDecl->getType();
 
-  // if __isRemoteActor(self) {
+  // if _isRemoteDistributedActor(self) {
   //   ...
   // } else {
   //   ...
@@ -914,7 +914,7 @@ void SILGenFunction::emitDistributedThunk(SILDeclRef thunk) {
     B.createCondBranch(loc, isRemoteResultUnwrapped, isRemoteBB, isLocalBB);
   }
 
-  // // if __isRemoteActor(self)
+  // // if _isRemoteDistributedActor(self)
   // {
   //   return try await self._remote_X(...)
   // }

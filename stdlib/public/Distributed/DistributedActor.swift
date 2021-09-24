@@ -75,6 +75,23 @@ public protocol DistributedActor:
     /// Conformance to this requirement is synthesized automatically for any
     /// `distributed actor` declaration.
     nonisolated var id: AnyActorIdentity { get }
+
+    nonisolated func whenLocal<T>(_ body: (isolated Self) async throws -> T)
+        async rethrows -> T? where T: Sendable
+}
+
+// ==== whenLocal ---------------------------------------------------
+
+@available(SwiftStdlib 5.5, *)
+extension DistributedActor {
+    public nonisolated func whenLocal<T>(_ body: (isolated Self) async throws -> T)
+    async rethrows -> T? where T: Sendable {
+    guard _isLocalDistributedActor(self) else {
+      return nil
+    }
+
+    return try await body(self)
+  }
 }
 
 // ==== Hashable conformance ---------------------------------------------------
@@ -123,9 +140,19 @@ extension DistributedActor {
 @available(SwiftStdlib 5.5, *)
 public func withLocalDistributedActor<Act, T>(
     _ actor: Act,
-    _ body: (isolated Act) async throws -> T
-) async rethrows -> T? where Act: DistributedActor {
-  fatalError()
+    _ body: @Sendable (isolated Act) async throws -> T
+) async rethrows -> T? where Act: DistributedActor, T: Sendable {
+  guard _isLocalDistributedActor(actor) else {
+    return nil
+  }
+
+  /// How can I do this without declaring the function on the actor itself...?
+  /// (actor ... as! (isolated Self) kind of...
+
+  // this will work ok:
+  return try await actor.whenLocal { (actor: isolated Act) in
+    try await body(actor)
+  }
 }
 
 /******************************************************************************/
@@ -223,10 +250,10 @@ public struct DistributedActorCodingError: ActorTransportError {
 // ==== isRemote / isLocal -----------------------------------------------------
 
 @_silgen_name("swift_distributed_actor_is_remote")
-func __isRemoteActor(_ actor: AnyObject) -> Bool
+func _isRemoteDistributedActor(_ actor: AnyObject) -> Bool
 
-func __isLocalActor(_ actor: AnyObject) -> Bool {
-    return !__isRemoteActor(actor)
+func _isLocalDistributedActor(_ actor: AnyObject) -> Bool {
+    return !_isRemoteDistributedActor(actor)
 }
 
 // ==== Proxy Actor lifecycle --------------------------------------------------

@@ -79,10 +79,10 @@ struct FakeTransport: ActorTransport {
 // ==== Execute ----------------------------------------------------------------
 
 @_silgen_name("swift_distributed_actor_is_remote")
-func __isRemoteActor(_ actor: AnyObject) -> Bool
+func _isRemoteDistributedActor(_ actor: AnyObject) -> Bool
 
-func __isLocalActor(_ actor: AnyObject) -> Bool {
-  return !__isRemoteActor(actor)
+func _isLocalDistributedActor(_ actor: AnyObject) -> Bool {
+  return !_isRemoteDistributedActor(actor)
 }
 
 // ==== Execute ----------------------------------------------------------------
@@ -93,17 +93,17 @@ func test_remote() async {
   let transport = FakeTransport()
 
   let local = SomeSpecificDistributedActor(transport: transport)
-  assert(__isLocalActor(local) == true, "should be local")
-  assert(__isRemoteActor(local) == false, "should be local")
-  print("isRemote(local) = \(__isRemoteActor(local))") // CHECK: isRemote(local) = false
+  assert(_isLocalDistributedActor(local) == true, "should be local")
+  assert(_isRemoteDistributedActor(local) == false, "should be local")
+  print("isRemote(local) = \(_isRemoteDistributedActor(local))") // CHECK: isRemote(local) = false
   print("local.id = \(local.id)") // CHECK: local.id = AnyActorIdentity(ActorAddress(address: "xxx"))
   print("local.transport = \(local.actorTransport)") // CHECK: local.transport = FakeTransport()
 
   // assume it always makes a remote one
   let remote = try! SomeSpecificDistributedActor.resolve(.init(address), using: transport)
-  assert(__isLocalActor(remote) == false, "should be remote")
-  assert(__isRemoteActor(remote) == true, "should be remote")
-  print("isRemote(remote) = \(__isRemoteActor(remote))") // CHECK: isRemote(remote) = true
+  assert(_isLocalDistributedActor(remote) == false, "should be remote")
+  assert(_isRemoteDistributedActor(remote) == true, "should be remote")
+  print("isRemote(remote) = \(_isRemoteDistributedActor(remote))") // CHECK: isRemote(remote) = true
 
   // Check the id and transport are the right values, and not trash memory
   print("remote.id = \(remote.id)") // CHECK: remote.id = AnyActorIdentity(ActorAddress(address: "sact://127.0.0.1/example#1234"))

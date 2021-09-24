@@ -88,6 +88,10 @@ distributed actor DistributedActor_1 {
     // expected-error@-1 {{distributed function parameter 'int' of type 'T' does not conform to 'Codable'}}
     fatalError()
   }
+  
+  distributed func distDontAcceptOtherIsolation(other: isolated DistributedActor_1) {
+    // expected-error@-1{{distributed function parameter 'other' of type 'DistributedActor_1' cannot be 'isolated'. Distributed function must be isolated to the actor it is defined on}}
+  }
 
   static func staticFunc() -> String { "" } // ok
 
@@ -136,6 +140,23 @@ func test_outside(
   // the distributed actor's special fields may always be referred to
   _ = distributed.id
   _ = distributed.actorTransport
+
+  // ==== whenLocal accessed local actor
+  _ = distributed.whenLocal { (actuallyLocal: isolated DistributedActor_1) in
+    actuallyLocal.id // OK
+    actuallyLocal.actorTransport // OK
+
+    // local properties
+    actuallyLocal.name // OK
+    actuallyLocal.mutable // OK
+    
+    // local only functions
+    actuallyLocal.hello()
+    await actuallyLocal.helloAsync()
+    try await actuallyLocal.helloAsyncThrows()
+
+    return 0
+  }
 
   // ==== static functions
   _ = distributed.staticFunc() // expected-error{{static member 'staticFunc' cannot be used on instance of type 'DistributedActor_1'}}

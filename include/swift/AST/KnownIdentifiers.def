@@ -263,7 +263,7 @@ IDENTIFIER(identity)
 IDENTIFIER(identifier)
 IDENTIFIER(_distributedActorRemoteInitialize)
 IDENTIFIER(_distributedActorDestroy)
-IDENTIFIER(__isRemoteActor)
+IDENTIFIER(_isRemoteDistributedActor)
 
 #undef IDENTIFIER
 #undef IDENTIFIER_
