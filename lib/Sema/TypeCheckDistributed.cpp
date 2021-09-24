@@ -124,13 +124,20 @@ bool swift::checkDistributedFunction(FuncDecl *func, bool diagnose) {
     if (TypeChecker::conformsToProtocol(paramTy, encodableType, module).isInvalid() ||
         TypeChecker::conformsToProtocol(paramTy, decodableType, module).isInvalid()) {
       if (diagnose)
-        func->diagnose(
+        func->diagnose( // TODO(distributed): diagnose on the offending parameter
             diag::distributed_actor_func_param_not_codable,
             param->getArgumentName().str(),
             param->getInterfaceType()
         );
-      // TODO: suggest a fixit to add Codable to the type?
+      // TODO(distributed): suggest a fixit to add Codable to the type?
       return true;
+    }
+
+    if (param->isIsolated()) {
+      if (diagnose)
+        param->diagnose(diag::distributed_actor_func_cannot_be_isolated,
+                        param->getArgumentName().str(),
+                        param->getInterfaceType());
     }
   }
 

@@ -4461,6 +4461,10 @@ ERROR(distributed_actor_isolated_method,none,
 ERROR(distributed_actor_func_param_not_codable,none,
       "distributed function parameter '%0' of type %1 does not conform to 'Codable'",
       (StringRef, Type))
+ERROR(distributed_actor_func_cannot_be_isolated,none,
+      "distributed function parameter '%0' of type %1 cannot be 'isolated'. "
+      "Distributed function must be isolated to the actor it is defined on",
+      (StringRef, Type))
 ERROR(distributed_actor_func_result_not_codable,none,
       "distributed function result type %0 does not conform to 'Codable'",
       (Type))
