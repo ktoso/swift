@@ -2820,6 +2820,16 @@ bool ConformanceChecker::checkActorIsolation(
     if (getActorIsolation(requirement) == ActorIsolation::ActorInstance)
       return false;
 
+    // A synchronous actor function can witness an asynchronous protocol
+    // requirement, since calls "through" the protocol are always cross-actor,
+    // in which case the function becomes implicitly async.
+    if (witnessClass && witnessClass->isActor()) {
+      if (requirementFunc && requirementFunc->hasAsync() &&
+          (requirementFunc->hasThrows() == witnessFunc->hasThrows())) {
+        return false;
+      }
+    }
+
     witness->diagnose(diag::actor_isolated_witness,
                       witness->getDescriptiveKind(),
                       witness->getName());

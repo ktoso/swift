@@ -876,6 +876,17 @@ func testCrossActorProtocol<T: P>(t: T) async {
   // expected-note@-2{{calls to instance method 'g()' from outside of its actor context are implicitly asynchronous}}
 }
 
+@available(SwiftStdlib 5.5, *)
+protocol Server {
+  func send<Message: Codable>(message: Message) async throws -> String
+}
+
+@available(SwiftStdlib 5.5, *)
+actor MyServer : Server {
+  // okay, asynchronously accessed from clients of the protocol
+  func send<Message: Codable>(message: Message) throws -> String { "" }
+}
+
 // ----------------------------------------------------------------------
 // @_inheritActorContext
 // ----------------------------------------------------------------------
