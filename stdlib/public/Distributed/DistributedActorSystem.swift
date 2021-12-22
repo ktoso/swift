@@ -124,10 +124,10 @@ public protocol DistributedActorSystem: Sendable {
 //  func remoteCall<Act, Err, Res>(
 //      on actor: Act,
 //      target: RemoteCallTarget,
-//      arguments: Invocation,
+//      invocation: Invocation,
 //      throwing: Err.Type,
 //      returning: Res.Type
-//  ) async throws -> Res.Type
+//  ) async throws -> Res
 //      where Act: DistributedActor,
 //            Act.ID == ActorID,
 //            Res: SerializationRequirement
@@ -205,8 +205,7 @@ extension DistributedActorSystem {
     guard decodedNum == paramCount else {
       throw ExecuteDistributedTargetError(
           message: """
-                   Failed to decode the expected number of params of distributed invocation target, error code: \(decodedNum)
-                   (decoded: \(decodedNum), expected params: \(paramCount)
+                   Failed to decode the expected [\(paramCount)] number of parameter types of distributed invocation target, error code: \(decodedNum); 
                    mangled name: \(mangledTargetName)
                    """)
     }
@@ -287,15 +286,16 @@ func _executeDistributedTarget(
 /// A distributed 'target' can be a `distributed func` or `distributed` computed property.
 @available(SwiftStdlib 5.6, *)
 public struct RemoteCallTarget {
-  let mangledName: String
+  public let mangledName: String
 
   // Only intended to be created by the _Distributed library.
-  internal init(mangledName: String) {
+  // TODO(distributed): make internal
+  public init(_mangledName mangledName: String) {
     self.mangledName = mangledName
   }
 
   // <module>.Base.hello(hi:)
-  var fullName: String {
+  public var fullName: String {
     fatalError("NOT IMPLEMENTED YET: \(#function)")
   }
 }

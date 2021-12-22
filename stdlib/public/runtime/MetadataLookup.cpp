@@ -1921,17 +1921,20 @@ swift_func_getParameterCount(const char *typeNameStart, size_t typeNameLength) {
   node = node->findByKind(Node::Kind::Function, /*maxDepth=*/2);
   if (!node) return -3;
 
-  node = node->findByKind(Node::Kind::Type, /*maxDepth=*/2);
-  if (!node) return -4;
-
   node = node->findByKind(Node::Kind::ArgumentTuple, /*maxDepth=*/3);
-  // Get the "deepest" Tuple from the ArgumentTuple, that's the arguments
-  while (node && node->getKind() != Node::Kind::Tuple) {
-    node = node->getFirstChild();
-  }
+  auto typeNode = node->findByKind(Node::Kind::Type, /*maxDepth=*/1);
+  if (!typeNode) return 0;
 
-  if (node) {
-    return node->getNumChildren();
+  assert(typeNode->getKind() == Node::Kind::Type);
+  if (auto paramsNode = typeNode->getFirstChild()) {
+    if (paramsNode->getKind() == Node::Kind::Tuple) {
+      return paramsNode->getNumChildren();
+    } else {
+      // it was some specific type e.g. Structure
+      return 1;
+    }
+  } else {
+    return -11;
   }
 
   return -5;
@@ -1994,17 +1997,9 @@ swift_func_getParameterTypeInfo(
   node = node->findByKind(Node::Kind::Type, /*maxDepth=*/2);
   if (!node) return -4;
 
+  auto argumentTuple = node->findByKind(Node::Kind::ArgumentTuple, /*maxDepth=*/3);
   node = node->findByKind(Node::Kind::ArgumentTuple, /*maxDepth=*/3);
-  // Get the "deepest" Tuple from the ArgumentTuple, that's the arguments
-  while (node && node->getKind() != Node::Kind::Tuple) {
-    node = node->getFirstChild();
-  }
-
-  // Only successfully return if the expected parameter count is the same
-  // as space prepared for it in the buffer.
-  if (!node || (node && node->getNumChildren() != typesLength)) {
-    return -5;
-  }
+  node = node->findByKind(Node::Kind::Type, /*maxDepth=*/1);
 
   DecodedMetadataBuilder builder(
       demangler,
@@ -2014,22 +2009,34 @@ swift_func_getParameterTypeInfo(
       [](const Metadata *, unsigned) { return nullptr; });
   TypeDecoder<DecodedMetadataBuilder> decoder(builder);
 
+  // --- Handle a single parameter:
+  if (!node) return -9;
+  if (node->getFirstChild() &&
+      node->getFirstChild()->getKind() != Node::Kind::Tuple) {
+    auto builtTypeOrError = decoder.decodeMangledType(argumentTuple);
+    if (builtTypeOrError.isError()) {
+      auto err = builtTypeOrError.getError();
+      char *errStr = err->copyErrorString();
+      err->freeErrorString(errStr);
+      return -10;
+    }
+
+    assert(typesLength == 1);
+    types[0] = builtTypeOrError.getType();
+    return 1;
+  }
+
+  // --- Handle multiple parameters:
+  node = node->findByKind(Node::Kind::Tuple, /*maxDepth=*/2);
   auto typeIdx = 0;
   // for each parameter (TupleElement), store it into the provided buffer
   for (auto tupleElement : *node) {
-    assert(tupleElement->getKind() == Node::Kind::TupleElement);
-    assert(tupleElement->getNumChildren() == 1);
-
-    auto typeNode = tupleElement->getFirstChild();
-    assert(typeNode->getKind() == Node::Kind::Type);
-
     auto builtTypeOrError = decoder.decodeMangledType(tupleElement);
     if (builtTypeOrError.isError()) {
       auto err = builtTypeOrError.getError();
       char *errStr = err->copyErrorString();
       err->freeErrorString(errStr);
-      typeIdx += 1;
-      continue;
+      return -20;
     }
 
     types[typeIdx] = builtTypeOrError.getType();

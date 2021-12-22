@@ -110,6 +110,8 @@ typealias DefaultDistributedActorSystem = FakeActorSystem
     print("_getParameterCount: one(s:) = \(_getParameterCount(mangledMethodName: one))")
     // CHECK: _getParameterCount: two(s:i:) = 2
     print("_getParameterCount: two(s:i:) = \(_getParameterCount(mangledMethodName: two))")
+    // CHECK: _getParameterCount: complex actor method = 1
+    print("_getParameterCount: complex actor method = \(_getParameterCount(mangledMethodName: "$s27distributed_actor_roundtrip10TokenRangeC6coversySbAA0D0VF"))")
   }
 
   static func test_returnType() {
@@ -179,7 +181,7 @@ func _withParameterTypeInfo(
 
     // if we failed demangling the types, return an empty array
     guard decodedNum >= 0 else {
-      body([])
+      fatalError("failed decoding [\(paramCount)] types, got \(decodedNum): \(name)")
       return
     }
 

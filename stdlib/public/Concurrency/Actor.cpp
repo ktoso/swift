@@ -239,7 +239,7 @@ void swift::runJobInEstablishedExecutorContext(Job *job) {
     task->runInFullyEstablishedContext();
 
     assert(ActiveTask::get() == nullptr &&
-           "active task wasn't cleared before susspending?");
+           "active task wasn't cleared before suspending?");
   } else {
     // There's no extra bookkeeping to do for simple jobs besides swapping in
     // the voucher.
@@ -1726,11 +1726,7 @@ void ::swift_distributed_execute_target(
     void *argumentBuffer,
     void *resultBuffer) {
   auto *accessor = findDistributedAccessor(targetNameStart, targetNameLength);
-  if (!accessor) {
-    assert(false && "no distributed accessor accessor");
-    return;
-  }
-  fprintf(stderr, "[%s:%d] (%s) found accessor\n", __FILE__, __LINE__, __FUNCTION__);
+  assert(accessor && "no distributed accessor accessor");
 
   auto *asyncFnPtr = reinterpret_cast<
       const AsyncFunctionPointer<DistributedAccessorSignature> *>(
