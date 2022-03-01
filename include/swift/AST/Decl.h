@@ -6266,6 +6266,10 @@ public:
   /// Returns 'true' if the function is distributed.
   bool isDistributed() const;
 
+  /// For a 'distributed' target (func or computed property),
+  /// get the 'thunk' responsible for performing the 'remoteCall'.
+  FuncDecl *getDistributedThunk() const;
+
   PolymorphicEffectKind getPolymorphicEffectKind(EffectKind kind) const;
 
   // FIXME: Hack that provides names with keyword arguments for accessors.
