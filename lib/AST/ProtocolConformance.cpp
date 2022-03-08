@@ -19,6 +19,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/Availability.h"
 #include "swift/AST/Decl.h"
+#include "swift/AST/DistributedDecl.h"
 #include "swift/AST/FileUnit.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/LazyResolver.h"
@@ -63,7 +64,12 @@ Witness::Witness(ValueDecl *decl, SubstitutionMap substitutions,
 void Witness::dump() const { dump(llvm::errs()); }
 
 void Witness::dump(llvm::raw_ostream &out) const {
-  // FIXME: Implement!
+  out << "Witness: ";
+  if (auto decl = this->getDecl()) {
+    decl->print(out);
+  } else {
+    out << "<no decl>\n";
+  }
 }
 
 ProtocolConformanceRef::ProtocolConformanceRef(ProtocolDecl *protocol,
@@ -932,6 +938,12 @@ void NormalProtocolConformance::setWitness(ValueDecl *requirement,
           requirement->getAttrs().isUnavailable(
                                         requirement->getASTContext())) &&
          "Conformance already complete?");
+//  fprintf(stderr, "[%s:%d] (%s) witness ==== \n", __FILE__, __LINE__, __FUNCTION__);
+//  if (witness) {
+//    witness.dump();
+//  } else {
+//    fprintf(stderr, "[%s:%d] (%s) NULLLLL!!!!\n", __FILE__, __LINE__, __FUNCTION__);
+//  }
   Mapping[requirement] = witness;
 }
 
@@ -1293,10 +1305,11 @@ void NominalTypeDecl::prepareConformanceTable() const {
 
   // Actor classes conform to the actor protocol.
   if (auto classDecl = dyn_cast<ClassDecl>(mutableThis)) {
-    if (classDecl->isDistributedActor())
+    if (classDecl->isDistributedActor()) {
       addSynthesized(KnownProtocolKind::DistributedActor);
-    else if (classDecl->isActor())
+    } else if (classDecl->isActor()) {
       addSynthesized(KnownProtocolKind::Actor);
+    }
   }
 
   // Global actors conform to the GlobalActor protocol.
@@ -1367,26 +1380,29 @@ IterableDeclContext::getLocalProtocols(ConformanceLookupKind lookupKind) const {
   return result;
 }
 
-/// Find a synthesized Sendable conformance in this declaration context,
-/// if there is one.
-static ProtocolConformance *findSynthesizedSendableConformance(
-    const DeclContext *dc) {
-  auto nominal = dc->getSelfNominalTypeDecl();
-  if (!nominal)
-    return nullptr;
 
-  if (isa<ProtocolDecl>(nominal))
+
+/// Find a synthesized conformance in this declaration context, if there is one.
+static ProtocolConformance *
+findSynthesizedConformance(
+    const DeclContext *dc,
+    KnownProtocolKind protoKind) {
+  auto nominal = dc->getSelfNominalTypeDecl();
+
+  // Perform some common checks
+  if (!nominal)
     return nullptr;
 
   if (dc->getParentModule() != nominal->getParentModule())
     return nullptr;
 
-  auto cvProto = nominal->getASTContext().getProtocol(
-      KnownProtocolKind::Sendable);
+  auto &C = nominal->getASTContext();
+  auto cvProto = C.getProtocol(protoKind);
   if (!cvProto)
     return nullptr;
 
-  auto conformance = dc->getParentModule()->lookupConformance(
+  auto module = dc->getParentModule();
+  auto conformance = module->lookupConformance(
       nominal->getDeclaredInterfaceType(), cvProto);
   if (!conformance || !conformance.isConcrete())
     return nullptr;
@@ -1403,6 +1419,43 @@ static ProtocolConformance *findSynthesizedSendableConformance(
     return nullptr;
 
   return normal;
+}
+
+/// Find any synthesized conformances for given decl context.
+///
+/// Some protocol conformances can be synthesized by the compiler,
+/// for those, we need to add them to "local conformances" because otherwise
+/// we'd get missing symbols while attempting to use these.
+static SmallVector<ProtocolConformance *, 2> findSynthesizedConformances(
+    const DeclContext *dc) {
+  auto nominal = dc->getSelfNominalTypeDecl();
+  if (!nominal)
+    return {};
+
+  // Try to find specific conformances
+  SmallVector<ProtocolConformance *, 2> result;
+
+  // Sendable may be synthesized for concrete types
+  if (!isa<ProtocolDecl>(nominal)) {
+    if (auto sendable =
+            findSynthesizedConformance(dc, KnownProtocolKind::Sendable)) {
+      result.push_back(sendable);
+    }
+  }
+
+  /// Distributed actors can synthesize Encodable/Decodable, so look for those
+  if (nominal->isDistributedActor()) {
+    if (auto conformance =
+            findSynthesizedConformance(dc, KnownProtocolKind::Encodable)) {
+      result.push_back(conformance);
+    }
+    if (auto conformance =
+            findSynthesizedConformance(dc, KnownProtocolKind::Decodable)) {
+      result.push_back(conformance);
+    }
+  }
+
+  return result;
 }
 
 std::vector<ProtocolConformance *>
@@ -1485,8 +1538,9 @@ IterableDeclContext::getLocalConformances(ConformanceLookupKind lookupKind)
       // Look for a Sendable conformance globally. If it is synthesized
       // and matches this declaration context, use it.
       auto dc = getAsGenericContext();
-      if (auto conformance = findSynthesizedSendableConformance(dc))
+      for (auto conformance : findSynthesizedConformances(dc)) {
         result.push_back(conformance);
+      }
       break;
     }
 
