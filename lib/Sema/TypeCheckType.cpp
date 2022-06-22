@@ -3706,7 +3706,7 @@ TypeResolver::resolveDistributedKnownToBeLocal(DistributedKnownToBeLocalTypeRepr
 
   // TODO(distributed): more diagnosis here, prevent from use in props, enums etc
 
-  // isolated parameters must be of 'distributed actor' type
+  // '_local' parameters must be of 'distributed actor' type
   if (!type->hasTypeParameter() &&
       !type->isDistributedActor() &&
       !type->hasError()) {
