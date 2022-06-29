@@ -569,20 +569,6 @@ public:
     if (Constant)
       constant = Constant;
 
-    auto isDistThunkCall = false;
-    if (constant) {
-      auto func = constant->getFuncDecl();
-      if (func && func->isDistributed()) {
-        fprintf(stderr, "\n[%s:%d] (%s) decl is dist: %d\n", __FILE__, __LINE__, __FUNCTION__, func->isDistributed());
-        constant->dump();
-
-        if (auto proto = dyn_cast<ProtocolDecl>(func->getDeclContext())) {
-          isDistThunkCall = func->isDistributed() &&
-                            isa<ProtocolDecl>(func->getDeclContext());
-        }
-      }
-    }
-
     switch (kind) {
     case Kind::IndirectValue:
       assert(Substitutions.empty());
@@ -651,10 +637,30 @@ public:
       auto conformance = Substitutions.lookupConformance(selfType, proto);
 
       ArgumentScope S(SGF, Loc);
-
       SILValue fn;
+
+      // Determine if this is a call on a 'distributed func' declared
+      // on a protocol, if so, we must always call the distributed thunk.
+      auto isDistThunkCall = false;
+      if (auto func = constant->getFuncDecl()) {
+        if (func && func->isDistributed()) {
+          fprintf(stderr, "\n[%s:%d] (%s) decl is dist: %d\n", __FILE__, __LINE__, __FUNCTION__, func->isDistributed());
+          constant->dump();
+
+          isDistThunkCall = func->isDistributed() &&
+                            isa<ProtocolDecl>(func->getDeclContext());
+
+
+          if (isDistThunkCall) {
+//            constant = SILDeclRef(func->getDistributedThunk()).asDistributed();
+            fprintf(stderr, "[%s:%d] (%s) THIS CALL IS A DIST FUNC CALL.\n", __FILE__, __LINE__, __FUNCTION__);
+          }
+        }
+      }
+
       if (isDistThunkCall) {
         fprintf(stderr, "[%s:%d] (%s) CALL THE DISTRIBUTED!\n", __FILE__, __LINE__, __FUNCTION__);
+
         fn = SGF.B.createWitnessMethod(
             Loc, lookupType, conformance, constant->asDistributed(),
             constantInfo.getSILType());

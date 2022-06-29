@@ -25,15 +25,6 @@ protocol DistributedWorker: DistributedActor where ActorSystem == DefaultDistrib
   associatedtype WorkResult: Sendable & Codable
 
   distributed func submit_witness_sync(param: WorkItem) -> WorkResult
-//  distributed func submit_witness_throws(work: WorkItem) throws -> WorkResult
-//  distributed func submit_witness_async(work: WorkItem) async -> WorkResult
-//  distributed func submit_witness_asyncThrows(work: WorkItem) async throws -> WorkResult
-
-  // non distributed requirements can be witnessed with _normal_ functions
-//  func sync(work: WorkItem) -> WorkResult
-//  func async(work: WorkItem) async -> WorkResult
-//  func syncThrows(work: WorkItem) throws -> WorkResult
-//  func asyncThrows(work: WorkItem) async throws -> WorkResult
 }
 
 distributed actor TheWorker: DistributedWorker {
@@ -51,11 +42,11 @@ protocol Worker: Actor {
   typealias WorkItem = String
   typealias WorkResult = String
 
-  func submit_witness_sync(param: WorkItem) -> WorkResult
+  func submit_witness_sync(param: WorkItem) async -> WorkResult
 }
 
 actor TheLocalWorker: Worker {
-  func submit_witness_sync(param: WorkItem) -> WorkResult {
+  func submit_witness_sync(param: WorkItem) async -> WorkResult {
     "\(#function): \(param)"
   }
 }
@@ -65,15 +56,15 @@ func test_generic(system: DefaultDistributedActorSystem) async throws {
   let remoteW = try! TheWorker.resolve(id: localW.id, using: system)
   precondition(__isRemoteActor(remoteW))
 
-  try await remoteW.submit_witness_sync(param: "HELLO")
+//  try await remoteW.submit_witness_sync(param: "HELLO")
 
   print("=== -------------------------------------------------------")
 
   // === sync witness ------
 
-  func callActorWorker<W: Worker>(w: W) async throws -> String where W.WorkItem == String, W.WorkResult == String {
-    await w.submit_witness_sync(param: "Hello")
-  }
+//  func callActorWorker<W: Worker>(w: W) async throws -> String where W.WorkItem == String, W.WorkResult == String {
+//    await w.submit_witness_sync(param: "Hello")
+//  }
 
   func callWorkerSync<W: DistributedWorker>(w: W) async throws -> String where W.WorkItem == String, W.WorkResult == String {
     try await w.submit_witness_sync(param: "Hello")

@@ -1409,9 +1409,11 @@ void SILGenModule::emitAbstractFuncDecl(AbstractFunctionDecl *AFD) {
   }
 
   if (auto thunkDecl = AFD->getDistributedThunk()) {
-    auto thunk = SILDeclRef(thunkDecl).asDistributed();
-    emitFunctionDefinition(SILDeclRef(thunkDecl).asDistributed(),
-                           getFunction(thunk, ForDefinition));
+    if (!isa<ProtocolDecl>(AFD->getDeclContext())) {
+      auto thunk = SILDeclRef(thunkDecl).asDistributed();
+      emitFunctionDefinition(SILDeclRef(thunkDecl).asDistributed(),
+                             getFunction(thunk, ForDefinition));
+    }
   }
 
   if (AFD->isBackDeployed()) {

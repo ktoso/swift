@@ -203,7 +203,8 @@ private:
     SILDeclRef declRef(AFD, kind);
 
     // Add another entry for the 'distributed' method:
-    asDerived().addMethod(declRef.asDistributed());
+    auto declRef = SILDeclRef(thunk, kind).asDistributed();
+    asDerived().addMethod(declRef);
   }
 };
 

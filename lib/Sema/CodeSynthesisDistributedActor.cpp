@@ -715,6 +715,167 @@ static FuncDecl *createDistributedThunkFunction(FuncDecl *func) {
   return thunk;
 }
 
+
+/// Create a stub body that emits a fatal error message.
+static std::pair<BraceStmt *, bool>
+synthesizeThunkStubBody(AbstractFunctionDecl *fn, void *) {
+  auto *ctor = cast<ConstructorDecl>(fn);
+  auto &ctx = ctor->getASTContext();
+
+  auto unimplementedInitDecl = ctx.getUnimplementedInitializer();
+  auto classDecl = ctor->getDeclContext()->getSelfClassDecl();
+  if (!unimplementedInitDecl) {
+    ctx.Diags.diagnose(classDecl->getLoc(),
+                       diag::missing_unimplemented_init_runtime);
+    return { nullptr, true };
+  }
+
+  auto *staticStringDecl = ctx.getStaticStringDecl();
+  auto staticStringType = staticStringDecl->getDeclaredInterfaceType();
+  auto staticStringInit = ctx.getStringBuiltinInitDecl(staticStringDecl);
+
+  auto *uintDecl = ctx.getUIntDecl();
+  auto uintType = uintDecl->getDeclaredInterfaceType();
+  auto uintInit = ctx.getIntBuiltinInitDecl(uintDecl);
+
+  // Create a call to Swift._unimplementedInitializer
+  auto loc = classDecl->getLoc();
+  Expr *ref = new (ctx) DeclRefExpr(unimplementedInitDecl,
+                                    DeclNameLoc(loc),
+                                    /*Implicit=*/true);
+  ref->setType(unimplementedInitDecl->getInterfaceType()
+                   ->removeArgumentLabels(1));
+
+  llvm::SmallString<64> buffer;
+  StringRef fullClassName = ctx.AllocateCopy(
+      (classDecl->getModuleContext()->getName().str() +
+       "." +
+       classDecl->getName().str()).toStringRef(buffer));
+
+  auto *className = new (ctx) StringLiteralExpr(fullClassName, loc,
+                                                /*Implicit=*/true);
+  className->setBuiltinInitializer(staticStringInit);
+  assert(isa<ConstructorDecl>(className->getBuiltinInitializer().getDecl()));
+  className->setType(staticStringType);
+
+  auto *initName = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::Function, loc, /*Implicit=*/true);
+  initName->setType(staticStringType);
+  initName->setBuiltinInitializer(staticStringInit);
+
+  auto *file = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::FileID, loc, /*Implicit=*/true);
+  file->setType(staticStringType);
+  file->setBuiltinInitializer(staticStringInit);
+
+  auto *line = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::Line, loc, /*Implicit=*/true);
+  line->setType(uintType);
+  line->setBuiltinInitializer(uintInit);
+
+  auto *column = new (ctx) MagicIdentifierLiteralExpr(
+      MagicIdentifierLiteralExpr::Column, loc, /*Implicit=*/true);
+  column->setType(uintType);
+  column->setBuiltinInitializer(uintInit);
+
+  auto *argList = ArgumentList::forImplicitUnlabeled(
+      ctx, {className, initName, file, line, column});
+  auto *call = CallExpr::createImplicit(ctx, ref, argList);
+  call->setType(ctx.getNeverType());
+  call->setThrows(false);
+
+  SmallVector<ASTNode, 2> stmts;
+  stmts.push_back(call);
+  stmts.push_back(new (ctx) ReturnStmt(SourceLoc(), /*Result=*/nullptr));
+  return { BraceStmt::create(ctx, SourceLoc(), stmts, SourceLoc(),
+                            /*implicit=*/true),
+          /*isTypeChecked=*/true };
+}
+
+AbstractFunctionDecl *
+swift::getWitnessThunkDecl(AbstractFunctionDecl *func) {
+  if (!func->isDistributed())
+    return nullptr;
+
+//  auto func = dyn_cast<FuncDecl>(AFD);
+//  if (!func)
+//    return nullptr;
+
+  auto &C = func->getASTContext();
+  auto DC = func->getDeclContext();
+
+  // NOTE: So we don't need a thunk in the protocol, we should call the underlying
+  // thing instead, which MUST have a thunk, since it must be a distributed func as well...
+  if (!isa<ProtocolDecl>(DC)) {
+    return nullptr;
+  }
+
+//  assert(getConcreteReplacementForProtocolActorSystemType(func) &&
+//         "Thunk synthesis must have concrete actor system type available");
+
+  DeclName thunkName = func->getName();
+
+  // --- Prepare generic parameters
+  GenericParamList *genericParamList = nullptr;
+  if (auto genericParams = func->getGenericParams()) {
+    genericParamList = genericParams->clone(DC);
+  }
+
+  GenericSignature baseSignature =
+      buildGenericSignature(C, func->getGenericSignature(),
+                            /*addedParameters=*/{},
+                            /*addedRequirements=*/{});
+
+  // --- Prepare parameters
+  auto funcParams = func->getParameters();
+  SmallVector<ParamDecl*, 2> paramDecls;
+  for (unsigned i : indices(*func->getParameters())) {
+    auto funcParam = funcParams->get(i);
+
+    auto paramName = funcParam->getParameterName();
+    // If internal name is empty it could only mean either
+    // `_:` or `x _: ...`, so let's auto-generate a name
+    // to be used in the body of a thunk.
+    if (paramName.empty()) {
+      paramName = C.getIdentifier("p" + llvm::utostr(i));
+    }
+
+    auto paramDecl = new (C)
+        ParamDecl(SourceLoc(),
+                  /*argumentNameLoc=*/SourceLoc(), funcParam->getArgumentName(),
+                  /*parameterNameLoc=*/SourceLoc(), paramName, DC);
+
+    paramDecl->setImplicit(true);
+    paramDecl->setSpecifier(funcParam->getSpecifier());
+    paramDecl->setInterfaceType(funcParam->getInterfaceType());
+
+    paramDecls.push_back(paramDecl);
+  }
+  ParameterList *params = ParameterList::create(C, paramDecls); // = funcParams->clone(C);
+
+  if (auto f = dyn_cast<FuncDecl>(func)) {
+    f->dump();
+  }
+
+  auto thunk = FuncDecl::createImplicit(
+      C, swift::StaticSpellingKind::None, thunkName, SourceLoc(),
+      /*async=*/true, /*throws=*/true,
+      genericParamList, params,
+      func->getMethodInterfaceType()->getAs<AnyFunctionType>()->getResult(), DC);
+  thunk->setSynthesized(true);
+//  thunk->getAttrs().add(new (C) NonisolatedAttr(/*isImplicit=*/true));
+
+//  if (isa<ClassDecl>(DC))
+//    thunk->getAttrs().add(new (C) FinalAttr(/*isImplicit=*/true));
+
+  thunk->setGenericSignature(baseSignature);
+  thunk->copyFormalAccessFrom(func, /*sourceIsParentContext=*/false);
+//  thunk->setBodySynthesizer(synthesizeThunkStubBody, func);
+
+  return thunk;
+}
+
+
 /******************************************************************************/
 /*********************** CODABLE CONFORMANCE **********************************/
 /******************************************************************************/
@@ -817,7 +978,7 @@ FuncDecl *GetDistributedThunkRequest::evaluate(
       return nullptr;
 
     // --- Prepare the "distributed thunk" which does the "maybe remote" dance:
-    return createDistributedThunkFunction(func);
+    return (func);
   }
 
   llvm_unreachable("Unable to synthesize distributed thunk");

@@ -1424,8 +1424,21 @@ bool WitnessChecker::findBestWitness(
       auto lookup = TypeChecker::lookupUnqualified(
           overlay, requirement->createNameRef(), SourceLoc(),
           defaultUnqualifiedLookupOptions);
-      for (auto candidate : lookup)
+      for (auto candidate : lookup) {
         witnesses.push_back(candidate.getValueDecl());
+        fprintf(stderr, "[%s:%d] (%s) MAYBE WITNESS: \n", __FILE__, __LINE__, __FUNCTION__);
+        candidate.getValueDecl()->dumpRef();
+
+
+        if (auto func = dyn_cast<FuncDecl>(candidate.getValueDecl())) {
+          if (func->isDistributed()) {
+            if (auto thunk = func->getDistributedThunk()) {
+              fprintf(stderr, "[%s:%d] (%s) ALSO CONSIDER DIST THUNK AS WITNESS\n", __FILE__, __LINE__, __FUNCTION__);
+              witnesses.push_back(thunk);
+            }
+          }
+        }
+      }
       break;
     }
     case Done:

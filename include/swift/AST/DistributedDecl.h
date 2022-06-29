@@ -65,6 +65,8 @@ AbstractFunctionDecl *
 getAssociatedDistributedInvocationDecoderDecodeNextArgumentFunction(
     ValueDecl *thunk);
 
+AbstractFunctionDecl *getWitnessThunkDecl(AbstractFunctionDecl *AFD);
+
 /// Get the specific 'InvocationEncoder' type of a specific distributed actor
 /// system.
 Type getDistributedActorSystemInvocationEncoderType(NominalTypeDecl *system);
