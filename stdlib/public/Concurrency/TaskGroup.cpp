@@ -52,10 +52,11 @@ using namespace swift;
 
 #if 0
 #define SWIFT_TASK_GROUP_DEBUG_LOG(group, fmt, ...) \
-fprintf(stderr, "[%#lx] [%s:%d](%s) group(%p%s) " fmt "\n",             \
+fprintf(stderr, "[%#lx] [%s:%d][group(%p%s)] (%s) " fmt "\n",           \
       (unsigned long)Thread::current().platformThreadId(),              \
-      __FILE__, __LINE__, __FUNCTION__,                                 \
+      __FILE__, __LINE__,                                               \
       group, group->isDiscardingResults() ? ",discardResults" : "",     \
+      __FUNCTION__,                                                     \
       __VA_ARGS__)
 #else
 #define SWIFT_TASK_GROUP_DEBUG_LOG(group, fmt, ...) (void)0
@@ -291,7 +292,7 @@ public:
   /// There can be only at-most-one waiting task on a group at any given time,
   /// and the waiting task is expected to be the parent task in which the group
   /// body is running.
-  PollResult tryEnqueueWaitingTask(AsyncTask *waitingTask);
+  PollResult waitAll(AsyncTask *waitingTask);
 
   // Enqueue the completed task onto ready queue if there are no waiting tasks yet
   virtual void enqueueCompletedTask(AsyncTask *completedTask, bool hadErrorResult) = 0;
@@ -1246,6 +1247,7 @@ void TaskGroupBase::resumeWaitingTask(
     TaskGroupStatus &assumed,
     bool hadErrorResult) {
   auto waitingTask = waitQueue.load(std::memory_order_acquire);
+  assert(waitingTask && "waitingTask must not be null when attempting to resume it");
   SWIFT_TASK_GROUP_DEBUG_LOG(this, "resume waiting task = %p, complete with = %p",
                        waitingTask, completedTask);
   while (true) {
@@ -1634,6 +1636,9 @@ static void swift_taskGroup_waitAllImpl(
   waitingTask->ResumeTask = task_group_wait_resume_adapter;
   waitingTask->ResumeContext = rawContext;
 
+  auto group = asBaseImpl(_group);
+  PollResult polled = group->waitAll(waitingTask);
+
   auto context = static_cast<TaskFutureWaitAsyncContext *>(rawContext);
   context->ResumeParent =
       reinterpret_cast<TaskContinuationFunction *>(resumeFunction);
@@ -1641,21 +1646,19 @@ static void swift_taskGroup_waitAllImpl(
   context->errorResult = nullptr;
   context->successResultPointer = resultPointer;
 
-  auto group = asBaseImpl(_group);
   SWIFT_TASK_GROUP_DEBUG_LOG(group, "waitAllImpl, waiting task = %p, bodyError = %p, status:%s",
                        waitingTask, bodyError, group->statusString().c_str());
 
-  PollResult polled = group->tryEnqueueWaitingTask(waitingTask);
   switch (polled.status) {
     case PollStatus::MustWait:
-    SWIFT_TASK_GROUP_DEBUG_LOG(group, "tryEnqueueWaitingTask MustWait, pending tasks exist, waiting task = %p",
+    SWIFT_TASK_GROUP_DEBUG_LOG(group, "waitAll MustWait, pending tasks exist, waiting task = %p",
                                waitingTask);
       if (bodyError && group->isDiscardingResults()) {
         auto discardingGroup = asDiscardingImpl(_group);
         bool storedBodyError = discardingGroup->offerBodyError(bodyError);
         if (storedBodyError) {
           SWIFT_TASK_GROUP_DEBUG_LOG(
-              group, "tryEnqueueWaitingTask, stored error thrown by with...Group body, error = %p",
+              group, "waitAll, stored error thrown by with...Group body, error = %p",
               bodyError);
         }
       }
@@ -1670,7 +1673,7 @@ static void swift_taskGroup_waitAllImpl(
 #endif /* __ARM_ARCH_7K__ */
 
     case PollStatus::Error:
-      SWIFT_TASK_GROUP_DEBUG_LOG(group, "tryEnqueueWaitingTask found error, waiting task = %p, status:%s",
+      SWIFT_TASK_GROUP_DEBUG_LOG(group, "waitAll found error, waiting task = %p, status:%s",
                                  waitingTask, group->statusString().c_str());
       fillGroupNextResult(context, polled);
       if (auto completedTask = polled.retainedTask) {
@@ -1687,7 +1690,7 @@ static void swift_taskGroup_waitAllImpl(
     case PollStatus::Success:
       /// Anything else than a "MustWait" can be treated as a successful poll.
       /// Only if there are in flight pending tasks do we need to wait after all.
-      SWIFT_TASK_GROUP_DEBUG_LOG(group, "tryEnqueueWaitingTask %s, waiting task = %p, status:%s",
+      SWIFT_TASK_GROUP_DEBUG_LOG(group, "waitAll %s, waiting task = %p, status:%s",
                                  polled.status == TaskGroupBase::PollStatus::Empty ? "empty" : "success",
                                  waitingTask, group->statusString().c_str());
 
@@ -1718,8 +1721,10 @@ bool DiscardingTaskGroup::offerBodyError(SwiftError* _Nonnull bodyError) {
   return true;
 }
 
-PollResult TaskGroupBase::tryEnqueueWaitingTask(AsyncTask *waitingTask) {
-  SWIFT_TASK_GROUP_DEBUG_LOG(this, "tryEnqueueWaitingTask, status = %s", statusString().c_str());
+PollResult TaskGroupBase::waitAll(AsyncTask *waitingTask) {
+  lock(); // TODO: remove pool lock, and use status for synchronization
+
+  SWIFT_TASK_GROUP_DEBUG_LOG(this, "waitAll, status = %s", statusString().c_str());
   PollResult result = PollResult::getEmpty(this->successType);
   result.storage = nullptr;
   result.retainedTask = nullptr;
@@ -1730,8 +1735,14 @@ PollResult TaskGroupBase::tryEnqueueWaitingTask(AsyncTask *waitingTask) {
 
   reevaluate_if_TaskGroup_has_results:;
   auto assumed = statusMarkWaitingAssumeAcquire();
+  auto waitHead = waitQueue.load(std::memory_order_acquire);
+
   // ==== 1) bail out early if no tasks are pending ----------------------------
-  if (assumed.isEmpty(this)) {
+  // In `waitAll` we need to check both the status, as well as the waitHead.
+  //
+  // Even if the status indicates 'empty', we may have a stored error when the group
+  // is in discarding mode. Then, such stored error must be re-thrown.
+  if (assumed.isEmpty(this) && !waitHead) {
     SWIFT_TASK_DEBUG_LOG("group(%p) waitAll, is empty, no pending tasks", this);
     // No tasks in flight, we know no tasks were submitted before this poll
     // was issued, and if we parked here we'd potentially never be woken up.
@@ -1739,9 +1750,6 @@ PollResult TaskGroupBase::tryEnqueueWaitingTask(AsyncTask *waitingTask) {
     statusRemoveWaitingRelease();
     return result;
   }
-
-  lock(); // TODO: remove pool lock, and use status for synchronization
-  auto waitHead = waitQueue.load(std::memory_order_acquire);
 
   // ==== 2) Add to wait queue -------------------------------------------------
   _swift_tsan_release(static_cast<Job *>(waitingTask));

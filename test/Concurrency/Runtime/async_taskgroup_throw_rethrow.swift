@@ -72,7 +72,7 @@ func test_discardingTaskGroup_automaticallyRethrows() async {
   print("==== \(#function) ------") // CHECK-LABEL: test_discardingTaskGroup_automaticallyRethrows
   do {
     let got = try await withThrowingDiscardingTaskGroup(returning: Int.self) { group in
-      group.addTask { await echo(1) }
+      group.addTask { _ = await echo(1) }
       group.addTask { throw Boom() }
       // add a throwing task, but don't consume it explicitly
       // since we're in discard results mode, all will be awaited and the first error it thrown
@@ -91,7 +91,7 @@ func test_discardingTaskGroup_automaticallyRethrowsOnlyFirst() async {
   do {
     let got = try await withThrowingDiscardingTaskGroup(returning: Int.self) { group in
       group.addTask {
-        await echo(1)
+        _ = await echo(1)
       }
       group.addTask {
         let error = Boom(id: "first, isCancelled:\(Task.isCancelled)")
@@ -124,9 +124,9 @@ func test_discardingTaskGroup_automaticallyRethrowsOnlyFirst() async {
 func test_discardingTaskGroup_automaticallyRethrows_first_withThrowingBodyFirst() async {
   print("==== \(#function) ------") // CHECK-LABEL: test_discardingTaskGroup_automaticallyRethrows_first_withThrowingBodyFirst
   do {
-    try await withThrowingDiscardingTaskGroup(returning: Int.self) { group in
+    _ = try await withThrowingDiscardingTaskGroup(returning: Int.self) { group in
       group.addTask {
-        await echo(1)
+        _ = await echo(1)
       }
       group.addTask {
         try? await Task.sleep(until: .now + .seconds(10), clock: .continuous)
@@ -153,7 +153,7 @@ func test_discardingTaskGroup_automaticallyRethrows_first_withThrowingBodyFirst(
 func test_discardingTaskGroup_automaticallyRethrows_first_withThrowingBodySecond() async {
   print("==== \(#function) ------") // CHECK-LABEL: test_discardingTaskGroup_automaticallyRethrows_first_withThrowingBodySecond
   do {
-    try await withThrowingDiscardingTaskGroup(returning: Int.self) { group in
+    _ = try await withThrowingDiscardingTaskGroup(returning: Int.self) { group in
       group.addTask {
         let error = Boom(id: "task, first, isCancelled:\(Task.isCancelled)")
         print("Throwing: \(error)")
