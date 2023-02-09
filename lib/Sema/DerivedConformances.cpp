@@ -295,8 +295,9 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
     if (conformance) {
       auto DC = conformance.getConcrete()->getDeclContext();
       // Check whether this nominal type derives conformances to the protocol.
-      if (!DerivedConformance::derivesProtocolConformance(DC, nominal, proto))
+      if (!DerivedConformance::derivesProtocolConformance(DC, nominal, proto)) {
         return nullptr;
+      }
     }
 
     // Retrieve the requirement.
@@ -334,8 +335,17 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
       return getRequirement(KnownProtocolKind::AdditiveArithmetic);
 
     // Actor.unownedExecutor
-    if (name.isSimpleName(ctx.Id_unownedExecutor))
-      return getRequirement(KnownProtocolKind::Actor);
+    if (name.isSimpleName(ctx.Id_unownedExecutor)) {
+      if (nominal->isDistributedActor()) {
+        fprintf(stderr, "[%s:%d](%s) derive unowned executor FOR DISTRIBUTED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+        return getRequirement(KnownProtocolKind::DistributedActor);
+      }
+      if (nominal->isActor()) {
+        fprintf(stderr, "[%s:%d](%s) derive unowned executor FOR ACTOR\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+        return getRequirement(KnownProtocolKind::Actor);
+      }
+      return nullptr;
+    }
 
     // DistributedActor.id
     if (name.isSimpleName(ctx.Id_id))

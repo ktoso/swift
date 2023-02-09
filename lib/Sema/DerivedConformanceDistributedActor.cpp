@@ -587,6 +587,14 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
 
     if (var->getName() == Context.Id_actorSystem)
       return deriveDistributedActor_actorSystem(*this);
+
+    if (var->getName() == Context.Id_unownedExecutor) {
+      fprintf(stderr, "[%s:%d](%s) derive using actor logic\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      auto prop = deriveActor(requirement);
+      fprintf(stderr, "[%s:%d](%s) DONE:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      prop->dump();
+      return prop;
+    }
   }
 
   if (auto func = dyn_cast<FuncDecl>(requirement)) {
