@@ -430,6 +430,11 @@ public final class FakeInvocationDecoder: DistributedTargetInvocationDecoder {
     self.genericSubs = substitutions
     self.returnType = returnType
     self.errorType = errorType
+    fputs("FakeInvocationDecoder init: \(Unmanaged.passUnretained(self).toOpaque())\n", stderr)
+  }
+
+  deinit {
+    fputs("FakeInvocationDecoder deinit: \(Unmanaged.passUnretained(self).toOpaque())\n", stderr)
   }
 
   public func decodeGenericSubstitutions() throws -> [Any.Type] {

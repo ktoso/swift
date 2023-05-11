@@ -457,6 +457,8 @@ static HeapObject *_swift_retain_(HeapObject *object) {
 }
 
 HeapObject *swift::swift_retain(HeapObject *object) {
+  fprintf(stderr, "[%s:%d](%s) retain: %p + 1 (%d->%d)\n", __FILE_NAME__, __LINE__, __FUNCTION__, object,
+          swift_retainCount(object), swift_retainCount(object) + 1);
 #ifdef SWIFT_THREADING_NONE
   return swift_nonatomic_retain(object);
 #else
@@ -479,6 +481,7 @@ HeapObject *swift::swift_nonatomic_retain(HeapObject *object) {
 
 SWIFT_ALWAYS_INLINE
 static HeapObject *_swift_retain_n_(HeapObject *object, uint32_t n) {
+fprintf(stderr, "[%s:%d](%s) retain: %p + %d\n", __FILE_NAME__, __LINE__, __FUNCTION__, object, n);
   SWIFT_RT_TRACK_INVOCATION(object, swift_retain_n);
   if (isValidPointerForNativeRetain(object))
     object->refCounts.increment(n);
@@ -512,6 +515,9 @@ static void _swift_release_(HeapObject *object) {
 }
 
 void swift::swift_release(HeapObject *object) {
+  fprintf(stderr, "[%s:%d](%s) release: %p -1 (%d->%d)\n", __FILE_NAME__, __LINE__, __FUNCTION__, object,
+    swift_retainCount(object), swift_retainCount(object) - 1);
+
 #ifdef SWIFT_THREADING_NONE
   swift_nonatomic_release(object);
 #else

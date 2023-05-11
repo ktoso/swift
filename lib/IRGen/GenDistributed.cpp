@@ -440,7 +440,7 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
   // Check whether the error slot has been set and if so
   // emit an early return from accessor.
   {
-    auto contBB = IGF.createBasicBlock("");
+    auto contBB = IGF.createBasicBlock("get-decoded-result");
     auto errorBB = IGF.createBasicBlock("on-error");
 
     auto nullError = llvm::Constant::getNullValue(decodeError->getType());
@@ -494,14 +494,19 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
   case ParameterConvention::Direct_Guaranteed:
   case ParameterConvention::Direct_Unowned: {
     auto paramTy = param.getSILStorageInterfaceType();
+    fprintf(stderr, "[%s:%d](%s) direct unowned, take it (%s)\n", __FILE_NAME__, __LINE__, __FUNCTION__, paramTy.getAsString().c_str());
     Address eltPtr = IGF.Builder.CreateElementBitCast(
         resultValue.getAddress(), IGM.getStorageType(paramTy));
 
     cast<LoadableTypeInfo>(paramInfo).loadAsTake(IGF, eltPtr, arguments);
+
     break;
   }
 
   case ParameterConvention::Direct_Owned: {
+    auto paramTy = param.getSILStorageInterfaceType();
+    fprintf(stderr, "[%s:%d](%s) direct owned, loadAsCopy (%s)\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+            paramTy.getAsString().c_str());
     // Copy the value out at +1.
     cast<LoadableTypeInfo>(paramInfo).loadAsCopy(IGF, resultValue.getAddress(),
                                                  arguments);
