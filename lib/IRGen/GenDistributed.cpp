@@ -230,14 +230,14 @@ static CanSILFunctionType getAccessorType(IRGenModule &IGM,
 
   // actor
 
-  auto actorTypeParam =
-      GenericTypeParamType::get(/*isParameterPack=*/false,
-                                /*depth=*/0, /*index=*/1, Context);
-    parameters.push_back(
-        GenericFunctionType::Param(actorTypeParam));
-  auto distributedActorTy =
-        Context.getDistributedActorDecl()
-        ->getDeclaredInterfaceType();
+//  auto actorTypeParam =
+//      GenericTypeParamType::get(/*isParameterPack=*/false,
+//                                /*depth=*/0, /*index=*/1, Context);
+//    parameters.push_back(
+//        GenericFunctionType::Param(actorTypeParam));
+//  auto distributedActorTy =
+//        Context.getDistributedActorDecl()
+//        ->getDeclaredInterfaceType();
 
   auto decoderProtocolTy =
       Context
@@ -260,10 +260,10 @@ static CanSILFunctionType getAccessorType(IRGenModule &IGM,
     genericRequirements.push_back(
         {RequirementKind::Conformance, decoderType, decoderProtocolTy});
 
-    genericRequirements.push_back(
-        {RequirementKind::Conformance, actorTypeParam, distributedActorTy});
-
-    genericParams.push_back(actorTypeParam);
+//    genericRequirements.push_back(
+//        {RequirementKind::Conformance, actorTypeParam, distributedActorTy});
+//
+//    genericParams.push_back(actorTypeParam);
 
     signature = buildGenericSignature(Context, GenericSignature(),
                                       std::move(genericParams),
@@ -603,14 +603,14 @@ void DistributedAccessor::emit() {
   // Metadata that represents passed in the invocation decoder.
   auto *decoderType = params.claimNext();
 
-  // Metadata that represents the actor the invocation is on.
-  auto *actorType = params.claimNext();
-  (void)actorType;
+//  // Metadata that represents the actor the invocation is on.
+//  auto *actorType = params.claimNext();
+//  (void)actorType;
 
   // Witness table for decoder conformance to DistributedTargetInvocationDecoder
   auto *decoderProtocolWitness = params.claimNext();
-  auto *distributedActorWitness = params.claimNext();
-  (void)distributedActorWitness;
+//  auto *distributedActorWitness = params.claimNext();
+//  (void)distributedActorWitness;
 
   // Preliminary: Setup async context for this accessor.
   {
