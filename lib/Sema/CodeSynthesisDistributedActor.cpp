@@ -1047,20 +1047,24 @@ NormalProtocolConformance *GetDistributedActorImplicitCodableRequest::evaluate(
 bool CanSynthesizeDistributedActorCodableConformanceRequest::evaluate(
     Evaluator &evaluator, NominalTypeDecl *actor) const {
 
-  if (actor && !isa<ClassDecl>(actor))
+  if (!actor) {
     return false;
+  }
 
-  if (!actor->isDistributedActor())
+  if (!actor->isDistributedActor()) {
     return false;
+  }
 
-  auto systemTy = getConcreteReplacementForProtocolActorSystemType(actor);
-  if (!systemTy)
-    return false;
+//  auto systemTy = getConcreteReplacementForProtocolActorSystemType(actor);
+//  if (!systemTy)
+//    return false;
+//
+//  if (!systemTy->getAnyNominal())
+//    return false;
 
-  if (!systemTy->getAnyNominal())
-    return false;
+  auto idTy = getDistributedActorIDType(actor);
 
-  auto idTy = getDistributedActorSystemActorIDType(systemTy->getAnyNominal());
+//  auto idTy = getDistributedActorSystemActorIDType(systemTy->getAnyNominal());
   if (!idTy)
     return false;
 
