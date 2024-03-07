@@ -41,7 +41,7 @@ extension VariableDeclSyntax {
 
   func accessorsMatching(_ predicate: (TokenKind) -> Bool) -> [AccessorDeclSyntax] {
     let patternBindings = bindings.compactMap { binding in
-      binding.as(PatternBindingSyntax.self)
+      binding
     }
     let accessors: [AccessorDeclListSyntax.Element] = patternBindings.compactMap { patternBinding in
       switch patternBinding.accessorBlock?.accessors {
@@ -52,11 +52,8 @@ extension VariableDeclSyntax {
       }
     }.flatMap { $0 }
     return accessors.compactMap { accessor in
-      guard let decl = accessor.as(AccessorDeclSyntax.self) else {
-        return nil
-      }
-      if predicate(decl.accessorSpecifier.tokenKind) {
-        return decl
+      if predicate(accessor.accessorSpecifier.tokenKind) {
+        return accessor
       } else {
         return nil
       }
@@ -211,7 +208,7 @@ extension DeclGroupSyntax {
   var memberFunctionStandins: [FunctionDeclSyntax.SignatureStandin] {
     var standins = [FunctionDeclSyntax.SignatureStandin]()
     for member in memberBlock.members {
-      if let function = member.as(MemberBlockItemSyntax.self)?.decl.as(FunctionDeclSyntax.self) {
+      if let function = member.decl.as(FunctionDeclSyntax.self) {
         standins.append(function.signatureStandin)
       }
     }
@@ -220,7 +217,7 @@ extension DeclGroupSyntax {
   
   func hasMemberFunction(equvalentTo other: FunctionDeclSyntax) -> Bool {
     for member in memberBlock.members {
-      if let function = member.as(MemberBlockItemSyntax.self)?.decl.as(FunctionDeclSyntax.self) {
+      if let function = member.decl.as(FunctionDeclSyntax.self) {
         if function.isEquivalent(to: other) {
           return true
         }
