@@ -1352,7 +1352,14 @@ AbstractFunctionDecl::getDistributedThunk() const {
   auto mutableThis = const_cast<AbstractFunctionDecl *>(this);
 
   if (auto accessor = dyn_cast<AccessorDecl>(mutableThis)) {
+    fprintf(stderr, "[%s:%d](%s) GET VAR THUNK\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     auto Storage = accessor->getStorage();
+    Storage->dump();
+    fprintf(stderr, "[%s:%d](%s) GOR THUNK\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    if (auto thunk = Storage->getDistributedThunk()) {
+      thunk->dump();
+    }
+
     return Storage->getDistributedThunk();
   }
 

@@ -128,12 +128,12 @@ import Swift
 /// - Throws: if the operation closure throws
 /// - SeeAlso: ``TaskExecutor``
 @_unavailableInEmbedded
-@available(SwiftStdlib 9999, *)
-@_unsafeInheritExecutor // calling withTaskExecutor MUST NOT perform the "usual" hop to global
-public func withTaskExecutorPreference<T: Sendable>(
+@available(SwiftStdlib 6.0, *)
+public func withTaskExecutorPreference<T, Failure>(
   _ taskExecutor: (any TaskExecutor)?,
-  operation: @Sendable () async throws -> T
-  ) async rethrows -> T {
+  isolation: isolated (any Actor)? = #isolation,
+  operation: () async throws(Failure) -> T
+) async throws(Failure) -> T {
   guard let taskExecutor else {
     // User explicitly passed a "nil" preference, so we invoke the operation
     // as is, which will hop to it's expected executor without any change in
@@ -156,6 +156,29 @@ public func withTaskExecutorPreference<T: Sendable>(
 
   // No need to manually hop to the target executor, because as we execute
   // the operation, its enqueue will respect the attached executor preference.
+  return try await operation()
+}
+
+@_unavailableInEmbedded
+@available(SwiftStdlib 6.0, *)
+@_unsafeInheritExecutor // calling withTaskExecutor MUST NOT perform the "usual" hop to global
+@_silgen_name("$ss26withTaskExecutorPreference_9operationxSch_pSg_xyYaKXEtYaKs8SendableRzlF")
+public func __abi_withTaskExecutorPreference<T: Sendable>(
+  _ taskExecutor: (any TaskExecutor)?,
+  operation: @Sendable () async throws -> T
+) async rethrows -> T {
+  guard let taskExecutor else {
+    return try await operation()
+  }
+
+  let taskExecutorBuiltin: Builtin.Executor =
+    taskExecutor.asUnownedTaskExecutor().executor
+
+  let record = _pushTaskExecutorPreference(taskExecutorBuiltin)
+  defer {
+    _popTaskExecutorPreference(record: record)
+  }
+
   return try await operation()
 }
 
