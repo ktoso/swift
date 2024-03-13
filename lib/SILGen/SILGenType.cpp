@@ -440,23 +440,27 @@ public:
 
       if (auto reqFunc = dyn_cast<FuncDecl>(reqDecl)) {
         if (reqFunc->isDistributedThunk()) {
-          fprintf(stderr, "[%s:%d](%s) WITNESS FOR THUNK REQUIREMENT!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-          reqFunc->dumpRef();
-          reqFunc->dump();
+//          fprintf(stderr, "[%s:%d](%s) WITNESS FOR THUNK REQUIREMENT!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//          reqFunc->dumpRef();
+//          reqFunc->dump();
         }
 
+        auto witness = asDerived().getWitness(reqDecl);
+        return addMethodImplementation(
+            requirementRef, SILDeclRef(reqDecl).asDistributed(), witness);
+
         // FIXME: must find the thunk witness here
-        auto shouldUseDistributedThunkWitness = true;
-        if (shouldUseDistributedThunkWitness) {
-          if (auto witness = asDerived().getWitness(reqDecl)) {
-            auto decl = witness.getDecl();
-            fprintf(stderr, "[%s:%d](%s) decl\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-            assert(false);
-          } else {
-            reqDecl->dumpRef();
-            reqDecl->dump();
-          }
-        }
+//        auto shouldUseDistributedThunkWitness = true;
+//        if (shouldUseDistributedThunkWitness) {
+//          if (auto witness = asDerived().getWitness(reqDecl)) {
+//            auto decl = witness.getDecl();
+//            fprintf(stderr, "[%s:%d](%s) decl\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//            assert(false);
+//          } else {
+//            reqDecl->dumpRef();
+//            reqDecl->dump();
+//          }
+//        }
       }
 
       // FIXME: we now are adding the em

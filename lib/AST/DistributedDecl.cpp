@@ -1286,6 +1286,10 @@ AbstractFunctionDecl::isDistributedTargetInvocationResultHandlerOnReturn() const
 /******************************************************************************/
 
 bool ValueDecl::isDistributed() const {
+  if (auto accessor = dyn_cast<AccessorDecl>(this)) {
+    return accessor->getStorage()->isDistributed();
+  }
+
   return getAttrs().hasAttribute<DistributedActorAttr>();
 }
 
@@ -1352,13 +1356,13 @@ AbstractFunctionDecl::getDistributedThunk() const {
   auto mutableThis = const_cast<AbstractFunctionDecl *>(this);
 
   if (auto accessor = dyn_cast<AccessorDecl>(mutableThis)) {
-    fprintf(stderr, "[%s:%d](%s) GET VAR THUNK\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d](%s) GET VAR THUNK\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     auto Storage = accessor->getStorage();
-    Storage->dump();
-    fprintf(stderr, "[%s:%d](%s) GOR THUNK\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    if (auto thunk = Storage->getDistributedThunk()) {
-      thunk->dump();
-    }
+//    Storage->dump();
+//    fprintf(stderr, "[%s:%d](%s) GOR THUNK\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    if (auto thunk = Storage->getDistributedThunk()) {
+//      thunk->dump();
+//    }
 
     return Storage->getDistributedThunk();
   }

@@ -120,8 +120,8 @@ void SILGenModule::emitDistributedThunkForDecl(
     if (isa<AccessorDecl>(afd)) {
       thunkDecl = afd->getDistributedThunk();
     }
-    fprintf(stderr, "[%s:%d](%s) BAIL OUT: accrssor\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    afd->dump();
+//    fprintf(stderr, "[%s:%d](%s) BAIL OUT: accrssor\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    afd->dump();
     return;
   } else {
     auto var = varOrAFD.get<VarDecl *>();
@@ -134,15 +134,15 @@ void SILGenModule::emitDistributedThunkForDecl(
   if (!thunkDecl->hasBody() || thunkDecl->isBodySkipped())
     return;
 
-  fprintf(stderr, "[%s:%d](%s) IS FUNC = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-          varOrAFD.is<AbstractFunctionDecl *>());
-  if (varOrAFD.is<AbstractFunctionDecl *>()) {
-    auto afd = varOrAFD.get<AbstractFunctionDecl *>();
-    afd->dump();
-  } else {
-    auto var = varOrAFD.get<VarDecl *>();
-    var->dump();
-  }
+//  fprintf(stderr, "[%s:%d](%s) IS FUNC = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+//          varOrAFD.is<AbstractFunctionDecl *>());
+//  if (varOrAFD.is<AbstractFunctionDecl *>()) {
+//    auto afd = varOrAFD.get<AbstractFunctionDecl *>();
+//    afd->dump();
+//  } else {
+//    auto var = varOrAFD.get<VarDecl *>();
+//    var->dump();
+//  }
 
   auto thunk = SILDeclRef(thunkDecl).asDistributed();
 
