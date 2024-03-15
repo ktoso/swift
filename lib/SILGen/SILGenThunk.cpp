@@ -122,7 +122,7 @@ void SILGenModule::emitDistributedThunkForDecl(
     }
 //    fprintf(stderr, "[%s:%d](%s) BAIL OUT: accrssor\n", __FILE_NAME__, __LINE__, __FUNCTION__);
 //    afd->dump();
-    return;
+//    return;
   } else {
     auto var = varOrAFD.get<VarDecl *>();
     thunkDecl = var->getDistributedThunk();

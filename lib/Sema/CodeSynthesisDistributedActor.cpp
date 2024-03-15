@@ -714,7 +714,7 @@ createSameSignatureFunctionDecl(DeclContext *DC, FuncDecl *func,
         /*async=*/forceAsync || func->hasAsync(),
         /*throws=*/forceThrows || func->hasThrows(),
         /*thrownType=*/TypeLoc::withoutLoc(Type()), // TODO(distributed): support typed throws
-        func->getResultInterfaceType(), DC);
+        func->getResultInterfaceType(), DC); // TODO: wrong context
     accessorCopy->setParameters(params);
     // accessorCopy->setName(funcName);
     copy = accessorCopy;
