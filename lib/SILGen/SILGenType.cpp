@@ -398,6 +398,9 @@ template<typename T> class SILGenWitnessTable : public SILWitnessVisitor<T> {
 
 public:
   void addMethod(SILDeclRef requirementRef) {
+    // TODO: here the requirement is thunk_decl of the protocol; it is a FUNC
+    // detect here that it is a func dec + thunk.
+    // walk up to DC, and find storage.
     // e  requirementRef->getDecl()->dump()
     //(func_decl implicit "distributedVariable()" interface type="<Self where Self : WorkerProtocol> (Self) -> () async throws -> String" access=internal nonisolated distributed_thunk
     //  (parameter "self")
@@ -419,9 +422,18 @@ public:
 
     auto reqAccessor = dyn_cast<AccessorDecl>(reqDecl);
 
+    auto storage = // NIL
+
     // If it's not an accessor, just look for the witness.
     if (!reqAccessor) {
-      if (auto witness = asDerived().getWitness(reqDecl)) {
+
+      // TODO: we enter here, because we are a FUNC
+      // if (is distributed THUNK)
+      // get DC and get the variable decl = that is our a
+      //  set the storage...
+      //  FALL THROUGH
+      // else
+    if (auto witness = asDerived().getWitness(reqDecl)) {
         auto newDecl = requirementRef.withDecl(witness.getDecl());
         // Only import C++ methods as foreign. If the following
         // Objective-C function is imported as foreign:
@@ -438,11 +450,18 @@ public:
             witness);
       }
       return asDerived().addMissingMethod(requirementRef);
+    } else {
+
+      // TODO: make this happen, the reqAccessor find it
+      // Otherwise, we need to map the storage declaration and then get
+      // the appropriate accessor for it.
+      storage = reqAccessor->getStorage();
+
     }
 
-    // Otherwise, we need to map the storage declaration and then get
-    // the appropriate accessor for it.
-    auto witness = asDerived().getWitness(reqAccessor->getStorage());
+
+
+    auto witness = asDerived().getWitness(storage);
     if (!witness)
       return asDerived().addMissingMethod(requirementRef);
 

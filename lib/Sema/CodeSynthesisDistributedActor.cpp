@@ -709,6 +709,9 @@ createSameSignatureFunctionDecl(DeclContext *DC, FuncDecl *func,
 
   FuncDecl *copy;
   if (auto accessor = dyn_cast<AccessorDecl>(func)) {
+    // TODO: try a Func, but make DC the Storage;
+    // Isolation of var has to match the type
+    // TODO: inside addMethod get the DC and
     auto accessorCopy = AccessorDecl::createImplicit(
         C, AccessorKind::DistributedGet, accessor->getStorage(),
         /*async=*/forceAsync || func->hasAsync(),
