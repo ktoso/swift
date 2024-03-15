@@ -4660,6 +4660,7 @@ bool InvalidMemberRefOnExistential::diagnoseAsError() {
       break;
 
     case AccessorKind::Get:
+    case AccessorKind::DistributedGet:
     case AccessorKind::Read:
     case AccessorKind::Modify:
     case AccessorKind::Address:

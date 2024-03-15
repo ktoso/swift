@@ -598,6 +598,9 @@ private:
         case AccessorKind::Get:
           Kind = ".get";
           break;
+        case AccessorKind::DistributedGet:
+          Kind = "._distributed_get";
+          break;
         case AccessorKind::Set:
           Kind = ".set";
           break;

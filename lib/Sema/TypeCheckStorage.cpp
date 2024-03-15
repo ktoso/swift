@@ -2193,6 +2193,7 @@ synthesizeAccessorBody(AbstractFunctionDecl *fn, void *) {
 
   switch (accessor->getAccessorKind()) {
   case AccessorKind::Get:
+  case AccessorKind::DistributedGet:
     return synthesizeGetterBody(accessor, ctx);
 
   case AccessorKind::Set:
@@ -2493,6 +2494,7 @@ SynthesizeAccessorRequest::evaluate(Evaluator &evaluator,
 
   switch (kind) {
   case AccessorKind::Get:
+  case AccessorKind::DistributedGet:
     return createGetterPrototype(storage, ctx);
 
   case AccessorKind::Set:
@@ -2670,6 +2672,7 @@ IsAccessorTransparentRequest::evaluate(Evaluator &evaluator,
 
   switch (accessor->getAccessorKind()) {
   case AccessorKind::Get:
+  case AccessorKind::DistributedGet:
     break;
 
   case AccessorKind::Set:

@@ -27,12 +27,6 @@ extern "C" [[noreturn]]
 #endif
 void exit(int);
 
-
-inline void _backdeploy_swift_concurrency_checkIsolated() {
-assert(false);
-}
-
-
 #define EXIT_SUCCESS 0
 
 #endif // STDLIB_SHIMS_H

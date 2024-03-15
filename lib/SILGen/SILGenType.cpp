@@ -437,33 +437,6 @@ public:
             requirementRef, getWitnessRef(newDecl, witness),
             witness);
       }
-
-      if (auto reqFunc = dyn_cast<FuncDecl>(reqDecl)) {
-        if (reqFunc->isDistributedThunk()) {
-//          fprintf(stderr, "[%s:%d](%s) WITNESS FOR THUNK REQUIREMENT!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//          reqFunc->dumpRef();
-//          reqFunc->dump();
-        }
-
-        auto witness = asDerived().getWitness(reqDecl);
-        return addMethodImplementation(
-            requirementRef, SILDeclRef(reqDecl).asDistributed(), witness);
-
-        // FIXME: must find the thunk witness here
-//        auto shouldUseDistributedThunkWitness = true;
-//        if (shouldUseDistributedThunkWitness) {
-//          if (auto witness = asDerived().getWitness(reqDecl)) {
-//            auto decl = witness.getDecl();
-//            fprintf(stderr, "[%s:%d](%s) decl\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//            assert(false);
-//          } else {
-//            reqDecl->dumpRef();
-//            reqDecl->dump();
-//          }
-//        }
-      }
-
-      // FIXME: we now are adding the em
       return asDerived().addMissingMethod(requirementRef);
     }
 
@@ -473,6 +446,7 @@ public:
     if (!witness)
       return asDerived().addMissingMethod(requirementRef);
 
+
     // Static properties can be witnessed by enum cases without payload
     if (auto EED = dyn_cast<EnumElementDecl>(witness.getDecl())) {
       return addMethodImplementation(
@@ -481,8 +455,16 @@ public:
     }
 
     auto witnessStorage = cast<AbstractStorageDecl>(witness.getDecl());
-    if (reqAccessor->isSetter() && !witnessStorage->supportsMutation())
+    if (reqAccessor->isSetter() && !witnessStorage->supportsMutation()) {
       return asDerived().addMissingMethod(requirementRef);
+    }
+    // Here we notice a `distributed var` thunk requirement,
+    // and witness it with the distributed thunk -- the "getter thunk".
+    if (requirementRef.isDistributedThunk()) {
+      return addMethodImplementation(
+          requirementRef, getWitnessRef(requirementRef, witnessStorage->getDistributedThunk()),
+          witness);
+    }
 
     auto witnessAccessor =
       witnessStorage->getSynthesizedAccessor(reqAccessor->getAccessorKind());

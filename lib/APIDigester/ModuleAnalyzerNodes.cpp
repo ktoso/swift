@@ -1724,6 +1724,7 @@ SDKContext::shouldIgnore(Decl *D, const Decl* Parent) const {
     if (!checkingABI()) {
       switch (ACC->getAccessorKind()) {
       case AccessorKind::Get:
+      case AccessorKind::DistributedGet:
       case AccessorKind::Set:
         break;
       default:

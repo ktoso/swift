@@ -3945,6 +3945,7 @@ void PrintAST::visitAccessorDecl(AccessorDecl *decl) {
 
   switch (auto kind = decl->getAccessorKind()) {
   case AccessorKind::Get:
+  case AccessorKind::DistributedGet:
   case AccessorKind::Address:
   case AccessorKind::Read:
   case AccessorKind::Modify:
