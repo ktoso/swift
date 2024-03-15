@@ -1238,7 +1238,6 @@ public:
 
   void setThrows(ThrownErrorDestination throws) {
     assert(!ThrowDest);
-    fprintf(stderr, "[%s:%d](%s) set throw dest \n", __FILE_NAME__, __LINE__, __FUNCTION__);
     ThrowDest = throws;
   }
 
@@ -1625,8 +1624,6 @@ public:
 
   void setThrows(ThrownErrorDestination throws) {
     assert(!ThrowDest);
-    fprintf(stderr, "[%s:%d](%s) set throw dest \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-
     ThrowDest = throws;
   }
 
@@ -4729,7 +4726,6 @@ public:
   void setThrows(ThrownErrorDestination throws) {
     assert(!Bits.ApplyExpr.ThrowsIsSet);
     Bits.ApplyExpr.ThrowsIsSet = true;
-    fprintf(stderr, "[%s:%d](%s) set throw dest \n", __FILE_NAME__, __LINE__, __FUNCTION__);
     ThrowDest = throws;
   }
 
