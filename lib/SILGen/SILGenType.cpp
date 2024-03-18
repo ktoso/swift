@@ -1297,8 +1297,11 @@ public:
       SGM.emitPropertyWrapperBackingInitializer(vd);
     }
 
-    SGM.emitDistributedThunkForDecl(vd);
     visitAbstractStorageDecl(vd);
+
+    fprintf(stderr, "[%s:%d](%s) emit distributed thunk for...\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    vd->dump();
+    SGM.emitDistributedThunkForDecl(vd);
   }
 
   void visitSubscriptDecl(SubscriptDecl *sd) {
@@ -1473,8 +1476,11 @@ public:
       }
     }
 
-    SGM.emitDistributedThunkForDecl(vd);
     visitAbstractStorageDecl(vd);
+
+    fprintf(stderr, "[%s:%d](%s) emit distributed thunk for...\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    vd->dump();
+    SGM.emitDistributedThunkForDecl(vd);
   }
 
   void visitSubscriptDecl(SubscriptDecl *sd) {
