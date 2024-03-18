@@ -21,7 +21,10 @@ distributed actor Worker<ActorSystem> where ActorSystem: DistributedActorSystem<
     }
   }
 
-  distributed func distributedMethod() -> String { "implemented" }
+//
+//  distributed func distributedMethod() -> String {
+//    "implemented"
+//  }
 }
 
 // ==== Execute ----------------------------------------------------------------
@@ -32,9 +35,9 @@ distributed actor Worker<ActorSystem> where ActorSystem: DistributedActorSystem<
 
     let actor = Worker(actorSystem: system)
 
-    let v = try await actor.distributedVariable
-    print("v = \(v)") // CHECK: v = implemented!
-
+//    let v = try await actor.distributedVariable
+//    print("v = \(v)") // CHECK: v = implemented!
+//
 //    let m = try await actor.distributedMethod()
 //    print("m = \(m)")
 

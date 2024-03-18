@@ -423,7 +423,6 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 
         auto initCallArgCallExpr =
             CallExpr::createImplicit(C, remoteCallArgumentInitDeclRef, initCallArgArgs);
-        initCallArgCallExpr->setImplicit();
 
         auto callArgPB = PatternBindingDecl::createImplicit(
             C, StaticSpellingKind::None, callArgPattern, initCallArgCallExpr, thunk);
@@ -655,6 +654,12 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
                                /*else=*/localBranchStmt, implicit, C);
 
   auto body = BraceStmt::create(C, sloc, {ifStmt}, sloc, implicit);
+
+  fprintf(stderr, "[%s:%d](%s) THUNK >>>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  thunk->dump();
+  fprintf(stderr, "[%s:%d](%s) DUMP BODY\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  body->dump();
+
   return {body, /*isTypeChecked=*/false};
 }
 
@@ -730,10 +735,10 @@ createSameSignatureDistributedThunkDecl(DeclContext *DC, FuncDecl *func,
     auto accessorThunk = AccessorDecl::createImplicit(
         C, AccessorKind::DistributedGet,
         /*storage=*/accessor->getStorage(),
-        /*async=*/forceAsync || func->hasAsync(),
-        /*throws=*/forceThrows || func->hasThrows(),
+        /*async=*/true, /*throws=*/true, // since it's a distributed thunk
         /*thrownType=*/TypeLoc::withoutLoc(Type()), // TODO(distributed): support typed throws
-        func->getResultInterfaceType(), DC); // TODO: wrong context
+        func->getResultInterfaceType(),
+        DC); // TODO: wrong context
     accessorThunk->setParameters(params);
     // accessorThunk->setName(funcName); // we're not doing this anymore
     thunk = accessorThunk;
@@ -741,8 +746,7 @@ createSameSignatureDistributedThunkDecl(DeclContext *DC, FuncDecl *func,
     thunk = FuncDecl::createImplicit(
         C, swift::StaticSpellingKind::None,
         funcName, SourceLoc(),
-        /*async=*/forceAsync || func->hasAsync(),
-        /*throws=*/forceThrows || func->hasThrows(),
+        /*async=*/true, /*throws=*/true, // since it's a distributed thunk
         /*thrownType=*/Type(), // TODO(distributed): support typed throws
         genericParamList,
         params, func->getResultInterfaceType(), DC);
