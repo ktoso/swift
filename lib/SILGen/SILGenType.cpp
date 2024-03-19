@@ -1269,8 +1269,6 @@ public:
 
     visitAbstractStorageDecl(vd);
 
-//    fprintf(stderr, "[%s:%d](%s) emit distributed thunk for...\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//    vd->dump();
     SGM.emitDistributedThunkForDecl(vd);
   }
 
@@ -1448,8 +1446,6 @@ public:
 
     visitAbstractStorageDecl(vd);
 
-//    fprintf(stderr, "[%s:%d](%s) emit distributed thunk for...\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//    vd->dump();
     SGM.emitDistributedThunkForDecl(vd);
   }
 
