@@ -44,7 +44,8 @@ extension WorkerProtocol {
 
 @available(SwiftStdlib 6.0, *)
 func test<DA: WorkerProtocol>(actor: DA) async throws {
-    _ = try await actor.distributedVariable
+    let v = try await actor.distributedVariable
+    print("v = \(v)") // CHECK: v = implemented!
 }
 
 @available(SwiftStdlib 6.0, *)
