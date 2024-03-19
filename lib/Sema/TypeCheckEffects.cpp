@@ -3192,8 +3192,6 @@ private:
       // HACK: functions can get queued multiple times in
       // definedFunctions, so be sure to be idempotent.
       if (!E->isThrowsSet()) {
-        fprintf(stderr, "[%s:%d](%s) HACK: set throws\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-        E->dump();
         E->setThrows(throwDest);
       }
 
@@ -3203,8 +3201,6 @@ private:
       // HACK: functions can get queued multiple times in
       // definedFunctions, so be sure to be idempotent.
       if (!E->isThrowsSet()) {
-        fprintf(stderr, "[%s:%d](%s) HACK: set throws\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-        E->dump();
         E->setThrows(ThrownErrorDestination());
       }
 
@@ -3338,9 +3334,6 @@ private:
       return ThrownErrorDestination();
     }
 
-    fprintf(stderr, "[%s:%d](%s) CHECK ASYNC CALL \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    E.dump();
-
     auto asyncKind = classification.getConditionalKind(EffectKind::Async);
     auto throwsKind = classification.getConditionalKind(EffectKind::Throws);
 
@@ -3377,8 +3370,6 @@ private:
 
     // Check throwing calls.
     MaxThrowingKind = std::max(MaxThrowingKind, throwsKind); // FIXME: why is the left Never for property?
-    fprintf(stderr, "[%s:%d](%s) MaxThrowingKind = %d \n", __FILE_NAME__, __LINE__, __FUNCTION__, MaxThrowingKind);
-    fprintf(stderr, "[%s:%d](%s) throwsKind = %d \n", __FILE_NAME__, __LINE__, __FUNCTION__, throwsKind);
 
     switch (throwsKind) {
     // Completely ignores sites that don't throw.
@@ -3418,7 +3409,6 @@ private:
       break;
     }
 
-    fprintf(stderr, "[%s:%d](%s) NO THROW\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     return ThrownErrorDestination();
   }
 

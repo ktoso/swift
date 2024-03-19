@@ -6354,8 +6354,8 @@ static ActorIsolation getActorIsolationForReference(
 
   if (auto var = dyn_cast<VarDecl>(decl)) {
     if (var->isDistributed()) {
-      var->dump();
-      fprintf(stderr, "[%s:%d](%s) HERE\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//      var->dump();
+//      fprintf(stderr, "[%s:%d](%s) HERE\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     }
   }
 
@@ -6405,8 +6405,8 @@ static ActorIsolation getActorIsolationForReference(
         declIsolation.isNonisolated()) {
       if (auto nominal = var->getDeclContext()->getSelfNominalTypeDecl()) {
         if (nominal->isAnyActor()) {
-          fprintf(stderr, "[%s:%d](%s) return isolation: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-          ActorIsolation::forActorInstanceSelf(decl).dump();
+//          fprintf(stderr, "[%s:%d](%s) return isolation: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//          ActorIsolation::forActorInstanceSelf(decl).dump();
           return ActorIsolation::forActorInstanceSelf(decl);
         }
 
@@ -6420,8 +6420,8 @@ static ActorIsolation getActorIsolationForReference(
 
   }
 
-  fprintf(stderr, "[%s:%d](%s) return isolation: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  declIsolation.dump();
+//  fprintf(stderr, "[%s:%d](%s) return isolation: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  declIsolation.dump();
   return declIsolation;
 }
 
