@@ -667,11 +667,9 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 /// This is used both to create stub witnesses as well as distributed thunks.
 ///
 /// \param DC The declaration context of the newly created function
-static FuncDecl *
-createSameSignatureDistributedThunkDecl(DeclContext *DC, FuncDecl *func,
-                                // std::optional<DeclName> nameOverride,
-                                DeclName thunkName,
-                                bool forceAsync, bool forceThrows) {
+static FuncDecl *createSameSignatureDistributedThunkDecl(DeclContext *DC,
+                                                         FuncDecl *func,
+                                                         DeclName thunkName) {
   auto &C = func->getASTContext();
 
   // --- Prepare generic parameters
@@ -786,9 +784,7 @@ static FuncDecl *createDistributedThunkFunction(FuncDecl *func) {
   }
 
   FuncDecl *thunk =
-      createSameSignatureDistributedThunkDecl(DC, func, thunkName,
-                                              /*forceAsync=*/true,
-                                              /*forceThrows=*/true);
+      createSameSignatureDistributedThunkDecl(DC, func, thunkName);
   fprintf(stderr, "[%s:%d](%s) FUNC IS accessor: %d\n", __FILE_NAME__, __LINE__, __FUNCTION__, isa<AccessorDecl>(func));
   fprintf(stderr, "[%s:%d](%s) THUNK IS accessor: %d\n", __FILE_NAME__, __LINE__, __FUNCTION__, isa<AccessorDecl>(thunk));
 //  assert((!isa<AccessorDecl>(func) || (isa<AccessorDecl>(func) && isa<AccessorDecl>(thunk))) &&

@@ -995,8 +995,10 @@ std::optional<Type> AbstractFunctionDecl::getEffectiveThrownErrorType() const {
   // has a cyclic reference if we try to get its interface type here. Find a
   // better way to express this.
   if (auto accessor = dyn_cast<AccessorDecl>(this)) {
-    if (accessor->getAccessorKind() != AccessorKind::Get)
-      return std::nullopt;
+    if (accessor->getAccessorKind() != AccessorKind::Get &&
+        accessor->getAccessorKind() != AccessorKind::DistributedGet) {
+        return std::nullopt;
+        }
   }
 
   Type interfaceType = getInterfaceType();
@@ -2791,9 +2793,8 @@ bool AbstractStorageDecl::requiresOpaqueAccessors() const {
 bool AbstractStorageDecl::requiresOpaqueAccessor(AccessorKind kind) const {
   switch (kind) {
   case AccessorKind::Get:
-    return requiresOpaqueGetter();
   case AccessorKind::DistributedGet:
-    return false;
+    return requiresOpaqueGetter();
   case AccessorKind::Set:
     return requiresOpaqueSetter();
   case AccessorKind::Read:
