@@ -1118,7 +1118,7 @@ private:
   /// \c false otherwise.
   bool evaluate(Evaluator &evaluator,
                 AbstractFunctionDecl *,
-                /*inContext */ClassDecl *) const;
+                /*inContext=*/ClassDecl *) const;
 
 public:
   // Caching

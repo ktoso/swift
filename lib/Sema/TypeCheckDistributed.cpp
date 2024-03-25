@@ -451,11 +451,11 @@ static bool checkDistributedTargetResultType(
                                                serializationReq->getNameStr();
 
         auto diag = valueDecl->diagnose(
-            diag::distributed_actor_target_result_not_codable,
+            diag::distributed_actor_target_result_not_serializable,
             resultType,
             valueDecl,
-            conformanceToSuggest
-        );
+            conformanceToSuggest);
+        diag.limitBehaviorIf(conformingActor, swift::DiagnosticBehavior::Note);
 
         if (isCodableRequirement) {
           if (auto resultNominalType = resultType->getAnyNominal()) {
@@ -544,13 +544,6 @@ bool CheckDistributedFunctionRequest::evaluate(
   if (!C.getLoadedModule(C.Id_Distributed))
     return true;
 
-  fprintf(stderr, "[%s:%d](%s) conformingActor = %p\n", __FILE_NAME__, __LINE__, __FUNCTION__, conformingActor);
-  if (conformingActor) {
-    conformingActor->dump();
-  }
-  fprintf(stderr, "[%s:%d](%s) CONTEXT: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  DC->dumpContext();
-
   Type serializationReqType =
     getDistributedActorSerializationType(
       conformingActor ? conformingActor : func->getDeclContext());
@@ -591,6 +584,7 @@ bool CheckDistributedFunctionRequest::evaluate(
               func->getDescriptiveKind(),
               serializationRequirementIsCodable ? "Codable"
                                                 : req->getNameStr());
+          diag.limitBehaviorIf(conformingActor, DiagnosticBehavior::Note);
 
           if (auto paramNominalTy = paramTy->getAnyNominal()) {
             addCodableFixIt(paramNominalTy, diag);

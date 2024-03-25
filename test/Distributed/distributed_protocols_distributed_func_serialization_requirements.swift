@@ -10,12 +10,18 @@ import FakeDistributedActorSystems
 struct NotCodable {}
 
 protocol NoSerializationRequirementYet: DistributedActor {
+
+  // NOTE: Notes here come from the conforming actor SpecifyRequirement
+  // expected-note@+1{{result type 'NotCodable' of distributed instance method 'test' does not conform to serialization requirement 'Codable'}}
   distributed func test() -> NotCodable
 
-  // OK, no serialization requirement yet
+  // NOTE: Notes here come from the conforming actor SpecifyRequirement
+  // expected-note@+1{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
   distributed func testAT() async throws -> NotCodable
 }
 
+// expected-error@+2{{distributed actor 'SpecifyRequirement' cannot conform to 'NoSerializationRequirementYet' because of serialization requirement error in distributed instance method 'testAT()'}}
+// expected-error@+1{{distributed actor 'SpecifyRequirement' cannot conform to 'NoSerializationRequirementYet' because of serialization requirement error in distributed instance method 'test()'}}
 distributed actor SpecifyRequirement: NoSerializationRequirementYet {
   typealias ActorSystem = FakeActorSystem
 
@@ -33,9 +39,14 @@ distributed actor SpecifyRequirement: NoSerializationRequirementYet {
 
 protocol ProtocolWithChecksSystem: DistributedActor
   where ActorSystem == FakeActorSystem {
-  // expected-error@+1{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
+  // Error comes from the protocol itself
+  // expected-error@+3{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
+  // Note comes from adopting type
+  // expected-note@+1{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
   distributed func testAT() async throws -> NotCodable
 }
+
+// expected-error@+1{{distributed actor 'ProtocolWithChecksSystemDA' cannot conform to 'ProtocolWithChecksSystem' because of serialization requirement error in distributed instance method 'testAT()'}}
 distributed actor ProtocolWithChecksSystemDA: ProtocolWithChecksSystem {
   // expected-error@+1{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
   distributed func testAT() async throws -> NotCodable { .init() }
@@ -43,7 +54,10 @@ distributed actor ProtocolWithChecksSystemDA: ProtocolWithChecksSystem {
 
 protocol ProtocolWithChecksSeqReq: DistributedActor
   where Self.SerializationRequirement == Codable {
-  // expected-error@+1{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
+  // Error comes from the protocol itself
+  // expected-error@+3{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
+  // Note comes from adopting type
+  // expected-note@+1{{result type 'NotCodable' of distributed instance method 'testAT' does not conform to serialization requirement 'Codable'}}
   distributed func testAT() async throws -> NotCodable
 }
 distributed actor ProtocolWithChecksSeqReqDA_MissingSystem: ProtocolWithChecksSeqReq {
@@ -58,6 +72,7 @@ distributed actor ProtocolWithChecksSeqReqDA_MissingSystem: ProtocolWithChecksSe
   distributed func testAT() async throws -> NotCodable { .init() }
 }
 
+// expected-error@+1{{distributed actor 'ProtocolWithChecksSeqReqDA' cannot conform to 'ProtocolWithChecksSeqReq' because of serialization requirement error in distributed instance method 'testAT()'}}
 distributed actor ProtocolWithChecksSeqReqDA: ProtocolWithChecksSeqReq {
   typealias ActorSystem = FakeActorSystem
   // ok, since FakeActorSystem.SerializationRequirement == ProtocolWithChecksSeqReq.SerializationRequirement

@@ -5498,7 +5498,7 @@ ERROR(distributed_actor_func_param_not_serializable,none,
 ERROR(distributed_actor_cannot_conform_to_protocol_failed_serialization_requirement_compat,none,
       "distributed actor %0 cannot conform to %1 because of serialization requirement error in %2 %3",
       (DeclName, DeclName, DescriptiveDeclKind, const ValueDecl *))
-ERROR(distributed_actor_target_result_not_codable,none,
+ERROR(distributed_actor_target_result_not_serializable,none,
       "result type %0 of %kindbase1 does not conform to serialization requirement '%2'",
       (Type, const ValueDecl *, StringRef))
 ERROR(distributed_actor_system_serialization_req_must_be_protocol,none,
