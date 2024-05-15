@@ -38,6 +38,49 @@ public protocol Executor: AnyObject, Sendable {
 }
 
 /// A service that executes jobs.
+///
+/// ### Custom Actor Executors
+/// By default, all actor types execute tasks on a shared global concurrent pool.
+/// The global pool does not guarantee any thread (or dispatch queue) affinity,
+/// so actors are free to use different threads as they execute tasks.
+///
+/// > The runtime may perform various optimizations to minimize un-necessary
+/// > thread switching.
+///
+/// Sometimes it is important to be able to customize the execution behavior
+///  of an actor. For example, when an actor is known to perform heavy blocking
+/// operations (such as IO), and we would like to keep this work *off* the global
+/// shared pool, as blocking it may prevent other actors from being responsive.
+///
+/// You can implement a custom executor, by conforming a type to the
+/// ``SerialExecutor`` protocol, and implementing the ``enqueue(_:)`` method.
+///
+/// Once implemented, you can configure an actor to use such executor by
+/// implementing the actor's ``Actor/unownedExecutor`` computed property:
+///
+/// ```
+/// actor MyActor {
+///   static let coolExecutor = MyExecutor() // implements SerialExecutor
+///
+///
+///   nonisolated var unownedExecutor: UnownedSerialExecutor {
+///     Self.myExecutor.asUnownedSerialExecutor()
+///   }
+/// }
+/// ```
+///
+/// In the example above, we created a single executor that will be shared by
+/// all instances of `MyActor`. While this may be what you're looking for, it is
+/// also possible to pass in an executor through the initializer or obtain it in
+/// other ways.
+///
+/// Since the ``UnownedSerialExecutor`` returned by the `unownedExecutor`
+/// property *does not* retain the executor, you must make sure the lifetime of
+/// it extends beyond the lifetime of any actor or task using it, as otherwise
+/// it may attempt to enqueue work on a released executor object, causing a crash.
+///
+/// Alternatively, you can also use existing serial executor implementations,
+/// such as Dispatch's `DispatchSerialQueue`, and others.
 @available(SwiftStdlib 5.1, *)
 public protocol SerialExecutor: Executor {
   // This requirement is repeated here as a non-override so that we
