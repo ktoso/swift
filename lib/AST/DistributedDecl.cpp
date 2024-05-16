@@ -77,6 +77,20 @@ bool swift::canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *act
 }
 
 ProtocolConformanceRef
+swift::getDistributedActorAsActorConformanceRef(ASTContext &C, SubstitutionMap subs) {
+  auto actorProto = C.getProtocol(KnownProtocolKind::Actor);
+  Type distributedActorType = subs.getReplacementTypes()[0];
+
+  auto distributedActorAsActorConformance =
+      getDistributedActorAsActorConformance(C, subs);
+
+    return ProtocolConformanceRef(
+        actorProto,
+        C.getSpecializedConformance(distributedActorType,
+                                      distributedActorAsActorConformance,
+                                      subs));
+}
+NormalProtocolConformance *
 swift::getDistributedActorAsActorConformance(ASTContext &C, SubstitutionMap subs) {
   auto distributedActorProtocol = C.getProtocol(KnownProtocolKind::DistributedActor);
 
@@ -89,7 +103,7 @@ swift::getDistributedActorAsActorConformance(ASTContext &C, SubstitutionMap subs
   auto got = evaluateOrDefault(
       C.evaluator,
       GetDistributedActorAsActorConformanceRequest{distributedActorProtocol, subs},
-      ProtocolConformanceRef());
+      nullptr);
 
 //  if (!subs.empty() &&
 //      !C.evaluator.hasCachedResult(GetDistributedActorAsActorConformanceRequest{distributedActorProtocol, SubstitutionMap()})) {

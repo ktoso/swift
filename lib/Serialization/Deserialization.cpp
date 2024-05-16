@@ -1032,6 +1032,23 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
     return conformance;
 
   conformance->setState(ProtocolConformanceState::Complete);
+
+  if (conformance->isConformanceOfProtocol()) {
+    auto *dc = conformance->getDeclContext();
+    auto &C = dc->getASTContext();
+
+    // Currently this we should only be skipping only be happening for the
+    // "DistributedActor as Actor" SILGen generated conformance.
+    // See `isConformanceOfProtocol` for details, if adding more such
+    // conformances, consider changing the way we structure their construction.
+    assert(conformance->getProtocol()->getInterfaceType()->isEqual(
+        C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
+           "Only expected to 'skip' finishNormalConformance for manually "
+           "created DistributedActor-as-Actor conformance.");
+    fprintf(stderr, "[%s:%d](%s) AVOID LAZY LOADER\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    return conformance;
+  }
+
   conformance->setLazyLoader(&MF, offset); // then we do set lazy leader on it...
   return conformance;
 }

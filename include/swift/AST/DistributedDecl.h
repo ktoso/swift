@@ -108,8 +108,11 @@ Type getDistributedActorSystemActorIDType(NominalTypeDecl *system);
 ///
 /// The protocol conformance is a special one that is currently
 /// only used by the `distributedActorAsAnyActor` builtin.
-ProtocolConformanceRef
+NormalProtocolConformance *
 getDistributedActorAsActorConformance(ASTContext &C, SubstitutionMap subs);
+
+ProtocolConformanceRef
+getDistributedActorAsActorConformanceRef(ASTContext &C, SubstitutionMap subs);
 
 /// Check if the `allRequirements` represent *exactly* the
 /// `Encodable & Decodable` (also known as `Codable`) requirement.

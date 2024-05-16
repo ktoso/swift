@@ -427,6 +427,14 @@ ConditionalRequirementsRequest::evaluate(Evaluator &evaluator,
 void NormalProtocolConformance::resolveLazyInfo() const {
   assert(Loader);
 
+  // FIXME: this is nonsense
+  if (isConformanceOfProtocol()) {
+    fprintf(stderr, "[%s:%d](%s) RESOLVE LAZY INFO SPECIAL !!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    auto &C = this->getDeclContext()->getASTContext();
+    getDistributedActorAsActorConformance(C, this->getSubstitutionMap());
+    return;
+  }
+
   auto *loader = Loader;
   auto *mutableThis = const_cast<NormalProtocolConformance *>(this);
   mutableThis->Loader = nullptr;
@@ -1171,11 +1179,7 @@ bool NominalTypeDecl::lookupConformance(
     fprintf(stderr, "[%s:%d](%s) protocol :::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     protocol->dump();
 
-    fprintf(stderr, "[%s:%d](%s) confs ::: %d\n", __FILE_NAME__, __LINE__, __FUNCTION__, conformances.size());
-    for (auto c : conformances) {
-      fprintf(stderr, "[%s:%d](%s) conf:::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      c->dump();
-    }
+    fprintf(stderr, "[%s:%d](%s) ::::::~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~:::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
 
     // Special handle the DistributedActor-to-Actor case:
     if (thisProtocol->isSpecificProtocol(KnownProtocolKind::DistributedActor) &&
@@ -1183,10 +1187,15 @@ bool NominalTypeDecl::lookupConformance(
       fprintf(stderr, "[%s:%d](%s) make request; CALL protocol->getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
       auto &C = protocol->getASTContext();
       auto found = getDistributedActorAsActorConformance(C, SubstitutionMap());
-      fprintf(stderr, "[%s:%d](%s) FOUND FROM LOOKUP\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      found.dump();
+      if (found) {
+        fprintf(stderr, "[%s:%d](%s) FOUND FROM LOOKUP\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+        found->dump();
+        conformances.push_back(found);
+        return true;
+      }
 
-      return true;
+      fprintf(stderr, "[%s:%d](%s) NOT FOUND xxxxxxxxx\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      return false;
     }
 
     fprintf(stderr, "[%s:%d](%s) continue...\n", __FILE_NAME__, __LINE__, __FUNCTION__);

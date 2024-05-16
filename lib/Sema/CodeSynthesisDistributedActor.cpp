@@ -1083,10 +1083,11 @@ static ExtensionDecl *findDistributedActorAsActorExtension(
   return nullptr;
 }
 
-static NormalProtocolConformance *distributedActorAsActorConformanceCached = nullptr;
-static std::optional<ProtocolConformanceRef> distributedActorAsActorConformanceRefCached = {};
+NormalProtocolConformance *distributedActorAsActorConformanceCached = nullptr;
+//static std::optional<ProtocolConformanceRef> distributedActorAsActorConformanceRefCached = {};
 
-ProtocolConformanceRef GetDistributedActorAsActorConformanceRequest::evaluate(
+NormalProtocolConformance *
+GetDistributedActorAsActorConformanceRequest::evaluate(
     Evaluator &evaluator,
     ProtocolDecl *distributedActorProto, SubstitutionMap subs) const {
   fprintf(stderr, "[%s:%d](%s) GetDistributedActorAsActorConformanceRequest::evaluate >>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
@@ -1099,27 +1100,33 @@ ProtocolConformanceRef GetDistributedActorAsActorConformanceRequest::evaluate(
   fprintf(stderr, "[%s:%d](%s) subs ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
   subs.dump();
 
-  if (distributedActorAsActorConformanceRefCached.has_value()) {
-    fprintf(stderr, "[%s:%d](%s) RETURN CACHED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    return distributedActorAsActorConformanceRefCached.value();
+  if (subs.empty()) {
+    fprintf(stderr, "[%s:%d](%s) BAIL OUT NO SUBS !!!!!!!!!!!!!!!!!!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+
+    if (distributedActorAsActorConformanceCached) {
+      distributedActorAsActorConformanceCached->dump();
+    } else {
+      fprintf(stderr, "[%s:%d](%s) WHY WAS distributedActorAsActorConformanceCached NIL ?!?!?!?\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    }
+    return distributedActorAsActorConformanceCached;
   }
+
+//  if (distributedActorAsActorConformanceRefCached.has_value()) {
+//    fprintf(stderr, "[%s:%d](%s) RETURN CACHED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    return distributedActorAsActorConformanceRefCached.value();
+//  }
 
   auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
 
-  Type distributedActorType = subs.getReplacementTypes()[0];
-  fprintf(stderr, "[%s:%d](%s) Type distributedActorType\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  distributedActorType.dump();
+//  Type distributedActorType = subs.getReplacementTypes()[0];
+//  fprintf(stderr, "[%s:%d](%s) Type distributedActorType\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  distributedActorType.dump();
 
   if (auto distributedActorAsActorConformance = distributedActorAsActorConformanceCached) {
     fprintf(stderr, "[%s:%d](%s) xxx WAS CACHED:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     distributedActorAsActorConformanceCached->dump();
 
-    auto conf = ProtocolConformanceRef(
-        actorProto,
-        ctx.getSpecializedConformance(distributedActorType,
-                                      distributedActorAsActorConformance,
-                                      subs));
-    return conf;
+    return distributedActorAsActorConformance;
   } else {
     fprintf(stderr, "[%s:%d](%s) xxx NOT CACHED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   }
@@ -1132,12 +1139,15 @@ ProtocolConformanceRef GetDistributedActorAsActorConformanceRequest::evaluate(
       // distributedActorProto, M.getSwiftModule());
       distributedActorProto, swiftModule);
   if (!ext)
-    return ProtocolConformanceRef();
+    return nullptr;
 
   // Conformance of DistributedActor to Actor.
   auto genericParam = subs.getGenericSignature().getGenericParams()[0];
-  // Normally we "register" a conformance
-  auto distributedActorAsActorConformance = ctx.getNormalConformance( // note that we dont register it
+  fprintf(stderr, "[%s:%d](%s) genericParam:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  genericParam->dump();
+
+  // Normally we "register" a conformance, but here we don't
+  auto distributedActorAsActorConformance = ctx.getNormalConformance(
       Type(genericParam), actorProto, SourceLoc(), ext,
       ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
       /*isPreconcurrency=*/false);
@@ -1149,13 +1159,16 @@ ProtocolConformanceRef GetDistributedActorAsActorConformanceRequest::evaluate(
 
   // so we did not register
 
-  auto conf = ProtocolConformanceRef(
-      actorProto,
-      ctx.getSpecializedConformance(distributedActorType,
-                                    distributedActorAsActorConformance,
-                                    subs));
+//  auto conf = ProtocolConformanceRef(
+//      actorProto,
+//      ctx.getSpecializedConformance(distributedActorType,
+//                                    distributedActorAsActorConformance,
+//                                    subs));
+
+  fprintf(stderr, "[%s:%d](%s) xxx CACHE IT AS distributedActorAsActorConformanceCached ::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   distributedActorAsActorConformanceCached = distributedActorAsActorConformance;
-  fprintf(stderr, "[%s:%d](%s) xxx CACHE IT\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  distributedActorAsActorConformanceCached->dump();
+
 //  evaluator.cacheOutput(
 //      GetDistributedActorAsActorConformanceRequest{distributedActorProto, SubstitutionMap()},
 //      std::move(ProtocolConformanceRef(
@@ -1167,5 +1180,5 @@ ProtocolConformanceRef GetDistributedActorAsActorConformanceRequest::evaluate(
 //  conf.dump();
 //  assert(evaluator.hasCachedResult(GetDistributedActorAsActorConformanceRequest{distributedActorProto, SubstitutionMap()}));
 
-  return conf;
+  return distributedActorAsActorConformanceCached;
 }

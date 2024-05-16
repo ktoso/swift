@@ -2001,8 +2001,9 @@ void SILGenModule::noteMemberRefExpr(MemberRefExpr *e) {
           ->isSpecificProtocol(KnownProtocolKind::DistributedActor)) {
     fprintf(stderr, "[%s:%d](%s) CALL SGM.getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     auto conformance =
-        getDistributedActorAsActorConformance(ctx,
+        getDistributedActorAsActorConformanceRef(ctx,
           e->getMember().getSubstitutions());
+
     useConformance(conformance);
   }
 

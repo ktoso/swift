@@ -805,12 +805,12 @@ SILGenFunction::emitDistributedActorAsAnyActor(SILLocation loc,
 
   // Erase the distributed actor instance into an `any Actor` existential with
   // the special conformance.
-  CanType distributedActorType =
-    distributedActorSubs.getReplacementTypes()[0]->getCanonicalType();
-  auto &distributedActorTL = getTypeLowering(distributedActorType);
-  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
+  CanType distributedActorCanType =
+    distributedActorType->getCanonicalType();
+  auto &distributedActorTL = getTypeLowering(distributedActorCanType);
+//  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
   auto &anyActorTL = getTypeLowering(actorProto->getDeclaredExistentialType());
-  return emitExistentialErasure(loc, distributedActorType,
+  return emitExistentialErasure(loc, distributedActorCanType,
                                 distributedActorTL, anyActorTL,
                                 ctx.AllocateCopy(conformances),
                                 SGFContext(),

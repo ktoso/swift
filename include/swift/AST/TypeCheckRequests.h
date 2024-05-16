@@ -1141,7 +1141,7 @@ public:
 /// Get a special conformance of the DistributedActor protocol to the Actor protocol.
 class GetDistributedActorAsActorConformanceRequest :
     public SimpleRequest<GetDistributedActorAsActorConformanceRequest,
-        ProtocolConformanceRef(ProtocolDecl *, SubstitutionMap),
+                         NormalProtocolConformance *(ProtocolDecl *, SubstitutionMap),
         RequestFlags::Cached> {
 public:
     using SimpleRequest::SimpleRequest;
@@ -1149,10 +1149,8 @@ public:
 private:
     friend SimpleRequest;
 
-    ProtocolConformanceRef evaluate(
-        Evaluator &evaluator,
-        ProtocolDecl *distributedActorProto,
-        SubstitutionMap subs) const;
+    NormalProtocolConformance *evaluate(Evaluator &evaluator,
+        ProtocolDecl *distributedActorProto, SubstitutionMap subs) const;
 
 public:
     // Caching
