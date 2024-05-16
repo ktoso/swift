@@ -1138,6 +1138,33 @@ public:
     bool isCached() const { return true; }
 };
 
+/// Get a special conformance of the DistributedActor protocol to the Actor protocol.
+class GetDistributedActorAsActorConformanceRequest :
+    public SimpleRequest<GetDistributedActorAsActorConformanceRequest,
+        ProtocolConformanceRef(ProtocolDecl *, SubstitutionMap),
+        RequestFlags::Cached> {
+public:
+    using SimpleRequest::SimpleRequest;
+
+private:
+    friend SimpleRequest;
+
+    ProtocolConformanceRef evaluate(
+        Evaluator &evaluator,
+        ProtocolDecl *distributedActorProto,
+        SubstitutionMap subs) const;
+
+public:
+    // Caching
+    bool isCached() const { return true; }
+//    std::optional<SubstitutionMap> getCachedResult() const {
+//      return {};
+//    }
+//    void cacheResult(SubstitutionMap value) const { }
+};
+
+void simple_display(llvm::raw_ostream &out, SubstitutionMap value);
+
 /// Retrieve the implicit conformance for the given distributed actor type to
 /// the Codable protocol protocol.
 ///

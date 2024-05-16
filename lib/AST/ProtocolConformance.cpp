@@ -1158,6 +1158,40 @@ void NominalTypeDecl::prepareConformanceTable() const {
 bool NominalTypeDecl::lookupConformance(
        ProtocolDecl *protocol,
        SmallVectorImpl<ProtocolConformance *> &conformances) const {
+
+  // In general, protocols cannot conform to other protocols, however there are
+  // exceptions, and we may be able to obtain a synthesized conformance for
+  // them, e.g. a DistributedActor to Actor conformance.
+  if (auto thisProtocol = dyn_cast<ProtocolDecl>(this)) {
+
+    fprintf(stderr, "[%s:%d](%s) protocol!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    fprintf(stderr, "[%s:%d](%s) THIS::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    this->dump();
+
+    fprintf(stderr, "[%s:%d](%s) protocol :::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    protocol->dump();
+
+    fprintf(stderr, "[%s:%d](%s) confs ::: %d\n", __FILE_NAME__, __LINE__, __FUNCTION__, conformances.size());
+    for (auto c : conformances) {
+      fprintf(stderr, "[%s:%d](%s) conf:::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      c->dump();
+    }
+
+    // Special handle the DistributedActor-to-Actor case:
+    if (thisProtocol->isSpecificProtocol(KnownProtocolKind::DistributedActor) &&
+        protocol->isSpecificProtocol(KnownProtocolKind::Actor)) {
+      fprintf(stderr, "[%s:%d](%s) make request; CALL protocol->getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      auto &C = protocol->getASTContext();
+      auto found = getDistributedActorAsActorConformance(C, SubstitutionMap());
+      fprintf(stderr, "[%s:%d](%s) FOUND FROM LOOKUP\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      found.dump();
+
+      return true;
+    }
+
+    fprintf(stderr, "[%s:%d](%s) continue...\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  }
+
   assert(!isa<ProtocolDecl>(this) &&
          "Self-conformances are only found by the higher-level "
          "ModuleDecl::lookupConformance() entry point");

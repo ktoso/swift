@@ -151,8 +151,6 @@ public:
   virtual void
   finishNormalConformance(NormalProtocolConformance *conformance,
                           uint64_t contextData) = 0;
-
-  // TODO: add new method specifically for DistributedActorAsActor
 };
 
 }

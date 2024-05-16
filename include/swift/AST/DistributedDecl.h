@@ -102,6 +102,15 @@ Type getDistributedActorSystemResultHandlerType(NominalTypeDecl *system);
 /// Get the 'ActorID' type of a specific distributed actor system.
 Type getDistributedActorSystemActorIDType(NominalTypeDecl *system);
 
+/// Retrieve a protocol conformance to the `Actor` protocol for a
+/// distributed actor type that is described via a substitution map for
+/// the generic signature `<T: DistributedActor>`.
+///
+/// The protocol conformance is a special one that is currently
+/// only used by the `distributedActorAsAnyActor` builtin.
+ProtocolConformanceRef
+getDistributedActorAsActorConformance(ASTContext &C, SubstitutionMap subs);
+
 /// Check if the `allRequirements` represent *exactly* the
 /// `Encodable & Decodable` (also known as `Codable`) requirement.
 ///

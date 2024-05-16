@@ -295,6 +295,12 @@ public:
     return lhs.storage != rhs.storage;
   }
 
+  friend llvm::hash_code hash_value(SubstitutionMap subs) {
+    using llvm::hash_value;
+    fprintf(stderr, "[%s:%d](%s) hacking subs ........\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    return hash_value(1); // FIXME: fix this
+  }
+
 private:
   friend class GenericSignature;
   friend class GenericEnvironment;

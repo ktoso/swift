@@ -23,6 +23,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/Builtins.h"
 #include "swift/AST/DiagnosticsSIL.h"
+#include "swift/AST/DistributedDecl.h"
 #include "swift/AST/FileUnit.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/Module.h"
@@ -1998,8 +1999,9 @@ void SILGenModule::noteMemberRefExpr(MemberRefExpr *e) {
       var->getDeclContext()->getSelfProtocolDecl() &&
       var->getDeclContext()->getSelfProtocolDecl()
           ->isSpecificProtocol(KnownProtocolKind::DistributedActor)) {
+    fprintf(stderr, "[%s:%d](%s) CALL SGM.getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     auto conformance =
-        getDistributedActorAsActorConformance(
+        getDistributedActorAsActorConformance(ctx,
           e->getMember().getSubstitutions());
     useConformance(conformance);
   }

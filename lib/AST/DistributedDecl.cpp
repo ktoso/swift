@@ -61,7 +61,7 @@
 using namespace swift;
 
 /******************************************************************************/
-/************* Implicit Distributed Actor Codable Conformance *****************/
+/******************* Distributed Actor Conformances ***************************/
 /******************************************************************************/
 
 bool swift::canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *actor) {
@@ -76,6 +76,31 @@ bool swift::canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *act
       false);
 }
 
+ProtocolConformanceRef
+swift::getDistributedActorAsActorConformance(ASTContext &C, SubstitutionMap subs) {
+  auto distributedActorProtocol = C.getProtocol(KnownProtocolKind::DistributedActor);
+
+  fprintf(stderr, "[%s:%d](%s) send request :::: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  fprintf(stderr, "[%s:%d](%s) this:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  distributedActorProtocol->dump();
+  fprintf(stderr, "[%s:%d](%s) subs:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  subs.dump();
+
+  auto got = evaluateOrDefault(
+      C.evaluator,
+      GetDistributedActorAsActorConformanceRequest{distributedActorProtocol, subs},
+      ProtocolConformanceRef());
+
+//  if (!subs.empty() &&
+//      !C.evaluator.hasCachedResult(GetDistributedActorAsActorConformanceRequest{distributedActorProtocol, SubstitutionMap()})) {
+//    fprintf(stderr, "[%s:%d](%s) CACHE IT!!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    C.evaluator.cacheOutput(
+//        GetDistributedActorAsActorConformanceRequest{C.getProtocol(KnownProtocolKind::DistributedActor), SubstitutionMap()},
+//        std::move(got)
+//        );
+//  }
+  return got;
+}
 
 /******************************************************************************/
 /************** Distributed Actor System Associated Types *********************/

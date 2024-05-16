@@ -14,7 +14,6 @@
 
 #include "CodeSynthesis.h"
 #include "DerivedConformances.h"
-#include "TypeCheckType.h"
 #include "TypeChecker.h"
 #include "swift/AST/ASTMangler.h"
 #include "swift/AST/ASTPrinter.h"
@@ -1065,4 +1064,108 @@ bool CanSynthesizeDistributedActorCodableConformanceRequest::evaluate(
              idTy, KnownProtocolKind::Decodable, actor->getParentModule()) &&
          TypeChecker::conformsToKnownProtocol(
              idTy, KnownProtocolKind::Encodable, actor->getParentModule());
+}
+
+/// Find the extension on DistributedActor that defines __actorUnownedExecutor.
+static ExtensionDecl *findDistributedActorAsActorExtension(
+    ProtocolDecl *distributedActorProto, ModuleDecl *module) {
+  ASTContext &ctx = distributedActorProto->getASTContext();
+  auto name = ctx.getIdentifier("__actorUnownedExecutor");
+  auto results = distributedActorProto->lookupDirect(
+      name, SourceLoc(),
+      NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements);
+  for (auto result : results) {
+    if (auto var = dyn_cast<VarDecl>(result)) {
+      return dyn_cast<ExtensionDecl>(var->getDeclContext());
+    }
+  }
+
+  return nullptr;
+}
+
+static NormalProtocolConformance *distributedActorAsActorConformanceCached = nullptr;
+static std::optional<ProtocolConformanceRef> distributedActorAsActorConformanceRefCached = {};
+
+ProtocolConformanceRef GetDistributedActorAsActorConformanceRequest::evaluate(
+    Evaluator &evaluator,
+    ProtocolDecl *distributedActorProto, SubstitutionMap subs) const {
+  fprintf(stderr, "[%s:%d](%s) GetDistributedActorAsActorConformanceRequest::evaluate >>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+
+  auto &ctx = distributedActorProto->getASTContext();
+  auto swiftModule = ctx.getStdlibModule();
+
+  fprintf(stderr, "[%s:%d](%s) protocol ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  distributedActorProto->dump();
+  fprintf(stderr, "[%s:%d](%s) subs ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  subs.dump();
+
+  if (distributedActorAsActorConformanceRefCached.has_value()) {
+    fprintf(stderr, "[%s:%d](%s) RETURN CACHED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    return distributedActorAsActorConformanceRefCached.value();
+  }
+
+  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
+
+  Type distributedActorType = subs.getReplacementTypes()[0];
+  fprintf(stderr, "[%s:%d](%s) Type distributedActorType\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  distributedActorType.dump();
+
+  if (auto distributedActorAsActorConformance = distributedActorAsActorConformanceCached) {
+    fprintf(stderr, "[%s:%d](%s) xxx WAS CACHED:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    distributedActorAsActorConformanceCached->dump();
+
+    auto conf = ProtocolConformanceRef(
+        actorProto,
+        ctx.getSpecializedConformance(distributedActorType,
+                                      distributedActorAsActorConformance,
+                                      subs));
+    return conf;
+  } else {
+    fprintf(stderr, "[%s:%d](%s) xxx NOT CACHED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  }
+
+
+//  if (!distributedActorProto)
+//    return ProtocolConformanceRef();
+
+  auto ext = findDistributedActorAsActorExtension(
+      // distributedActorProto, M.getSwiftModule());
+      distributedActorProto, swiftModule);
+  if (!ext)
+    return ProtocolConformanceRef();
+
+  // Conformance of DistributedActor to Actor.
+  auto genericParam = subs.getGenericSignature().getGenericParams()[0];
+  // Normally we "register" a conformance
+  auto distributedActorAsActorConformance = ctx.getNormalConformance( // note that we dont register it
+      Type(genericParam), actorProto, SourceLoc(), ext,
+      ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
+      /*isPreconcurrency=*/false);
+
+  // make a request for the thing; when we register here
+
+  // we always have an evaluator; when we register conformance, make a request or something, cache it.
+  // then in deserialization we find it.
+
+  // so we did not register
+
+  auto conf = ProtocolConformanceRef(
+      actorProto,
+      ctx.getSpecializedConformance(distributedActorType,
+                                    distributedActorAsActorConformance,
+                                    subs));
+  distributedActorAsActorConformanceCached = distributedActorAsActorConformance;
+  fprintf(stderr, "[%s:%d](%s) xxx CACHE IT\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  evaluator.cacheOutput(
+//      GetDistributedActorAsActorConformanceRequest{distributedActorProto, SubstitutionMap()},
+//      std::move(ProtocolConformanceRef(
+//          actorProto,
+//          ctx.getSpecializedConformance(distributedActorType,
+//                                        distributedActorAsActorConformance,
+//                                        subs)))
+//  );
+//  conf.dump();
+//  assert(evaluator.hasCachedResult(GetDistributedActorAsActorConformanceRequest{distributedActorProto, SubstitutionMap()}));
+
+  return conf;
 }
