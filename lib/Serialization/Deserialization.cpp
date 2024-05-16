@@ -810,7 +810,8 @@ ProtocolConformanceDeserializer::read(
   case decls_block::BUILTIN_PROTOCOL_CONFORMANCE:
     return readBuiltinProtocolConformance(scratch);
   case decls_block::NORMAL_PROTOCOL_CONFORMANCE:
-    return readNormalProtocolConformance(scratch, conformanceEntry);
+    // the conformance is serializezd is unique
+    return readNormalProtocolConformance(scratch, conformanceEntry); // this is how we call into
   case decls_block::PROTOCOL_CONFORMANCE_XREF:
     return readNormalProtocolConformanceXRef(scratch);
 
@@ -934,7 +935,7 @@ ProtocolConformanceDeserializer::readBuiltinProtocolConformance(
 }
 
 Expected<ProtocolConformance *>
-ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef(
+ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef( // HERE -- this is where we serialized a conformance reference; form different modeule.
                                               ArrayRef<uint64_t> scratch) {
   using namespace decls_block;
 
@@ -960,7 +961,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef(
     module = MF.getAssociatedModule();
 
   SmallVector<ProtocolConformance *, 2> conformances;
-  nominal->lookupConformance(proto, conformances);
+  nominal->lookupConformance(proto, conformances); // instead of this we need to find our special one that we did not register; since lookup is only done
   PrettyStackTraceModuleFile traceMsg(
       "If you're seeing a crash here, check that your SDK and dependencies "
       "are at least as new as the versions used to build", MF);
@@ -972,7 +973,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef(
 }
 
 Expected<ProtocolConformance *>
-ProtocolConformanceDeserializer::readNormalProtocolConformance(
+ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in different module.
                                               ArrayRef<uint64_t> scratch,
             ModuleFile::Serialized<ProtocolConformance *> &conformanceEntry) {
   using namespace decls_block;
@@ -1020,9 +1021,10 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance(
   uint64_t offset = conformanceEntry;
   conformanceEntry = conformance;
 
+  // TODO: why isn't it?
   // Note: the DistributedActor -> Actor pseudo-conformance can be deserialized
   // but must not be registered, so don't register it here.
-  if (!dc->getSelfProtocolDecl())
+  if (!dc->getSelfProtocolDecl()) // TODO: remove this (!), we do want to register it
     dc->getSelfNominalTypeDecl()->registerProtocolConformance(conformance);
 
   // If the conformance is complete, we're done.
@@ -1030,7 +1032,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance(
     return conformance;
 
   conformance->setState(ProtocolConformanceState::Complete);
-  conformance->setLazyLoader(&MF, offset);
+  conformance->setLazyLoader(&MF, offset); // then we do set lazy leader on it...
   return conformance;
 }
 
@@ -8337,20 +8339,27 @@ void ModuleFile::finishNormalConformance(NormalProtocolConformance *conformance,
   using namespace decls_block;
   PrettyStackTraceModuleFile traceModule(*this);
 
-  if (conformance->isConformanceOfProtocol()) {
-    auto *dc = conformance->getDeclContext();
-    auto &C = dc->getASTContext();
+  // if normal conformance is written in source...
+  // the mapping is populated by typechecking and it is deserialized...
 
-    // Currently this we should only be skipping only be happening for the
-    // "DistributedActor as Actor" SILGen generated conformance.
-    // See `isConformanceOfProtocol` for details, if adding more such
-    // conformances, consider changing the way we structure their construction.
-    assert(conformance->getProtocol()->getInterfaceType()->isEqual(
-        C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
-           "Only expected to 'skip' finishNormalConformance for manually "
-           "created DistributedActor-as-Actor conformance.");
-    return;
-  }
+  // HERE is where we deserialize.
+
+  // make sure this is called.
+
+//  if (conformance->isConformanceOfProtocol()) {
+//    auto *dc = conformance->getDeclContext();
+//    auto &C = dc->getASTContext();
+//
+//    // Currently this we should only be skipping only be happening for the
+//    // "DistributedActor as Actor" SILGen generated conformance.
+//    // See `isConformanceOfProtocol` for details, if adding more such
+//    // conformances, consider changing the way we structure their construction.
+//    assert(conformance->getProtocol()->getInterfaceType()->isEqual(
+//        C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
+//           "Only expected to 'skip' finishNormalConformance for manually "
+//           "created DistributedActor-as-Actor conformance.");
+//    return;
+//  }
 
   PrettyStackTraceConformance trace("finishing conformance for",
                                     conformance);

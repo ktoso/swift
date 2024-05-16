@@ -678,6 +678,16 @@ static ExtensionDecl *findDistributedActorAsActorExtension(
   return nullptr;
 }
 
+
+// TODO: fix registration;
+//        - registering was only working for nominals
+//        - the new "protocol conformance to protocol are not registered -- see the hack in ProtocolConformanceDeserializer::readNormalProtocolConformance
+//        - the SILGenModule::getDistributedActorAsActorConformance should only be called ONCE
+//          - as otherwise we'll get weird create but also deserialize in same module sometimes.
+//        - make sure we only "create" the conformance when building the Distributed module.
+//        - fix the lookupConformance to handle the protocol case -- it can use a request to find protocol conformance to protocol and this way it'll find our registered thing
+
+// MAKE THIS ONLY happen when building distributed module itself.
 ProtocolConformanceRef
 SILGenModule::getDistributedActorAsActorConformance(SubstitutionMap subs) {
   ASTContext &ctx = M.getASTContext();
@@ -696,10 +706,17 @@ SILGenModule::getDistributedActorAsActorConformance(SubstitutionMap subs) {
 
     // Conformance of DistributedActor to Actor.
     auto genericParam = subs.getGenericSignature().getGenericParams()[0];
-    distributedActorAsActorConformance = ctx.getNormalConformance(
+    distributedActorAsActorConformance = ctx.getNormalConformance( // note that we dont register it
         Type(genericParam), actorProto, SourceLoc(), ext,
         ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
         /*isPreconcurrency=*/false);
+
+    // make a request for the thing; when we register here
+
+    // we always have an evaluator; when we register conformance, make a request or something, cache it.
+    // then in deserialization we find it.
+
+     // so we did not register
   }
 
   return ProtocolConformanceRef(

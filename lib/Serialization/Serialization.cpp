@@ -1737,6 +1737,7 @@ void Serializer::writeASTBlockEntity(const SILLayout *layout) {
                         data);
 }
 
+// TODO: DON'T serialize the special conformance for DA-as_A
 void Serializer::writeLocalNormalProtocolConformance(
                                     NormalProtocolConformance *conformance) {
   using namespace decls_block;

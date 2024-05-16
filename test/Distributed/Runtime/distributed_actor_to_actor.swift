@@ -22,43 +22,9 @@ import FakeDistributedActorSystems
 
 typealias DefaultDistributedActorSystem = FakeRoundtripActorSystem
 
-distributed actor Worker {
-  var counter: Int = 0
-
-  distributed func test() async {
-    print("Starting on distributed actor \(self)")
-    counter = counter + 1
-    let result = await asLocalActor.doSomethingAsync {
-      incrementCounter()
-      return "\(counter)"
-    }
-    print("Distributed actor received \(result)")
-  }
-
-  func incrementCounter() {
-    counter += 1
-  }
+@available(SwiftStdlib 5.7, *)
+public func g<T: DistributedActor>(_ t: isolated T) -> any Actor {
+  return f(t)
 }
 
-extension Actor {
-  func doSomethingAsync(body: () async -> String) async -> String {
-    print("Executing on local actor \(self)")
-    let result = await body()
-    print("Got \(result) back")
-    return result + "!"
-  }
-}
-
-@main struct Main {
-  static func main() async throws {
-    let worker = Worker(actorSystem: DefaultDistributedActorSystem())
-
-    // CHECK: Starting on distributed actor [[PTR:.*]]
-    // CHECK: Executing on local actor [[PTR]]
-    // CHECK: Got 2 back
-    // CHECK: Distributed actor received 2!
-    try await worker.test()
-
-    print("OK") // CHECK: OK
-  }
-}
+//

@@ -681,6 +681,19 @@ RootProtocolConformance::getWitnessDeclRef(ValueDecl *requirement) const {
 
 void NormalProtocolConformance::setWitness(ValueDecl *requirement,
                                            Witness witness) const {
+  auto &C = requirement->getASTContext();
+  if (witness.getDecl() &&
+      !witness.getDecl()->getBaseName().isSpecial() &&
+      witness.getDecl()->getBaseIdentifier() == C.getIdentifier("__actorUnownedExecutor")) {
+
+    fprintf(stderr, "[%s:%d](%s) setWitness\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    fprintf(stderr, "[%s:%d](%s)     requirement:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    requirement->dump();
+    fprintf(stderr, "[%s:%d](%s)     witness:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    witness.dump();
+    fprintf(stderr, "[%s:%d](%s) ------------------------------------\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  }
+
   assert(!isa<AssociatedTypeDecl>(requirement) && "Request type witness");
   assert(getProtocol() == cast<ProtocolDecl>(requirement->getDeclContext()) &&
          "requirement in wrong protocol");
@@ -1148,6 +1161,10 @@ bool NominalTypeDecl::lookupConformance(
   assert(!isa<ProtocolDecl>(this) &&
          "Self-conformances are only found by the higher-level "
          "ModuleDecl::lookupConformance() entry point");
+
+  // TODO: dont use conformance table because protocols ddont have conformance tables
+
+  // TODO: would havce to hook in with deserialization somehow
 
   prepareConformanceTable();
   return ConformanceTable->lookupConformance(
