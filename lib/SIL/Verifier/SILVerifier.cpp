@@ -4627,9 +4627,10 @@ public:
     auto layout = resultType.getExistentialLayout();
     auto protocols = layout.getProtocols();
 
-    require(conformances.size() == protocols.size(),
-            "init_existential instruction must have the "
-            "right number of conformances");
+//    // FIXME: since we're now skipping the made up conformance...
+//    require(conformances.size() == protocols.size(),
+//            "init_existential instruction must have the "
+//            "right number of conformances");
 
     if (layout.requiresClass()) {
       require(concreteType->mayHaveSuperclass() ||

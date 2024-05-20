@@ -19,6 +19,7 @@
 #include "swift/AST/AttrKind.h"
 #include "swift/AST/AutoDiff.h"
 #include "swift/AST/DiagnosticsSema.h"
+#include "swift/AST/DistributedDecl.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/ForeignAsyncConvention.h"
 #include "swift/AST/ForeignErrorConvention.h"
@@ -1034,6 +1035,9 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
   conformance->setState(ProtocolConformanceState::Complete);
 
   if (conformance->isConformanceOfProtocol()) {
+
+    // TODO: assert here, we dont want to serialzie these at all, so if we got here this is bad
+
     auto *dc = conformance->getDeclContext();
     auto &C = dc->getASTContext();
 
@@ -1046,6 +1050,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
            "Only expected to 'skip' finishNormalConformance for manually "
            "created DistributedActor-as-Actor conformance.");
     fprintf(stderr, "[%s:%d](%s) AVOID LAZY LOADER\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    conformance->dump();
     return conformance;
   }
 
