@@ -1248,6 +1248,13 @@ void NominalTypeDecl::getImplicitProtocols(
 
 void NominalTypeDecl::registerProtocolConformance(
        NormalProtocolConformance *conformance, bool synthesized) {
+  // TODO: alternate idea, maybe we can store the conformance here somehow
+  ///      and this way we'd allow registering for protocols here...
+  if (conformance->isConformanceOfProtocol()) {
+    auto protocol = conformance->getDeclContext()->getSelfProtocolDecl();
+    // TODO: make some other place to register in...
+  }
+
   prepareConformanceTable();
   auto *dc = conformance->getDeclContext();
   ConformanceTable->registerProtocolConformance(dc, conformance, synthesized);

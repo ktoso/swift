@@ -1247,12 +1247,13 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn,
                                                          ValID);
     break;
   case SIL_INIT_EXISTENTIAL:
+    // FIXME: this is where we get the ID of the bad conformance
     SILInitExistentialLayout::readRecord(scratch, RawOpCode,
                                          TyID, TyCategory,
                                          TyID2, TyCategory2,
                                          ValID,
                                          ConcreteTyID,
-                                         ListOfValues);
+                                         ListOfValues); // FIXME: THIS WILL get our bad conformance read into
     break;
   case SIL_ONE_TYPE_VALUES:
     SILOneTypeValuesLayout::readRecord(scratch, RawOpCode, TyID, TyCategory,

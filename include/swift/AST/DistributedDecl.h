@@ -46,7 +46,7 @@ NominalTypeDecl *getDistributedActorInvocationDecoder(NominalTypeDecl *);
 /// the user may need to provide an explicit conformance to the
 /// `SerializationRequirement` if they wanted to pass the actor to distributed
 /// methods.
-bool canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *actor);
+bool canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *actor); // FIXME: this is not used
 
 /// Find `decodeNextArgument<T>(type: T.Type) -> T` method associated with
 /// invocation decoder of the given distributed actor.

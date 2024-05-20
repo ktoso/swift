@@ -902,6 +902,9 @@ SILSerializer::writeKeyPathPatternComponent(
 void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   PrettyStackTraceSILNode stackTrace("Serializing", &SI);
 
+  fprintf(stderr, "[%s:%d](%s) WRITE SIL INSTR\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  SI.dump();
+
   switch (SI.getKind()) {
   case SILInstructionKind::ObjectInst: {
     const ObjectInst *OI = cast<ObjectInst>(&SI);
@@ -1020,6 +1023,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
     }
 
     TypeID formalConcreteTypeID = S.addTypeRef(FormalConcreteType);
+    // FIXME: we're adding conformances to be serialized...
     auto conformanceIDs = S.addConformanceRefs(conformances);
 
     unsigned abbrCode = SILAbbrCodes[SILInitExistentialLayout::Code];
@@ -1031,7 +1035,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
        (unsigned)operandCategory,
        operandID,
        formalConcreteTypeID,
-       conformanceIDs);
+       conformanceIDs); // FIXME: this has our conformance that we do not want to serialize
     break;
   }
   case SILInstructionKind::DeallocBoxInst: {

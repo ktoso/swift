@@ -985,6 +985,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
       isPreconcurrency;
   ArrayRef<uint64_t> rawIDs;
 
+  fprintf(stderr, "[%s:%d](%s) ::readNormalProtocolConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   NormalProtocolConformanceLayout::readRecord(scratch, protoID,
                                               contextID, typeCount,
                                               valueCount, conformanceCount,
@@ -1022,7 +1023,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
   uint64_t offset = conformanceEntry;
   conformanceEntry = conformance;
 
-  // TODO: why isn't it?
+  // TODO: instead we should perhaps allow this
   // Note: the DistributedActor -> Actor pseudo-conformance can be deserialized
   // but must not be registered, so don't register it here.
   if (!dc->getSelfProtocolDecl()) // TODO: remove this (!), we do want to register it
@@ -1036,10 +1037,26 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
 
   if (conformance->isConformanceOfProtocol()) {
 
+    conformance->dump();
+    assert(false && "we're trying to never serialize these at all!"); // FIXME: for the approach of never serializing at all
+
     // TODO: assert here, we dont want to serialzie these at all, so if we got here this is bad
 
     auto *dc = conformance->getDeclContext();
     auto &C = dc->getASTContext();
+
+    // TODO: maybe we can make up the subs map this needs?
+    //    (substitution_map generic_signature=<Self where Self : DistributedActor>
+    //     (substitution Self ->
+    //       (primary_archetype_type address=0x14b86e118 class layout=AnyObject conforms_to="Distributed.(file).DistributedActor" name="T"
+    //         (interface_type=generic_type_param_type depth=0 index=0 decl="FakeDistributedActorSystems.(file).f(_:).T@/Users/ktoso/code/swift-project/swift/test/Distributed/Runtime/../Inputs/FakeDistributedActorSystems.swift:27:15")))
+    //     (conformance type="Self"
+    //       (abstract_conformance protocol="DistributedActor")))
+//    auto subs = SubstitutionMap(
+//        buildGenericSignature(C, GenericSignature())
+//        );
+//    getDistributedActorAsActorConformance(C,
+//                                          );
 
     // Currently this we should only be skipping only be happening for the
     // "DistributedActor as Actor" SILGen generated conformance.

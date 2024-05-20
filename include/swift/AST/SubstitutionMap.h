@@ -297,8 +297,13 @@ public:
 
   friend llvm::hash_code hash_value(SubstitutionMap subs) {
     using llvm::hash_value;
-    fprintf(stderr, "[%s:%d](%s) hacking subs ........\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    return hash_value(1); // FIXME: fix this
+//    return hash_value(1); // FIXME: fix this
+//    GenericSignature genericSig,
+//        ArrayRef<Type> replacementTypes,
+//        ArrayRef<ProtocolConformanceRef> conformances
+    return llvm::hash_combine(hash_value(subs.getGenericSignature()),
+                              hash_value(subs.getReplacementTypes()),
+                              hash_value(subs.getConformances()));
   }
 
 private:

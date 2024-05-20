@@ -105,14 +105,6 @@ swift::getDistributedActorAsActorConformance(ASTContext &C, SubstitutionMap subs
       GetDistributedActorAsActorConformanceRequest{distributedActorProtocol, subs},
       nullptr);
 
-//  if (!subs.empty() &&
-//      !C.evaluator.hasCachedResult(GetDistributedActorAsActorConformanceRequest{distributedActorProtocol, SubstitutionMap()})) {
-//    fprintf(stderr, "[%s:%d](%s) CACHE IT!!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//    C.evaluator.cacheOutput(
-//        GetDistributedActorAsActorConformanceRequest{C.getProtocol(KnownProtocolKind::DistributedActor), SubstitutionMap()},
-//        std::move(got)
-//        );
-//  }
   return got;
 }
 
