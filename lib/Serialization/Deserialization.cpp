@@ -973,6 +973,23 @@ ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef( // HERE -- t
   return conformances.front();
 }
 
+static ExtensionDecl *findDistributedActorAsActorExtension_HACK(
+    ProtocolDecl *distributedActorProto, ModuleDecl *module) {
+  ASTContext &ctx = distributedActorProto->getASTContext();
+  auto name = ctx.getIdentifier("__actorUnownedExecutor");
+  auto results = distributedActorProto->lookupDirect(
+      name, SourceLoc(),
+      NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements);
+  for (auto result : results) {
+    if (auto var = dyn_cast<VarDecl>(result)) {
+      return dyn_cast<ExtensionDecl>(var->getDeclContext());
+    }
+  }
+
+  return nullptr;
+}
+
+
 Expected<ProtocolConformance *>
 ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in different module.
                                               ArrayRef<uint64_t> scratch,
@@ -1038,7 +1055,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
   if (conformance->isConformanceOfProtocol()) {
 
     conformance->dump();
-    assert(false && "we're trying to never serialize these at all!"); // FIXME: for the approach of never serializing at all
+//    assert(false && "we're trying to never serialize these at all!"); // FIXME: for the approach of never serializing at all
 
     // TODO: assert here, we dont want to serialzie these at all, so if we got here this is bad
 
@@ -1056,7 +1073,23 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
 //        buildGenericSignature(C, GenericSignature())
 //        );
 //    getDistributedActorAsActorConformance(C,
+//
 //                                          );
+    auto distributedActorProto = C.getDistributedActorDecl();
+        auto swiftModule = C.getStdlibModule();
+    auto ext = findDistributedActorAsActorExtension_HACK(
+        // distributedActorProto, M.getSwiftModule());
+        distributedActorProto, swiftModule);
+
+    auto genericTypeParamType = GenericTypeParamType::get(/*isParameterPack=*/false,
+                              /*depth=*/0, /*index=*/0, C);
+    C.getNormalConformance(
+        Type(genericTypeParamType), C.getProtocol(KnownProtocolKind::Actor),
+        SourceLoc(), ext,
+        ProtocolConformanceState::Incomplete,
+        /*isUnchecked=*/true,
+        /*isPreconcurrency=*/false
+        );
 
     // Currently this we should only be skipping only be happening for the
     // "DistributedActor as Actor" SILGen generated conformance.
