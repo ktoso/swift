@@ -902,8 +902,8 @@ SILSerializer::writeKeyPathPatternComponent(
 void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   PrettyStackTraceSILNode stackTrace("Serializing", &SI);
 
-  fprintf(stderr, "[%s:%d](%s) WRITE SIL INSTR\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  SI.dump();
+//  fprintf(stderr, "[%s:%d](%s) WRITE SIL INSTR\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  SI.dump();
 
   switch (SI.getKind()) {
   case SILInstructionKind::ObjectInst: {

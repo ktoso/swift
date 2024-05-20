@@ -1089,27 +1089,29 @@ NormalProtocolConformance *distributedActorAsActorConformanceCached = nullptr;
 NormalProtocolConformance *
 GetDistributedActorAsActorConformanceRequest::evaluate(
     Evaluator &evaluator,
-    ProtocolDecl *distributedActorProto, SubstitutionMap subs) const {
-  fprintf(stderr, "[%s:%d](%s) GetDistributedActorAsActorConformanceRequest::evaluate >>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    ProtocolDecl *distributedActorProto
+    , SubstitutionMap subs // TODO: remove this and just make up inside?
+    ) const {
+//  fprintf(stderr, "[%s:%d](%s) GetDistributedActorAsActorConformanceRequest::evaluate >>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
 
   auto &ctx = distributedActorProto->getASTContext();
   auto swiftModule = ctx.getStdlibModule();
 
-  fprintf(stderr, "[%s:%d](%s) protocol ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  distributedActorProto->dump();
-  fprintf(stderr, "[%s:%d](%s) subs ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  subs.dump();
+//  fprintf(stderr, "[%s:%d](%s) protocol ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  distributedActorProto->dump();
+//  fprintf(stderr, "[%s:%d](%s) subs ==== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  subs.dump();
 
-  if (subs.empty()) {
-    fprintf(stderr, "[%s:%d](%s) BAIL OUT NO SUBS !!!!!!!!!!!!!!!!!!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-
-    if (distributedActorAsActorConformanceCached) {
-      distributedActorAsActorConformanceCached->dump();
-    } else {
-      fprintf(stderr, "[%s:%d](%s) WHY WAS distributedActorAsActorConformanceCached NIL ?!?!?!?\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    }
-    return distributedActorAsActorConformanceCached;
-  }
+//  if (subs.empty()) {
+//    fprintf(stderr, "[%s:%d](%s) BAIL OUT NO SUBS !!!!!!!!!!!!!!!!!!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//
+//    if (distributedActorAsActorConformanceCached) {
+//      distributedActorAsActorConformanceCached->dump();
+//    } else {
+//      fprintf(stderr, "[%s:%d](%s) WHY WAS distributedActorAsActorConformanceCached NIL ?!?!?!?\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    }
+//    return distributedActorAsActorConformanceCached;
+//  }
 
 //  if (distributedActorAsActorConformanceRefCached.has_value()) {
 //    fprintf(stderr, "[%s:%d](%s) RETURN CACHED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
@@ -1142,7 +1144,11 @@ GetDistributedActorAsActorConformanceRequest::evaluate(
     return nullptr;
 
   // Conformance of DistributedActor to Actor.
-  auto genericParam = subs.getGenericSignature().getGenericParams()[0];
+//  auto genericParam = subs.getGenericSignature().getGenericParams()[0];
+
+  auto genericParam = GenericTypeParamType::get(/*isParameterPack=*/false,
+                                                /*depth=*/0, /*index=*/0, ctx);
+
   fprintf(stderr, "[%s:%d](%s) genericParam:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   genericParam->dump();
 

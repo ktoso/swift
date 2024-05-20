@@ -1002,7 +1002,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
       isPreconcurrency;
   ArrayRef<uint64_t> rawIDs;
 
-  fprintf(stderr, "[%s:%d](%s) ::readNormalProtocolConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d](%s) ::readNormalProtocolConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   NormalProtocolConformanceLayout::readRecord(scratch, protoID,
                                               contextID, typeCount,
                                               valueCount, conformanceCount,
@@ -1083,7 +1083,13 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
 
     auto genericTypeParamType = GenericTypeParamType::get(/*isParameterPack=*/false,
                               /*depth=*/0, /*index=*/0, C);
-    C.getNormalConformance(
+
+    assert(conformance->getProtocol()->getInterfaceType()->isEqual(
+               C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
+           "Only expected to 'skip' finishNormalConformance for manually "
+           "created DistributedActor-as-Actor conformance.");
+
+    return conformance = C.getNormalConformance(
         Type(genericTypeParamType), C.getProtocol(KnownProtocolKind::Actor),
         SourceLoc(), ext,
         ProtocolConformanceState::Incomplete,
@@ -1100,8 +1106,8 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // Xref is in di
            "Only expected to 'skip' finishNormalConformance for manually "
            "created DistributedActor-as-Actor conformance.");
     fprintf(stderr, "[%s:%d](%s) AVOID LAZY LOADER\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    conformance->dump();
-    return conformance;
+//    conformance->dump();
+//    return conformance;
   }
 
   conformance->setLazyLoader(&MF, offset); // then we do set lazy leader on it...

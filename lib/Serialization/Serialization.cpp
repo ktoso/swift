@@ -1808,8 +1808,8 @@ void Serializer::writeLocalNormalProtocolConformance(
   unsigned abbrCode
     = DeclTypeAbbrCodes[NormalProtocolConformanceLayout::Code];
   auto ownerID = addDeclContextRef(conformance->getDeclContext());
-  fprintf(stderr, "[%s:%d](%s) NormalProtocolConformanceLayout::emitRecord >>>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-  conformance->dump();
+//  fprintf(stderr, "[%s:%d](%s) NormalProtocolConformanceLayout::emitRecord >>>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  conformance->dump();
   NormalProtocolConformanceLayout::emitRecord(Out, ScratchRecord, abbrCode,
                                               addDeclRef(protocol),
                                               ownerID.getOpaqueValue(),
@@ -1896,23 +1896,23 @@ Serializer::addConformanceRef(ProtocolConformanceRef ref) {
     //        frame #48: 0x00000001003a01cc swift-frontend`performAction(Instance=0x0000000159040800, ReturnValue=0x000000016fdf92fc, observer=0x0000000000000000) at FrontendTool.cpp:1447:12
     //        frame #49: 0x0000000100379fac swift-frontend`performCompile(Instance=0x0000000159040800, ReturnValue=0x000000016fdf92fc, observer=0x0000000000000000) at FrontendTool.cpp:1522:19
 
-    if (conformance->getKind() == ProtocolConformanceKind::Specialized) {
-      if (auto specialized = dyn_cast<SpecializedProtocolConformance>(conformance)) {
-        bool isConformanceOfProtocol =
-            specialized->getDeclContext()->getSelfProtocolDecl() != nullptr;
-        if (isConformanceOfProtocol) {
-          fprintf(stderr, "[%s:%d](%s) SPECIALIZED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-          fprintf(stderr, "[%s:%d](%s) SKIP IT? %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-                isConformanceOfProtocol);
-          conformance->dump();
-          if (auto p = specialized->getDeclContext()->getSelfProtocolDecl()) {
-            fprintf(stderr, "[%s:%d](%s) proto = \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-            p->dump();
-          }
-          return 99999999;
-        }
-      }
-    }
+//    if (conformance->getKind() == ProtocolConformanceKind::Specialized) {
+//      if (auto specialized = dyn_cast<SpecializedProtocolConformance>(conformance)) {
+//        bool isConformanceOfProtocol =
+//            specialized->getDeclContext()->getSelfProtocolDecl() != nullptr;
+//        if (isConformanceOfProtocol) {
+//          fprintf(stderr, "[%s:%d](%s) SPECIALIZED\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//          fprintf(stderr, "[%s:%d](%s) SKIP IT? %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+//                isConformanceOfProtocol);
+//          conformance->dump();
+//          if (auto p = specialized->getDeclContext()->getSelfProtocolDecl()) {
+//            fprintf(stderr, "[%s:%d](%s) proto = \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//            p->dump();
+//          }
+//          return 99999999;
+//        }
+//      }
+//    }
 
     auto rawID = ConformancesToSerialize.addRef(conformance);
     return ((rawID << SerializedProtocolConformanceKind::Shift) |
@@ -2048,7 +2048,7 @@ Serializer::addConformanceRefs(ArrayRef<ProtocolConformanceRef> conformances) {
 
 
     auto id = addConformanceRef(conformance);
-    if (id != 99999999) // FIXME: horrible hack
+//    if (id != 99999999) // FIXME: horrible hack
       results.push_back(id);
   }
   return results;
@@ -3535,16 +3535,16 @@ class Serializer::DeclSerializer : public DeclVisitor<DeclSerializer> {
                          SmallVectorImpl<TypeID> &data) {
     size_t count = 0;
     for (auto conformance : declContext->getLocalConformances(lookupKind)) {
-      fprintf(stderr, "[%s:%d](%s) ADD CONFOMANCE CHECK IF SKIP\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      conformance->dump();
+//      fprintf(stderr, "[%s:%d](%s) ADD CONFOMANCE CHECK IF SKIP\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//      conformance->dump();
 
-      if (conformance->getKind() == ProtocolConformanceKind::Normal) {
-        auto normal = cast<NormalProtocolConformance>(conformance);
-        if (normal->isConformanceOfProtocol()) {
-          fprintf(stderr, "[%s:%d](%s) SKIP IP SKIP IP SKIP IP SKIP IP SKIP IP !!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-          continue;
-        }
-      }
+//      if (conformance->getKind() == ProtocolConformanceKind::Normal) {
+//        auto normal = cast<NormalProtocolConformance>(conformance);
+//        if (normal->isConformanceOfProtocol()) {
+//          fprintf(stderr, "[%s:%d](%s) SKIP IP SKIP IP SKIP IP SKIP IP SKIP IP !!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//          continue;
+//        }
+//      }
 
       if (S.shouldSkipDecl(conformance->getProtocol()))
         continue;
