@@ -124,7 +124,6 @@ SWIFT_REQUEST(TypeChecker, CanSynthesizeDistributedActorCodableConformanceReques
               bool (NominalTypeDecl *),
               Cached, NoLocationInfo)
 SWIFT_REQUEST(TypeChecker, GetDistributedActorAsActorConformanceRequest,
-//              ProtocolConformanceRef(ProtocolDecl *, SubstitutionMap),
               NormalProtocolConformance *(ProtocolDecl *),
               Cached, NoLocationInfo)
 SWIFT_REQUEST(TypeChecker, GetDistributedActorSystemRemoteCallFunctionRequest,

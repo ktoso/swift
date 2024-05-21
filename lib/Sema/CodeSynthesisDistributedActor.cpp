@@ -1068,12 +1068,7 @@ bool CanSynthesizeDistributedActorCodableConformanceRequest::evaluate(
 
 NormalProtocolConformance *
 GetDistributedActorAsActorConformanceRequest::evaluate(
-    Evaluator &evaluator,
-    ProtocolDecl *distributedActorProto
-//    , SubstitutionMap subs // TODO: remove this and just make up inside?
-    ) const {
-//  fprintf(stderr, "[%s:%d](%s) GetDistributedActorAsActorConformanceRequest::evaluate >>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-
+    Evaluator &evaluator, ProtocolDecl *distributedActorProto) const {
   auto &ctx = distributedActorProto->getASTContext();
   auto swiftModule = ctx.getStdlibModule();
 
@@ -1084,19 +1079,16 @@ GetDistributedActorAsActorConformanceRequest::evaluate(
   if (!ext)
     return nullptr;
 
-  // Conformance of DistributedActor to Actor.
-//  auto genericParam = subs.getGenericSignature().getGenericParams()[0]; // FIXME: but we're not getting the subs into the request after all in the end
   auto genericParam = GenericTypeParamType::get(/*isParameterPack=*/false,
                                                 /*depth=*/0, /*index=*/0, ctx);
 
-  // Normally we "register" a conformance, but here we don't
-  // because we cannot (currently) register them in a protocol,
-  // since they do not have conformance tables. (TODO: we could allow registering perhaps)
   auto distributedActorAsActorConformance = ctx.getNormalConformance(
       Type(genericParam), actorProto, SourceLoc(), ext,
       ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
       /*isPreconcurrency=*/false);
+  // NOTE: Normally we "register" a conformance, but here we don't
+  // because we cannot (currently) register them in a protocol,
+  // since they do not have conformance tables.
 
-  // so we did not register
   return distributedActorAsActorConformance;
 }

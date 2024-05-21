@@ -621,11 +621,6 @@ void swift::simple_display(llvm::raw_ostream &out,
   llvm_unreachable("Bad FragileFunctionKind");
 }
 
-//void swift::simple_display(llvm::raw_ostream &out,
-//                           SubstitutionMap subs) {
-//  subs.dump(out, SubstitutionMap::DumpStyle::Full);
-//}
-
 //----------------------------------------------------------------------------//
 // SelfAccessKindRequest computation.
 //----------------------------------------------------------------------------//

@@ -79,8 +79,8 @@ bool swift::canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *act
 ExtensionDecl *
 swift::findDistributedActorAsActorExtension(
     ProtocolDecl *distributedActorProto, ModuleDecl *module) {
-  ASTContext &ctx = distributedActorProto->getASTContext();
-  auto name = ctx.getIdentifier("__actorUnownedExecutor");
+  ASTContext &C = distributedActorProto->getASTContext();
+  auto name = C.getIdentifier("__actorUnownedExecutor");
   auto results = distributedActorProto->lookupDirect(
       name, SourceLoc(),
       NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements);
@@ -93,6 +93,30 @@ swift::findDistributedActorAsActorExtension(
   return nullptr;
 }
 
+bool swift::isDistributedActorAsLocalActorComputedProperty(VarDecl *var) {
+  auto &C = var->getASTContext();
+  return var->getName() == C.Id_asLocalActor &&
+         var->getDeclContext()->getSelfProtocolDecl() &&
+         var->getDeclContext()->getSelfProtocolDecl()->isSpecificProtocol(
+             KnownProtocolKind::DistributedActor);
+}
+
+VarDecl*
+swift::getDistributedActorAsLocalActorComputedProperty(ModuleDecl *module) {
+  auto &C = module->getASTContext();
+  auto DA = C.getDistributedActorDecl();
+  auto extension = findDistributedActorAsActorExtension(DA, module);
+
+  for (auto decl : extension->getMembers()) {
+    if (auto var = dyn_cast<VarDecl>(decl)) {
+      if (isDistributedActorAsLocalActorComputedProperty(var)) {
+        return var;
+      }
+    }
+  }
+
+  return nullptr;
+}
 
 ProtocolConformanceRef
 swift::getDistributedActorAsActorConformanceRef(ASTContext &C) {
@@ -103,16 +127,8 @@ swift::getDistributedActorAsActorConformanceRef(ASTContext &C) {
   auto distributedActorAsActorConformance =
       getDistributedActorAsActorConformance(C);
 
-  auto ext = findDistributedActorAsActorExtension(distributedActorProto, C.getStdlibModule());
-  ext->dump();
-  VarDecl *asLocalActor = nullptr;
-  for (auto decl : ext->getMembers()) {
-    if (auto var = dyn_cast<VarDecl>(decl)) {
-      if (var->getNameStr() == "asLocalActor") {
-        asLocalActor = var;
-      }
-    }
-  }
+  auto module = C.getStdlibModule();
+  VarDecl *asLocalActor = getDistributedActorAsLocalActorComputedProperty(module);
 
   ArrayRef<ProtocolConformanceRef> conformances = {
     ProtocolConformanceRef(distributedActorProto)
@@ -124,11 +140,6 @@ swift::getDistributedActorAsActorConformanceRef(ASTContext &C) {
       MapTypeOutOfContext(),
       LookUpConformanceInModule(actorProto->getParentModule()));
 
-//  auto subs =
-//      SubstitutionMap::get(asLocalActor->getAccessor(AccessorKind::Get)->getGenericSignature(),
-//                           /*replacementTypes=*/{distributedActorType},
-//                           /*conformances=*/conformances);
-
     return ProtocolConformanceRef(
         actorProto,
         C.getSpecializedConformance(distributedActorType,
@@ -138,10 +149,6 @@ swift::getDistributedActorAsActorConformanceRef(ASTContext &C) {
 NormalProtocolConformance *
 swift::getDistributedActorAsActorConformance(ASTContext &C) {
   auto distributedActorProtocol = C.getProtocol(KnownProtocolKind::DistributedActor);
-
-//  fprintf(stderr, "[%s:%d](%s) send request :::: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//  fprintf(stderr, "[%s:%d](%s) this:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-//  distributedActorProtocol->dump();
 
   auto got = evaluateOrDefault(
       C.evaluator,

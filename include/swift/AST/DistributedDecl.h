@@ -46,7 +46,7 @@ NominalTypeDecl *getDistributedActorInvocationDecoder(NominalTypeDecl *);
 /// the user may need to provide an explicit conformance to the
 /// `SerializationRequirement` if they wanted to pass the actor to distributed
 /// methods.
-bool canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *actor); // FIXME: this is not used
+bool canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *actor);
 
 /// Find `decodeNextArgument<T>(type: T.Type) -> T` method associated with
 /// invocation decoder of the given distributed actor.
@@ -114,9 +114,16 @@ getDistributedActorAsActorConformance(ASTContext &C);
 ProtocolConformanceRef
 getDistributedActorAsActorConformanceRef(ASTContext &C);
 
+/// Find the extension that defines the methods necessary for creating the
+/// the DistributedActor-as-Actor conformance.
 ExtensionDecl *
 findDistributedActorAsActorExtension(
     ProtocolDecl *distributedActorProto, ModuleDecl *module);
+
+bool isDistributedActorAsLocalActorComputedProperty(VarDecl *var);
+
+/// Get the ``DistributedActor/asLocalActor`` computed property.
+VarDecl *getDistributedActorAsLocalActorComputedProperty(ModuleDecl *module);
 
 /// Check if the `allRequirements` represent *exactly* the
 /// `Encodable & Decodable` (also known as `Codable`) requirement.

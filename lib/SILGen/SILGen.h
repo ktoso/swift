@@ -601,16 +601,6 @@ public:
   /// mentioned by the given type.
   void useConformancesFromObjectiveCType(CanType type);
 
-  // TODO: this was moved to DistributedDecl.h
-  /// Retrieve a protocol conformance to the `Actor` protocol for a
-  /// distributed actor type that is described via a substitution map for
-  /// the generic signature `<T: DistributedActor>`.
-  ///
-  /// The protocol conformance is a special one that is currently
-  /// only used by the `distributedActorAsAnyActor` builtin.
-//  ProtocolConformanceRef
-//  getDistributedActorAsActorConformance(SubstitutionMap subs);
-
   /// Make a note of a member reference expression, which allows us
   /// to ensure that the conformance above is emitted wherever it
   /// needs to be.

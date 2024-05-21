@@ -1991,23 +1991,12 @@ static ManagedValue emitBuiltinInjectEnumTag(SILGenFunction &SGF, SILLocation lo
 void SILGenModule::noteMemberRefExpr(MemberRefExpr *e) {
   VarDecl *var = cast<VarDecl>(e->getMember().getDecl());
 
-
   // If the member is the special `asLocalActor` operation on
   // distributed actors, make sure we have the conformance needed
   // for a builtin.
   ASTContext &ctx = var->getASTContext();
-  if (var->getName() == ctx.Id_asLocalActor &&
-      var->getDeclContext()->getSelfProtocolDecl() &&
-      var->getDeclContext()->getSelfProtocolDecl()
-          ->isSpecificProtocol(KnownProtocolKind::DistributedActor)) {
-    fprintf(stderr, "[%s:%d](%s) CALL SGM.getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    fprintf(stderr, "[%s:%d](%s) the subs vvvvvvvvvvvv\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    e->getMember().getSubstitutions().dump();
-    fprintf(stderr, "[%s:%d](%s) the subs ^^^^^^^^^^^\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-    auto conformance =
-        getDistributedActorAsActorConformanceRef(ctx); // , e->getMember().getSubstitutions());
-
-    useConformance(conformance);
+  if (isDistributedActorAsLocalActorComputedProperty(var)) {
+    useConformance(getDistributedActorAsActorConformanceRef(ctx));
   }
 
 }
