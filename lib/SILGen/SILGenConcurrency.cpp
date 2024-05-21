@@ -16,6 +16,7 @@
 #include "Scope.h"
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/Availability.h"
+#include "swift/AST/DistributedDecl.h"
 #include "swift/AST/ProtocolConformance.h"
 #include "swift/Basic/Range.h"
 
@@ -661,71 +662,155 @@ SILValue SILGenFunction::emitGetCurrentExecutor(SILLocation loc) {
   return ExpectedExecutor;
 }
 
-/// Find the extension on DistributedActor that defines __actorUnownedExecutor.
-static ExtensionDecl *findDistributedActorAsActorExtension(
-    ProtocolDecl *distributedActorProto, ModuleDecl *module) {
-  ASTContext &ctx = distributedActorProto->getASTContext();
-  auto name = ctx.getIdentifier("__actorUnownedExecutor");
-  auto results = distributedActorProto->lookupDirect(
-      name, SourceLoc(),
-      NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements);
-  for (auto result : results) {
-    if (auto var = dyn_cast<VarDecl>(result)) {
-      return dyn_cast<ExtensionDecl>(var->getDeclContext());
-    }
-  }
+///// Find the extension on DistributedActor that defines __actorUnownedExecutor.
+//static ExtensionDecl *findDistributedActorAsActorExtension(
+//    ProtocolDecl *distributedActorProto, ModuleDecl *module) {
+//  ASTContext &ctx = distributedActorProto->getASTContext();
+//  auto name = ctx.getIdentifier("__actorUnownedExecutor");
+//  auto results = distributedActorProto->lookupDirect(
+//      name, SourceLoc(),
+//      NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements);
+//  for (auto result : results) {
+//    if (auto var = dyn_cast<VarDecl>(result)) {
+//      return dyn_cast<ExtensionDecl>(var->getDeclContext());
+//    }
+//  }
+//
+//  return nullptr;
+//}
 
-  return nullptr;
-}
+// [ProtocolConformance.cpp:689](setWitness) setWitness
+//[ProtocolConformance.cpp:690](setWitness)     requirement:
+//(var_decl "unownedExecutor" interface type="UnownedSerialExecutor" access=public readImpl=getter immutable
+//  (accessor_decl <anonymous @ 0x141283a88> access=public get for="unownedExecutor"
+//    (parameter "self")
+//    (parameter_list)))
+//[ProtocolConformance.cpp:692](setWitness)     witness:
+// Witness: Distributed.(file).DistributedActor extension.__actorUnownedExecutor
+//[ProtocolConformance.cpp:694](setWitness) ------------------------------------
+// Assertion failed: (!isa<ProtocolDecl>(this) && "Self-conformances are only found by the higher-level " "ModuleDecl::lookupConformance() entry point"), function lookupConformance, file ProtocolConformance.cpp, line 1163. Please submit a bug report (https://swift.org/contributing/#reporting-bugs) and include the crash backtrace. Stack dump: 0.	Program arguments: /Users/ktoso/code/swift-project/build/Ninja-RelWithDebInfoAssert/swift-macosx-arm64/bin/swift-frontend -frontend -merge-modules -emit-module /var/folders/hn/c22y4jsn4j74mw23_kpgn88w0000gn/T/lit-tmp-kf1ydk_a/distributed_actor_to_actor-4bb3b4.swiftmodule /var/folders/hn/c22y4jsn4j74mw23_kpgn88w0000gn/T/lit-tmp-kf1ydk_a/FakeDistributedActorSystems-c941ef.swiftmodule -parse-as-library -disable-diagnostic-passes -disable-sil-perf-optzns -target arm64-apple-macosx10.13 -Xllvm -aarch64-use-tbi -enable-objc-interop -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.0.sdk -I /Users/ktoso/code/swift-project/build/Ninja-RelWithDebInfoAssert/swift-macosx-arm64/test-macosx-arm64/Distributed/Runtime/Output/distributed_actor_to_actor.swift.tmp -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -F /Users/ktoso/code/swift-project/build/Ninja-RelWithDebInfoAssert/swift-macosx-arm64/lib -g -module-cache-path /Users/ktoso/code/swift-project/build/Ninja-RelWithDebInfoAssert/swift-macosx-arm64/swift-test-results/arm64-apple-macosx10.13/clang-module-cache -swift-version 4 -define-availability "SwiftStdlib 9999:macOS 9999, iOS 9999, watchOS 9999, tvOS 9999" -define-availability "SwiftStdlib 5.0:macOS 10.14.4, iOS 12.2, watchOS 5.2, tvOS 12.2" -define-availability "SwiftStdlib 5.1:macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0" -define-availability "SwiftStdlib 5.2:macOS 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4" -define-availability "SwiftStdlib 5.3:macOS 11.0, iOS 14.0, watchOS 7.0, tvOS 14.0" -define-availability "SwiftStdlib 5.4:macOS 11.3, iOS 14.5, watchOS 7.4, tvOS 14.5" -define-availability "SwiftStdlib 5.5:macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0" -define-availability "SwiftStdlib 5.6:macOS 12.3, iOS 15.4, watchOS 8.5, tvOS 15.4" -define-availability "SwiftStdlib 5.7:macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0" -define-availability "SwiftStdlib 5.8:macOS 13.3, iOS 16.4, watchOS 9.4, tvOS 16.4" -define-availability "SwiftStdlib 5.9:macOS 14.0, iOS 17.0, watchOS 10.0, tvOS 17.0" -define-availability "SwiftStdlib 5.10:macOS 14.4, iOS 17.4, watchOS 10.4, tvOS 17.4, visionOS 1.1" -define-availability "SwiftStdlib 6.0:macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999" -disable-availability-checking -enable-anonymous-context-mangled-names -external-plugin-path /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.0.sdk/usr/lib/swift/host/plugins#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.0.sdk/usr/bin/swift-plugin-server -external-plugin-path /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.0.sdk/usr/local/lib/swift/host/plugins#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.0.sdk/usr/bin/swift-plugin-server -external-plugin-path /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server -external-plugin-path /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/local/lib/swift/host/plugins#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server -plugin-path /Users/ktoso/code/swift-project/build/Ninja-RelWithDebInfoAssert/swift-macosx-arm64/lib/swift/host/plugins -plugin-path /Users/ktoso/code/swift-project/build/Ninja-RelWithDebInfoAssert/swift-macosx-arm64/local/lib/swift/host/plugins -target-sdk-version 14.0 -dwarf-version=4 -emit-module-doc-path /var/folders/hn/c22y4jsn4j74mw23_kpgn88w0000gn/T/lit-tmp-kf1ydk_a/main-14c754.swiftdoc -emit-module-source-info-path /var/folders/hn/c22y4jsn4j74mw23_kpgn88w0000gn/T/lit-tmp-kf1ydk_a/main-14c754.swiftsourceinfo -module-name main -o /var/folders/hn/c22y4jsn4j74mw23_kpgn88w0000gn/T/lit-tmp-kf1ydk_a/main-14c754.swiftmodule
+// 1.	Swift version 6.0-dev (LLVM 09467b9d69afaf5, Swift 9e822c37bfc8c7a)
+// 2.	Compiling with effective version 4.1.50
+// 3.	While evaluating request ASTLoweringRequest(Lowering AST to SIL for module main) 4.	While deserializing SIL function "$s11Distributed0A5ActorPAAE07asLocalB0ScA_pvgTwB" 5.	While reading specialized conformance for type 'Self' 6.	While cross-referencing conformance for 'DistributedActor' (in module 'Distributed') 7.	While ... to 'Actor' (in module '_Concurrency') <unknown>:0: error: unable to execute command: Abort trap: 6
 
-ProtocolConformanceRef
-SILGenModule::getDistributedActorAsActorConformance(SubstitutionMap subs) {
-  ASTContext &ctx = M.getASTContext();
-  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
-  Type distributedActorType = subs.getReplacementTypes()[0];
+// TODO: fix registration;
+//        - registering was only working for nominals
+//        - the new "protocol conformance to protocol are not registered -- see the hack in ProtocolConformanceDeserializer::readNormalProtocolConformance
+//        - the SILGenModule::getDistributedActorAsActorConformance should only be called ONCE
+//          - as otherwise we'll get weird create but also deserialize in same module sometimes.
+//        - make sure we only "create" the conformance when building the Distributed module.
+//        - fix the lookupConformance to handle the protocol case -- it can use a request to find protocol conformance to protocol and this way it'll find our registered thing
 
-  if (!distributedActorAsActorConformance) {
-    auto distributedActorProto = ctx.getProtocol(KnownProtocolKind::DistributedActor);
-    if (!distributedActorProto)
-      return ProtocolConformanceRef();
-
-    auto ext = findDistributedActorAsActorExtension(
-        distributedActorProto, M.getSwiftModule());
-    if (!ext)
-      return ProtocolConformanceRef();
-
-    // Conformance of DistributedActor to Actor.
-    auto genericParam = subs.getGenericSignature().getGenericParams()[0];
-    distributedActorAsActorConformance = ctx.getNormalConformance(
-        Type(genericParam), actorProto, SourceLoc(), ext,
-        ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
-        /*isPreconcurrency=*/false);
-  }
-
-  return ProtocolConformanceRef(
-      actorProto,
-      ctx.getSpecializedConformance(distributedActorType,
-                                    distributedActorAsActorConformance,
-                                    subs));
-}
+// MAKE THIS ONLY happen when building distributed module itself.
+//ProtocolConformanceRef
+//SILGenModule::getDistributedActorAsActorConformance(SubstitutionMap subs) {
+//  fprintf(stderr, "[%s:%d](%s) SILGenModule::getDistributedActorAsActorConformance >>>>>>>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//
+//
+//  ASTContext &ctx = M.getASTContext();
+//  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
+//  Type distributedActorType = subs.getReplacementTypes()[0];
+//
+//  auto distributedActorProto = ctx.getProtocol(KnownProtocolKind::DistributedActor);
+//  if (!distributedActorProto)
+//    return ProtocolConformanceRef();
+//
+//  if (!distributedActorAsActorConformance) {
+//
+//    fprintf(stderr, "[%s:%d](%s) send the request\n", __FILE_NAME__, __LINE__,
+//            __FUNCTION__);
+//    auto fromRequest = getDistributedActorAsActorConformance(ctx, subs);
+//    fprintf(stderr, "[%s:%d](%s) FROM request :::::: \n", __FILE_NAME__,
+//            __LINE__, __FUNCTION__);
+//    fromRequest.dump();
+//    fprintf(stderr, "------------------------\n");
+//    return fromRequest;
+//  } else {
+//    fprintf(stderr, "[%s:%d](%s) CACHED ON MODULE :::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    auto conf = ProtocolConformanceRef(
+//        actorProto,
+//        ctx.getSpecializedConformance(distributedActorType,
+//                                      distributedActorAsActorConformance,
+//                                      subs));
+//    fprintf(stderr, "[%s:%d](%s) OLD STYLE, created conformance :::: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    conf.dump();
+//  }
+//
+////  if (!distributedActorAsActorConformance) {
+////    auto ext = findDistributedActorAsActorExtension(
+////        distributedActorProto, M.getSwiftModule());
+////    if (!ext)
+////      return ProtocolConformanceRef();
+////
+////    // Conformance of DistributedActor to Actor.
+////    auto genericParam = subs.getGenericSignature().getGenericParams()[0];
+////    distributedActorAsActorConformance = ctx.getNormalConformance( // note that we dont register it
+////        Type(genericParam), actorProto, SourceLoc(), ext,
+////        ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
+////        /*isPreconcurrency=*/false);
+////
+////    // make a request for the thing; when we register here
+////
+////    // we always have an evaluator; when we register conformance, make a request or something, cache it.
+////    // then in deserialization we find it.
+////
+////     // so we did not register
+////  }
+////
+////  auto conf = ProtocolConformanceRef(
+////      actorProto,
+////      ctx.getSpecializedConformance(distributedActorType,
+////                                    distributedActorAsActorConformance,
+////                                    subs));
+////  fprintf(stderr, "[%s:%d](%s) OLD STYLE, created conformance :::: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+////  conf.dump();
+////  // [SILGenConcurrency.cpp:745](getDistributedActorAsActorConformance) OLD STYLE, created conformance ::::
+////  // (specialized_conformance type="T" protocol="Actor"
+////  //   (substitution_map generic_signature=<Self where Self : DistributedActor>
+////  //     (substitution Self ->
+////  //       (primary_archetype_type address=0x142275338 class layout=AnyObject conforms_to="Distributed.(file).DistributedActor" name="T"
+////  //         (interface_type=generic_type_param_type depth=0 index=0 decl="FakeDistributedActorSystems.(file).f(_:).T@/Users/ktoso/code/swift-project/swift/test/Distributed/Runtime/../Inputs/FakeDistributedActorSystems.swift:27:15")))
+////  //     (conformance type="Self"
+////  //       (abstract_conformance protocol="DistributedActor")))
+////  //   (<conditional requirements unable to be computed>)
+////  //   (normal_conformance type="Self" protocol="Actor"
+////  //     (assoc_conformance type="Self" proto="AnyActor"
+////  //       (abstract_conformance protocol="AnyActor"))))
+////  return conf;
+//}
 
 ManagedValue
 SILGenFunction::emitDistributedActorAsAnyActor(SILLocation loc,
                                            SubstitutionMap distributedActorSubs,
                                                ManagedValue actorValue) {
-  ProtocolConformanceRef conformances[1] = {
-    SGM.getDistributedActorAsActorConformance(distributedActorSubs)
-  };
+  auto &ctx = SGM.getASTContext();
+
+//  fprintf(stderr, "[%s:%d](%s) CALL SGM.getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  auto distributedActorAsActorConformance = getDistributedActorAsActorConformance(ctx);
+  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
+  auto distributedActorType = distributedActorSubs.getReplacementTypes()[0];
+    auto ref = ProtocolConformanceRef(
+        actorProto,
+        ctx.getSpecializedConformance(distributedActorType,
+                                      distributedActorAsActorConformance,
+                                      distributedActorSubs));
+    ProtocolConformanceRef conformances[1] = {
+      ref
+    };
+
+
+//  ProtocolConformanceRef conformances[1] = {
+//    getDistributedActorAsActorConformance(ctx, distributedActorSubs)
+//  };
 
   // Erase the distributed actor instance into an `any Actor` existential with
   // the special conformance.
-  auto &ctx = SGM.getASTContext();
-  CanType distributedActorType =
-    distributedActorSubs.getReplacementTypes()[0]->getCanonicalType();
-  auto &distributedActorTL = getTypeLowering(distributedActorType);
-  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
+  CanType distributedActorCanType =
+    distributedActorType->getCanonicalType();
+  auto &distributedActorTL = getTypeLowering(distributedActorCanType);
+//  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
   auto &anyActorTL = getTypeLowering(actorProto->getDeclaredExistentialType());
-  return emitExistentialErasure(loc, distributedActorType,
+  return emitExistentialErasure(loc, distributedActorCanType,
                                 distributedActorTL, anyActorTL,
                                 ctx.AllocateCopy(conformances),
                                 SGFContext(),

@@ -295,6 +295,17 @@ public:
     return lhs.storage != rhs.storage;
   }
 
+//  friend llvm::hash_code hash_value(SubstitutionMap subs) {
+//    using llvm::hash_value;
+////    return hash_value(1); // FIXME: fix this
+////    GenericSignature genericSig,
+////        ArrayRef<Type> replacementTypes,
+////        ArrayRef<ProtocolConformanceRef> conformances
+//    return llvm::hash_combine(hash_value(subs.getGenericSignature()),
+//                              hash_value(subs.getReplacementTypes()),
+//                              hash_value(subs.getConformances()));
+//  }
+
 private:
   friend class GenericSignature;
   friend class GenericEnvironment;

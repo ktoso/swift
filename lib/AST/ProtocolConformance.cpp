@@ -427,6 +427,14 @@ ConditionalRequirementsRequest::evaluate(Evaluator &evaluator,
 void NormalProtocolConformance::resolveLazyInfo() const {
   assert(Loader);
 
+//  // FIXME: this is nonsense
+//  if (isConformanceOfProtocol()) {
+//    fprintf(stderr, "[%s:%d](%s) RESOLVE LAZY INFO SPECIAL !!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    auto &C = this->getDeclContext()->getASTContext();
+//    getDistributedActorAsActorConformance(C, this->getSubstitutionMap());
+//    return;
+//  }
+
   auto *loader = Loader;
   auto *mutableThis = const_cast<NormalProtocolConformance *>(this);
   mutableThis->Loader = nullptr;
@@ -681,6 +689,19 @@ RootProtocolConformance::getWitnessDeclRef(ValueDecl *requirement) const {
 
 void NormalProtocolConformance::setWitness(ValueDecl *requirement,
                                            Witness witness) const {
+  auto &C = requirement->getASTContext();
+  if (witness.getDecl() &&
+      !witness.getDecl()->getBaseName().isSpecial() &&
+      witness.getDecl()->getBaseIdentifier() == C.getIdentifier("__actorUnownedExecutor")) {
+
+//    fprintf(stderr, "[%s:%d](%s) setWitness\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    fprintf(stderr, "[%s:%d](%s)     requirement:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    requirement->dump();
+//    fprintf(stderr, "[%s:%d](%s)     witness:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    witness.dump();
+//    fprintf(stderr, "[%s:%d](%s) ------------------------------------\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  }
+
   assert(!isa<AssociatedTypeDecl>(requirement) && "Request type witness");
   assert(getProtocol() == cast<ProtocolDecl>(requirement->getDeclContext()) &&
          "requirement in wrong protocol");
@@ -1145,9 +1166,56 @@ void NominalTypeDecl::prepareConformanceTable() const {
 bool NominalTypeDecl::lookupConformance(
        ProtocolDecl *protocol,
        SmallVectorImpl<ProtocolConformance *> &conformances) const {
+
+  // In general, protocols cannot conform to other protocols, however there are
+  // exceptions, and we may be able to obtain a synthesized conformance for
+  // them, e.g. a DistributedActor to Actor conformance.
+  if (auto thisProtocol = dyn_cast<ProtocolDecl>(this)) {
+
+//    fprintf(stderr, "[%s:%d](%s) protocol conformance lookup!!!!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    this->dump();
+
+//    fprintf(stderr, "[%s:%d](%s) protocol :::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    protocol->dump();
+
+//    fprintf(stderr, "[%s:%d](%s) ::::::~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~:::::\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+
+    // Special handle the DistributedActor-to-Actor case:
+    if (thisProtocol->isSpecificProtocol(KnownProtocolKind::DistributedActor) &&
+        protocol->isSpecificProtocol(KnownProtocolKind::Actor)) {
+//      fprintf(stderr, "[%s:%d](%s) make request; CALL protocol->getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      auto &C = protocol->getASTContext();
+      auto found = getDistributedActorAsActorConformance(C);
+      if (found) {
+//        fprintf(stderr, "[%s:%d](%s) FOUND FROM LOOKUP\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//        found->dump();
+
+        // FINALLY:
+//        [ProtocolConformance.cpp:1191](lookupConformance) FOUND FROM LOOKUP
+//            (normal_conformance type="\xCF\x84_0_0" protocol="Actor"
+//             (assoc_conformance type="Self" proto="AnyActor"
+//              (abstract_conformance protocol="AnyActor")))
+        // TODO: but it should be
+//        (normal_conformance type="Self" protocol="Actor"
+//         (value req="unownedExecutor" witness="Distributed.(file).DistributedActor extension.__actorUnownedExecutor")
+//             (assoc_conformance type="Self" proto="AnyActor"
+//              (abstract_conformance protocol="AnyActor")))
+
+        conformances.push_back(found);
+        return true;
+      }
+
+      return false;
+    }
+  }
+
   assert(!isa<ProtocolDecl>(this) &&
          "Self-conformances are only found by the higher-level "
          "ModuleDecl::lookupConformance() entry point");
+
+  // TODO: dont use conformance table because protocols ddont have conformance tables
+
+  // TODO: would havce to hook in with deserialization somehow
 
   prepareConformanceTable();
   return ConformanceTable->lookupConformance(
@@ -1188,6 +1256,13 @@ void NominalTypeDecl::getImplicitProtocols(
 
 void NominalTypeDecl::registerProtocolConformance(
        NormalProtocolConformance *conformance, bool synthesized) {
+  // TODO: alternate idea, maybe we can store the conformance here somehow
+  ///      and this way we'd allow registering for protocols here...
+  if (conformance->isConformanceOfProtocol()) {
+    auto protocol = conformance->getDeclContext()->getSelfProtocolDecl();
+    // TODO: make some other place to register in...
+  }
+
   prepareConformanceTable();
   auto *dc = conformance->getDeclContext();
   ConformanceTable->registerProtocolConformance(dc, conformance, synthesized);

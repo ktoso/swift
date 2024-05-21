@@ -23,6 +23,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/Builtins.h"
 #include "swift/AST/DiagnosticsSIL.h"
+#include "swift/AST/DistributedDecl.h"
 #include "swift/AST/FileUnit.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/Module.h"
@@ -1990,6 +1991,7 @@ static ManagedValue emitBuiltinInjectEnumTag(SILGenFunction &SGF, SILLocation lo
 void SILGenModule::noteMemberRefExpr(MemberRefExpr *e) {
   VarDecl *var = cast<VarDecl>(e->getMember().getDecl());
 
+
   // If the member is the special `asLocalActor` operation on
   // distributed actors, make sure we have the conformance needed
   // for a builtin.
@@ -1998,9 +2000,13 @@ void SILGenModule::noteMemberRefExpr(MemberRefExpr *e) {
       var->getDeclContext()->getSelfProtocolDecl() &&
       var->getDeclContext()->getSelfProtocolDecl()
           ->isSpecificProtocol(KnownProtocolKind::DistributedActor)) {
+    fprintf(stderr, "[%s:%d](%s) CALL SGM.getDistributedActorAsActorConformance\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    fprintf(stderr, "[%s:%d](%s) the subs vvvvvvvvvvvv\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    e->getMember().getSubstitutions().dump();
+    fprintf(stderr, "[%s:%d](%s) the subs ^^^^^^^^^^^\n", __FILE_NAME__, __LINE__, __FUNCTION__);
     auto conformance =
-        getDistributedActorAsActorConformance(
-          e->getMember().getSubstitutions());
+        getDistributedActorAsActorConformanceRef(ctx); // , e->getMember().getSubstitutions());
+
     useConformance(conformance);
   }
 

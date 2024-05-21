@@ -19,6 +19,7 @@
 #include "swift/AST/AttrKind.h"
 #include "swift/AST/AutoDiff.h"
 #include "swift/AST/DiagnosticsSema.h"
+#include "swift/AST/DistributedDecl.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/ForeignAsyncConvention.h"
 #include "swift/AST/ForeignErrorConvention.h"
@@ -810,7 +811,8 @@ ProtocolConformanceDeserializer::read(
   case decls_block::BUILTIN_PROTOCOL_CONFORMANCE:
     return readBuiltinProtocolConformance(scratch);
   case decls_block::NORMAL_PROTOCOL_CONFORMANCE:
-    return readNormalProtocolConformance(scratch, conformanceEntry);
+    // the conformance is serializezd is unique
+    return readNormalProtocolConformance(scratch, conformanceEntry); // this is how we call into
   case decls_block::PROTOCOL_CONFORMANCE_XREF:
     return readNormalProtocolConformanceXRef(scratch);
 
@@ -934,7 +936,7 @@ ProtocolConformanceDeserializer::readBuiltinProtocolConformance(
 }
 
 Expected<ProtocolConformance *>
-ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef(
+ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef( // HERE -- this is where we serialized a conformance reference; form different modeule.
                                               ArrayRef<uint64_t> scratch) {
   using namespace decls_block;
 
@@ -960,7 +962,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef(
     module = MF.getAssociatedModule();
 
   SmallVector<ProtocolConformance *, 2> conformances;
-  nominal->lookupConformance(proto, conformances);
+  nominal->lookupConformance(proto, conformances); // instead of this we need to find our special one that we did not register; since lookup is only done
   PrettyStackTraceModuleFile traceMsg(
       "If you're seeing a crash here, check that your SDK and dependencies "
       "are at least as new as the versions used to build", MF);
@@ -972,7 +974,7 @@ ProtocolConformanceDeserializer::readNormalProtocolConformanceXRef(
 }
 
 Expected<ProtocolConformance *>
-ProtocolConformanceDeserializer::readNormalProtocolConformance(
+ProtocolConformanceDeserializer::readNormalProtocolConformance( // and the Xref version when is in different module.
                                               ArrayRef<uint64_t> scratch,
             ModuleFile::Serialized<ProtocolConformance *> &conformanceEntry) {
   using namespace decls_block;
@@ -1020,9 +1022,10 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance(
   uint64_t offset = conformanceEntry;
   conformanceEntry = conformance;
 
+  // TODO: instead we should perhaps allow this
   // Note: the DistributedActor -> Actor pseudo-conformance can be deserialized
   // but must not be registered, so don't register it here.
-  if (!dc->getSelfProtocolDecl())
+  if (!dc->getSelfProtocolDecl()) // TODO: remove this (!), we do want to register it
     dc->getSelfNominalTypeDecl()->registerProtocolConformance(conformance);
 
   // If the conformance is complete, we're done.
@@ -1030,7 +1033,48 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance(
     return conformance;
 
   conformance->setState(ProtocolConformanceState::Complete);
-  conformance->setLazyLoader(&MF, offset);
+
+//  if (conformance->isConformanceOfProtocol()) {
+//    // TODO: another approach would be to assert here and never attempt to serialize these at all
+////    assert(false && "we're trying to never serialize these at all!"); // FIXME: for the approach of never serializing at all
+//
+//    auto *dc = conformance->getDeclContext();
+//    auto &C = dc->getASTContext();
+//
+//    // TODO: maybe we can make up the subs map this needs?
+//    //       The expected one, as passed in in existing code when forming correctly is:
+//    //    (substitution_map generic_signature=<Self where Self : DistributedActor>
+//    //     (substitution Self ->
+//    //       (primary_archetype_type address=0x14b86e118 class layout=AnyObject conforms_to="Distributed.(file).DistributedActor" name="T"
+//    //         (interface_type=generic_type_param_type depth=0 index=0 decl="FakeDistributedActorSystems.(file).f(_:).T@/Users/ktoso/code/swift-project/swift/test/Distributed/Runtime/../Inputs/FakeDistributedActorSystems.swift:27:15")))
+//    //     (conformance type="Self"
+//    //       (abstract_conformance protocol="DistributedActor")))
+//
+//    assert(conformance->getProtocol()->getInterfaceType()->isEqual(
+//               C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
+//           "Only expected to 'skip' finishNormalConformance for manually "
+//           "created DistributedActor-as-Actor conformance.");
+//
+//    // TODO: return or ignore either doesn't seem to matter
+//    // TODO: what about this vs. 'conformance', which to return; experimentally seems to make no difference which seems fishy
+//    auto madeUpConformance = getDistributedActorAsActorConformance(C);
+//    conformanceEntry = madeUpConformance; // record it
+//
+//    // Currently this we should only be skipping only be happening for the
+//    // "DistributedActor as Actor" SILGen generated conformance.
+//    // See `isConformanceOfProtocol` for details, if adding more such
+//    // conformances, consider changing the way we structure their construction.
+//    assert(madeUpConformance->getProtocol()->getInterfaceType()->isEqual(
+//        C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
+//           "Only expected to 'skip' finishNormalConformance for manually "
+//           "created DistributedActor-as-Actor conformance.");
+//
+//    fprintf(stderr, "[%s:%d](%s) AVOID LAZY LOADER for conformance:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    madeUpConformance->dump();
+//    return madeUpConformance;
+//  }
+
+  conformance->setLazyLoader(&MF, offset); // then we do set lazy leader on it...
   return conformance;
 }
 
@@ -8335,8 +8379,30 @@ Type ModuleFile::loadTypeEraserType(const TypeEraserAttr *TRA,
 void ModuleFile::finishNormalConformance(NormalProtocolConformance *conformance,
                                          uint64_t contextData) {
   using namespace decls_block;
-
   PrettyStackTraceModuleFile traceModule(*this);
+
+  // if normal conformance is written in source...
+  // the mapping is populated by typechecking and it is deserialized...
+
+  // HERE is where we deserialize.
+
+  // make sure this is called.
+
+//  if (conformance->isConformanceOfProtocol()) {
+//    auto *dc = conformance->getDeclContext();
+//    auto &C = dc->getASTContext();
+//
+//    // Currently this we should only be skipping only be happening for the
+//    // "DistributedActor as Actor" SILGen generated conformance.
+//    // See `isConformanceOfProtocol` for details, if adding more such
+//    // conformances, consider changing the way we structure their construction.
+//    assert(conformance->getProtocol()->getInterfaceType()->isEqual(
+//        C.getProtocol(KnownProtocolKind::Actor)->getInterfaceType()) &&
+//           "Only expected to 'skip' finishNormalConformance for manually "
+//           "created DistributedActor-as-Actor conformance.");
+//    return;
+//  }
+
   PrettyStackTraceConformance trace("finishing conformance for",
                                     conformance);
   ++NumNormalProtocolConformancesCompleted;

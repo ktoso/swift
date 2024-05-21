@@ -61,7 +61,7 @@
 using namespace swift;
 
 /******************************************************************************/
-/************* Implicit Distributed Actor Codable Conformance *****************/
+/******************* Distributed Actor Conformances ***************************/
 /******************************************************************************/
 
 bool swift::canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *actor) {
@@ -76,6 +76,80 @@ bool swift::canSynthesizeDistributedActorCodableConformance(NominalTypeDecl *act
       false);
 }
 
+ExtensionDecl *
+swift::findDistributedActorAsActorExtension(
+    ProtocolDecl *distributedActorProto, ModuleDecl *module) {
+  ASTContext &ctx = distributedActorProto->getASTContext();
+  auto name = ctx.getIdentifier("__actorUnownedExecutor");
+  auto results = distributedActorProto->lookupDirect(
+      name, SourceLoc(),
+      NominalTypeDecl::LookupDirectFlags::IncludeAttrImplements);
+  for (auto result : results) {
+    if (auto var = dyn_cast<VarDecl>(result)) {
+      return dyn_cast<ExtensionDecl>(var->getDeclContext());
+    }
+  }
+
+  return nullptr;
+}
+
+
+ProtocolConformanceRef
+swift::getDistributedActorAsActorConformanceRef(ASTContext &C) {
+  auto actorProto = C.getProtocol(KnownProtocolKind::Actor);
+  auto distributedActorProto = C.getProtocol(KnownProtocolKind::DistributedActor);
+  Type distributedActorType = C.getDistributedActorType();
+
+  auto distributedActorAsActorConformance =
+      getDistributedActorAsActorConformance(C);
+
+  auto ext = findDistributedActorAsActorExtension(distributedActorProto, C.getStdlibModule());
+  ext->dump();
+  VarDecl *asLocalActor = nullptr;
+  for (auto decl : ext->getMembers()) {
+    if (auto var = dyn_cast<VarDecl>(decl)) {
+      if (var->getNameStr() == "asLocalActor") {
+        asLocalActor = var;
+      }
+    }
+  }
+
+  ArrayRef<ProtocolConformanceRef> conformances = {
+    ProtocolConformanceRef(distributedActorProto)
+  };
+
+  auto subs =
+    SubstitutionMap::get(
+      asLocalActor->getDeclContext()->getGenericSignatureOfContext(),
+      MapTypeOutOfContext(),
+      LookUpConformanceInModule(actorProto->getParentModule()));
+
+//  auto subs =
+//      SubstitutionMap::get(asLocalActor->getAccessor(AccessorKind::Get)->getGenericSignature(),
+//                           /*replacementTypes=*/{distributedActorType},
+//                           /*conformances=*/conformances);
+
+    return ProtocolConformanceRef(
+        actorProto,
+        C.getSpecializedConformance(distributedActorType,
+                                      distributedActorAsActorConformance,
+                                      subs));
+}
+NormalProtocolConformance *
+swift::getDistributedActorAsActorConformance(ASTContext &C) {
+  auto distributedActorProtocol = C.getProtocol(KnownProtocolKind::DistributedActor);
+
+//  fprintf(stderr, "[%s:%d](%s) send request :::: \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  fprintf(stderr, "[%s:%d](%s) this:\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//  distributedActorProtocol->dump();
+
+  auto got = evaluateOrDefault(
+      C.evaluator,
+      GetDistributedActorAsActorConformanceRequest{distributedActorProtocol},
+      nullptr);
+
+  return got;
+}
 
 /******************************************************************************/
 /************** Distributed Actor System Associated Types *********************/

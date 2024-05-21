@@ -14,7 +14,6 @@
 
 #include "CodeSynthesis.h"
 #include "DerivedConformances.h"
-#include "TypeCheckType.h"
 #include "TypeChecker.h"
 #include "swift/AST/ASTMangler.h"
 #include "swift/AST/ASTPrinter.h"
@@ -1065,4 +1064,39 @@ bool CanSynthesizeDistributedActorCodableConformanceRequest::evaluate(
              idTy, KnownProtocolKind::Decodable, actor->getParentModule()) &&
          TypeChecker::conformsToKnownProtocol(
              idTy, KnownProtocolKind::Encodable, actor->getParentModule());
+}
+
+NormalProtocolConformance *
+GetDistributedActorAsActorConformanceRequest::evaluate(
+    Evaluator &evaluator,
+    ProtocolDecl *distributedActorProto
+//    , SubstitutionMap subs // TODO: remove this and just make up inside?
+    ) const {
+//  fprintf(stderr, "[%s:%d](%s) GetDistributedActorAsActorConformanceRequest::evaluate >>>>>>\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+
+  auto &ctx = distributedActorProto->getASTContext();
+  auto swiftModule = ctx.getStdlibModule();
+
+  auto actorProto = ctx.getProtocol(KnownProtocolKind::Actor);
+
+  auto ext = findDistributedActorAsActorExtension(
+      distributedActorProto, swiftModule);
+  if (!ext)
+    return nullptr;
+
+  // Conformance of DistributedActor to Actor.
+//  auto genericParam = subs.getGenericSignature().getGenericParams()[0]; // FIXME: but we're not getting the subs into the request after all in the end
+  auto genericParam = GenericTypeParamType::get(/*isParameterPack=*/false,
+                                                /*depth=*/0, /*index=*/0, ctx);
+
+  // Normally we "register" a conformance, but here we don't
+  // because we cannot (currently) register them in a protocol,
+  // since they do not have conformance tables. (TODO: we could allow registering perhaps)
+  auto distributedActorAsActorConformance = ctx.getNormalConformance(
+      Type(genericParam), actorProto, SourceLoc(), ext,
+      ProtocolConformanceState::Incomplete, /*isUnchecked=*/false,
+      /*isPreconcurrency=*/false);
+
+  // so we did not register
+  return distributedActorAsActorConformance;
 }
