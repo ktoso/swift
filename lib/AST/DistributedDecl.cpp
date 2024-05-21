@@ -101,7 +101,7 @@ bool swift::isDistributedActorAsLocalActorComputedProperty(VarDecl *var) {
              KnownProtocolKind::DistributedActor);
 }
 
-VarDecl*
+VarDecl *
 swift::getDistributedActorAsLocalActorComputedProperty(ModuleDecl *module) {
   auto &C = module->getASTContext();
   auto DA = C.getDistributedActorDecl();
@@ -128,7 +128,8 @@ swift::getDistributedActorAsActorConformanceRef(ASTContext &C) {
       getDistributedActorAsActorConformance(C);
 
   auto module = C.getStdlibModule();
-  VarDecl *asLocalActor = getDistributedActorAsLocalActorComputedProperty(module);
+  VarDecl *asLocalActor =
+      getDistributedActorAsLocalActorComputedProperty(module);
 
   ArrayRef<ProtocolConformanceRef> conformances = {
     ProtocolConformanceRef(distributedActorProto)

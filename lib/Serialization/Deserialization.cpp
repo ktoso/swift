@@ -1053,7 +1053,6 @@ ProtocolConformanceDeserializer::readNormalProtocolConformance( // and the Xref 
 
   conformance->setState(ProtocolConformanceState::Complete);
 
-
   conformance->setLazyLoader(&MF, offset); // then we do set lazy leader on it...
   return conformance;
 }

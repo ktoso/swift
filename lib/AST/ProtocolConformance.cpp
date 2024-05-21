@@ -1172,7 +1172,8 @@ bool NominalTypeDecl::lookupConformance(
   // In general, protocols cannot conform to other protocols, however there are
   // exceptions, special handle those.
   if (auto thisProtocol = dyn_cast<ProtocolDecl>(this)) {
-    if (lookupSpecialProtocolToProtocolConformance(thisProtocol, protocol, conformances)) {
+    if (lookupSpecialProtocolToProtocolConformance(thisProtocol, protocol,
+                                                   conformances)) {
       return true;
     }
   }
@@ -1219,7 +1220,7 @@ void NominalTypeDecl::getImplicitProtocols(
 }
 
 void NominalTypeDecl::registerProtocolConformance(
-       NormalProtocolConformance *conformance, bool synthesized) {
+    NormalProtocolConformance *conformance, bool synthesized) {
   prepareConformanceTable();
   auto *dc = conformance->getDeclContext();
   ConformanceTable->registerProtocolConformance(dc, conformance, synthesized);

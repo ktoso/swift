@@ -1998,7 +1998,6 @@ void SILGenModule::noteMemberRefExpr(MemberRefExpr *e) {
   if (isDistributedActorAsLocalActorComputedProperty(var)) {
     useConformance(getDistributedActorAsActorConformanceRef(ctx));
   }
-
 }
 
 static ManagedValue emitBuiltinDistributedActorAsAnyActor(

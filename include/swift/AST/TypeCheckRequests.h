@@ -1139,20 +1139,20 @@ public:
 };
 
 /// Get a special conformance of the DistributedActor protocol to the Actor protocol.
-class GetDistributedActorAsActorConformanceRequest :
-    public SimpleRequest<GetDistributedActorAsActorConformanceRequest,
-                         NormalProtocolConformance *(ProtocolDecl *),
-        RequestFlags::Cached> {
-public:
+class GetDistributedActorAsActorConformanceRequest
+    : public SimpleRequest<GetDistributedActorAsActorConformanceRequest,
+                           NormalProtocolConformance *(ProtocolDecl *),
+                           RequestFlags::Cached> {
+  public:
     using SimpleRequest::SimpleRequest;
 
 private:
     friend SimpleRequest;
 
-    NormalProtocolConformance *evaluate(Evaluator &evaluator,
-        ProtocolDecl *distributedActorProto) const;
+    NormalProtocolConformance *
+    evaluate(Evaluator &evaluator, ProtocolDecl *distributedActorProto) const;
 
-public:
+  public:
     // Caching
     bool isCached() const { return true; }
 };
