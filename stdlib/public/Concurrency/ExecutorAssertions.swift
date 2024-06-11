@@ -345,11 +345,11 @@ extension Actor {
   @_alwaysEmitIntoClient
   @_unavailableFromAsync(message: "express the closure as an explicit function declared on the specified 'actor' instead")
   @_unavailableInEmbedded
-  public nonisolated func assumeIsolated<T : Sendable>(
-      _ operation: (isolated Self) throws -> T,
+  public nonisolated func assumeIsolated<T>(
+      _ operation: (isolated Self) throws -> sending T,
       file: StaticString = #fileID, line: UInt = #line
-  ) rethrows -> T {
-    typealias YesActor = (isolated Self) throws -> T
+  ) rethrows -> sending T {
+    typealias YesActor = (isolated Self) throws -> sending T
     typealias NoActor = (Self) throws -> T
 
     /// This is guaranteed to be fatal if the check fails,
@@ -372,16 +372,16 @@ extension Actor {
     #endif
   }
 
-  @available(SwiftStdlib 5.9, *)
-  @usableFromInline
-  @_unavailableInEmbedded
-  @_silgen_name("$sScAsE14assumeIsolated_4file4lineqd__qd__xYiKXE_s12StaticStringVSutKlF")
-  internal nonisolated func __abi__assumeIsolated<T : Sendable>(
-      _ operation: (isolated Self) throws -> T,
-      _ file: StaticString, _ line: UInt
-  ) rethrows -> T {
-    try assumeIsolated(operation, file: file, line: line)
-  }
+//  @available(SwiftStdlib 5.9, *)
+//  @usableFromInline
+//  @_unavailableInEmbedded
+//  @_silgen_name("$sScAsE14assumeIsolated_4file4lineqd__qd__xYiKXE_s12StaticStringVSutKlF")
+//  internal nonisolated func __abi__assumeIsolated<T : Sendable>(
+//      _ operation: (isolated Self) throws -> T,
+//      _ file: StaticString, _ line: UInt
+//  ) rethrows -> T {
+//    try assumeIsolated(operation, file: file, line: line)
+//  }
 }
 
 #endif // not SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
