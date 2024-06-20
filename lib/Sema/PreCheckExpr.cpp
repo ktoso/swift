@@ -410,6 +410,9 @@ Expr *TypeChecker::resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE,
   DeclNameRef Name = UDRE->getName();
   SourceLoc Loc = UDRE->getLoc();
 
+  fprintf(stderr, "[%s:%d](%s) resolve the UDRE\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  UDRE->dump();
+
   DeclNameRef LookupName = Name;
   if (Name.isCompoundName()) {
     auto &context = DC->getASTContext();
@@ -666,6 +669,7 @@ Expr *TypeChecker::resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE,
 
     auto *LookupDC = Lookup[0].getDeclContext();
     if (UDRE->isImplicit()) {
+      fprintf(stderr, "[%s:%d](%s) here\n", __FILE_NAME__, __LINE__, __FUNCTION__);
       return TypeExpr::createImplicitForDecl(
           UDRE->getNameLoc(), D, LookupDC,
           // It might happen that LookupDC is null if this is checking
@@ -675,6 +679,7 @@ Expr *TypeChecker::resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE,
           LookupDC ? LookupDC->mapTypeIntoContext(D->getInterfaceType())
                    : D->getInterfaceType());
     } else {
+      fprintf(stderr, "[%s:%d](%s) here\n", __FILE_NAME__, __LINE__, __FUNCTION__);
       return TypeExpr::createForDecl(UDRE->getNameLoc(), D, LookupDC);
     }
   };
@@ -737,8 +742,17 @@ Expr *TypeChecker::resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE,
       }
     }
 
-    return buildRefExpr(ResultValues, DC, UDRE->getNameLoc(),
+    auto refExpr = buildRefExpr(ResultValues, DC, UDRE->getNameLoc(),
                         UDRE->isImplicit(), UDRE->getFunctionRefKind());
+    fprintf(stderr, "[%s:%d](%s) MADE REF = \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    refExpr->dump();
+    if (auto declRef = dyn_cast<DeclRefExpr>(refExpr)) {
+      declRef->setIsShorthandIfLet(UDRE->isShorthandIfLet());
+      fprintf(stderr, "[%s:%d](%s) SET IT = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+              declRef->isShorthandIfLet());
+
+    }
+    return refExpr;
   }
 
   ResultValues.clear();
@@ -779,6 +793,7 @@ Expr *TypeChecker::resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE,
           UDRE->getNameLoc(), NTD, BaseDC,
           DC->mapTypeIntoContext(NTD->getInterfaceType()));
     } else {
+      fprintf(stderr, "[%s:%d](%s) make declref\n", __FILE_NAME__, __LINE__, __FUNCTION__);
       BaseExpr = new (Context) DeclRefExpr(Base, UDRE->getNameLoc(),
                                            /*Implicit=*/true);
     }

@@ -1799,6 +1799,9 @@ Parser::parseStmtConditionElement(SmallVectorImpl<StmtConditionElement> &result,
     // reporting issue that we could explore in the future.
     //
     // Even though implicit, the ast node has correct source location.
+    //
+    // Mark it explicitly in order to get tailored diagnostics
+    declRefExpr->setIsShorthandIfLet();
     Init = makeParserResult(declRefExpr);
   } else if (BindingKindStr != "case") {
     // If the pattern is present but isn't an identifier, the user wrote

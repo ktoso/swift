@@ -589,7 +589,9 @@ namespace {
   public:
     /// Build a reference to the given declaration.
     Expr *buildDeclRef(SelectedOverload overload, DeclNameLoc loc,
-                       ConstraintLocatorBuilder locator, bool implicit) {
+                       ConstraintLocatorBuilder locator,
+                       bool implicit,
+                       bool isShorthandIfLet = false) {
       auto choice = overload.choice;
       assert(choice.getKind() != OverloadChoiceKind::DeclViaDynamic);
       auto *decl = choice.getDecl();
@@ -641,6 +643,7 @@ namespace {
                   ConcreteDeclRef witnessRef(witness, *subMap);
                   auto declRefExpr =  new (ctx) DeclRefExpr(witnessRef, loc,
                                                             /*Implicit=*/false);
+                  declRefExpr->setIsShorthandIfLet(isShorthandIfLet);
                   declRefExpr->setFunctionRefKind(choice.getFunctionRefKind());
                   cs.setType(declRefExpr, refType);
 
@@ -783,6 +786,7 @@ namespace {
       auto &ref = CachedConcreteRefs[loc];
       if (!ref)
         ref = solution.resolveConcreteDeclRef(decl, loc);
+      ref.
 
       return ref;
     }
@@ -3184,7 +3188,8 @@ namespace {
       // Find the overload choice used for this declaration reference.
       auto selected = solution.getOverloadChoice(locator);
       return buildDeclRef(selected, expr->getNameLoc(), locator,
-                          expr->isImplicit());
+                          expr->isImplicit(),
+                          /*isShorthandIfLet=*/expr->isShorthandIfLet());
     }
 
     Expr *visitSuperRefExpr(SuperRefExpr *expr) {

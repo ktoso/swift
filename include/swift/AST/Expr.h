@@ -192,16 +192,18 @@ protected:
     LiteralCapacity : 32
   );
 
-  SWIFT_INLINE_BITFIELD(DeclRefExpr, Expr, 2+2+1+1,
+  SWIFT_INLINE_BITFIELD(DeclRefExpr, Expr, 2+2+1+1+1,
     Semantics : 2, // an AccessSemantics
     FunctionRefKind : 2,
     IsImplicitlyAsync : 1,
-    IsImplicitlyThrows : 1
+    IsImplicitlyThrows : 1,
+    IsShorthandIfLet : 1
   );
 
-  SWIFT_INLINE_BITFIELD(UnresolvedDeclRefExpr, Expr, 2+2,
+  SWIFT_INLINE_BITFIELD(UnresolvedDeclRefExpr, Expr, 2+2+1,
     DeclRefKind : 2,
-    FunctionRefKind : 2
+    FunctionRefKind : 2,
+    IsShorthandIfLet : 1
   );
 
   SWIFT_INLINE_BITFIELD(MemberRefExpr, LookupExpr, 2,
@@ -1182,6 +1184,7 @@ public:
                                              : FunctionRefKind::Unapplied);
     Bits.DeclRefExpr.IsImplicitlyAsync = false;
     Bits.DeclRefExpr.IsImplicitlyThrows = false;
+    Bits.DeclRefExpr.IsShorthandIfLet = false;
   }
 
   /// Retrieve the declaration to which this expression refers.
@@ -1218,6 +1221,15 @@ public:
   /// implementation itself..
   bool isImplicitlyThrows() const {
     return Bits.DeclRefExpr.IsImplicitlyThrows;
+  }
+
+  /// Set flag that this decl ref was specifically an `if let name` expression.
+  void setIsShorthandIfLet(bool value = true) {
+    Bits.DeclRefExpr.IsShorthandIfLet = value;
+  }
+  /// Was this decl ref was specifically an `if let name` expression?
+  bool isShorthandIfLet() const {
+    return Bits.DeclRefExpr.IsShorthandIfLet;
   }
 
   /// The error thrown from this access.
@@ -1531,6 +1543,15 @@ public:
   /// Set the kind of function reference.
   void setFunctionRefKind(FunctionRefKind refKind) {
     Bits.UnresolvedDeclRefExpr.FunctionRefKind = static_cast<unsigned>(refKind);
+  }
+
+  /// Set flag that this decl ref was specifically an `if let name` expression.
+  void setIsShorthandIfLet(bool value = true) {
+    Bits.UnresolvedDeclRefExpr.IsShorthandIfLet = value;
+  }
+  /// Was this decl ref was specifically an `if let name` expression?
+  bool isShorthandIfLet() const {
+    return Bits.UnresolvedDeclRefExpr.IsShorthandIfLet;
   }
 
   DeclNameLoc getNameLoc() const { return Loc; }

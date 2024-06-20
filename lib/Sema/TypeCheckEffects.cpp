@@ -3633,9 +3633,21 @@ private:
           return diag.downgradeToWarning;
         });
 
+    auto isShorthandIfLet = false;
+    if (auto declRef = dyn_cast<DeclRefExpr>(anchor)) {
+      isShorthandIfLet = declRef->isShorthandIfLet();
+      fprintf(stderr, "[%s:%d](%s) SHORTHAND = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__, isShorthandIfLet);
+      fprintf(stderr, "[%s:%d](%s) declref  = \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      declRef->dump();
+//      assert(false);
+    }
+
+    fprintf(stderr, "[%s:%d](%s) anchor = \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+    anchor->dump();
+
     Ctx.Diags.diagnose(anchor->getStartLoc(), diag::async_expr_without_await)
       .warnUntilSwiftVersionIf(downgradeToWarning, 6)
-      .fixItInsert(loc, insertText)
+      .fixItInsertIf(!isShorthandIfLet, loc, insertText)
       .highlight(anchor->getSourceRange());
 
     for (const DiagnosticInfo &diag: errors) {

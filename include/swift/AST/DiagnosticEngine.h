@@ -785,6 +785,15 @@ namespace swift {
     InFlightDiagnostic &fixItInsert(SourceLoc L, StringRef Str) {
       return fixItReplaceChars(L, L, "%0", {Str});
     }
+    /// Add an insertion fix-it to the currently-active diagnostic,
+    /// only if the 'condition' is true.
+    InFlightDiagnostic &fixItInsertIf(bool condition, SourceLoc L, StringRef Str) {
+      if (condition) {
+        return fixItReplaceChars(L, L, "%0", {Str});
+      }
+
+      return *this;
+    }
 
     /// Add a fix-it suggesting to 'import' some module.
     InFlightDiagnostic &fixItAddImport(StringRef ModuleName);
