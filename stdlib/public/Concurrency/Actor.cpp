@@ -2196,7 +2196,6 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef serialExecutorRef
 #if SWIFT_CONCURRENCY_EMBEDDED
         swift_unreachable("task executors not supported in embedded Swift");
 #else
-//        if (serialExecutorIdentity) {
         auto taskExecutorIdentity = taskExecutorRef.getIdentity();
         auto taskExecutorType = swift_getObjectType(taskExecutorIdentity);
         auto taskExecutorWtable = taskExecutorRef.getTaskExecutorWitnessTable();
@@ -2205,18 +2204,6 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef serialExecutorRef
             job,
             serialExecutorRef,
             taskExecutorIdentity, taskExecutorType, taskExecutorWtable);
-//        } else {
-//          assert(serialExecutorRef.getIdentity() == nullptr);
-//          auto taskExecutorIdentity = taskExecutorRef.getIdentity();
-//          // So we can't get the type of it since there's no executor TYPE for it...
-//
-//          auto taskExecutorType = swift_getObjectType(taskExecutorIdentity);
-//          auto taskExecutorWtable = taskExecutorRef.getTaskExecutorWitnessTable();
-//
-//          return _swift_task_enqueueOnTaskExecutor(
-//              job,
-//              taskExecutorIdentity, taskExecutorType, taskExecutorWtable);
-//        }
 #endif // SWIFT_CONCURRENCY_EMBEDDED
       } // else, fall-through to the default global enqueue
     }
@@ -2233,24 +2220,14 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef serialExecutorRef
     swift_unreachable("task executors not supported in embedded Swift");
 #else
     if (taskExecutorRef.isDefined()) {
-      if (serialExecutorRef.getIdentity()) {
-        auto taskExecutorIdentity = taskExecutorRef.getIdentity();
-        auto taskExecutorType = swift_getObjectType(taskExecutorIdentity);
-        auto taskExecutorWtable = taskExecutorRef.getTaskExecutorWitnessTable();
+      auto taskExecutorIdentity = taskExecutorRef.getIdentity();
+      auto taskExecutorType = swift_getObjectType(taskExecutorIdentity);
+      auto taskExecutorWtable = taskExecutorRef.getTaskExecutorWitnessTable();
 
-        return _swift_task_enqueueOnSerialAndTaskExecutor(
-            job,
-            serialExecutorRef,
-            taskExecutorIdentity, taskExecutorType, taskExecutorWtable);
-      } else {
-        // it is the generic executor which has no SerialExecutor...
-        // Call without serial executor.
-        auto taskExecutorIdentity = taskExecutorRef.getIdentity();
-        auto taskExecutorType = swift_getObjectType(taskExecutorIdentity);
-        auto taskExecutorWtable = taskExecutorRef.getTaskExecutorWitnessTable();
-        return _swift_task_enqueueOnTaskExecutor(
-            job, taskExecutorIdentity, taskExecutorType, taskExecutorWtable);
-      }
+      return _swift_task_enqueueOnSerialAndTaskExecutor(
+          job,
+          serialExecutorRef,
+          taskExecutorIdentity, taskExecutorType, taskExecutorWtable);
     } else {
       return swift_defaultActor_enqueue(job, serialExecutorRef.getDefaultActor());
     }
