@@ -14,7 +14,6 @@ import _Concurrency
 
 final class NaiveQueueExecutor: TaskExecutor {
   let queue: DispatchQueue
-  var actorExecutor: UnownedSerialExecutor?
 
   init(_ queue: DispatchQueue) {
     self.queue = queue
@@ -24,8 +23,15 @@ final class NaiveQueueExecutor: TaskExecutor {
     fputs("\n\n\n\n Swift enqueue job: job.runSynchronously(on: self.asUnownedTaskExecutor())\n", stderr)
     let job = UnownedJob(_job)
     queue.async {
+      job.runSynchronously(on: self.asUnownedTaskExecutor())
+    }
+  }
+  public func enqueue(_ _job: consuming ExecutorJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
+    fputs("\n\n\n\n Swift enqueue job: job.runSynchronously(on: self.asUnownedTaskExecutor())\n", stderr)
+    let job = UnownedJob(_job)
+    queue.async {
       job.runSynchronously(
-        isolatedTo: self.actorExecutor!,
+        isolatedTo: unownedSerialExecutor,
         taskExecutor: self.asUnownedTaskExecutor())
     }
   }
@@ -57,7 +63,6 @@ actor ThreaddyTheDefaultActor {
     let executor = NaiveQueueExecutor(queue)
 
     let defaultActor = ThreaddyTheDefaultActor()
-    executor.actorExecutor = defaultActor.unownedExecutor
 
     fputs("\n\n\n\nSTART TASK....\n", stderr)
 

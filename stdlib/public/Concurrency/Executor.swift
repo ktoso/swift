@@ -235,6 +235,8 @@ public protocol TaskExecutor: Executor {
   // work-scheduling operation.
   @_nonoverride
   func enqueue(_ job: UnownedJob)
+  @_nonoverride
+  func enqueue(_ job: UnownedJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor)
 
   #if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
   // This requirement is repeated here as a non-override so that we
@@ -244,6 +246,9 @@ public protocol TaskExecutor: Executor {
   @_nonoverride
   @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob)' instead")
   func enqueue(_ job: consuming Job)
+  @_nonoverride
+  @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob)' instead")
+  func enqueue(_ job: consuming Job, isolatedTo unownedSerialExecutor: UnownedSerialExecutor)
   #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
 
   #if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
@@ -253,6 +258,8 @@ public protocol TaskExecutor: Executor {
   // work-scheduling operation.
   @_nonoverride
   func enqueue(_ job: consuming ExecutorJob)
+  @_nonoverride
+  func enqueue(_ job: consuming ExecutorJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor)
   #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
 
   func asUnownedTaskExecutor() -> UnownedTaskExecutor
@@ -263,6 +270,23 @@ public protocol TaskExecutor: Executor {
 extension TaskExecutor {
   public func asUnownedTaskExecutor() -> UnownedTaskExecutor {
     UnownedTaskExecutor(ordinary: self)
+  }
+}
+
+/// Compatibility overloads...
+@_unavailableInEmbedded
+@available(SwiftStdlib 6.0, *)
+extension TaskExecutor {
+  public func enqueue(_ job: UnownedJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
+    self.enqueue(job)
+  }
+
+  public func enqueue(_ job: consuming Job, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
+    self.enqueue(job)
+  }
+
+  public func enqueue(_ job: consuming ExecutorJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
+    self.enqueue(job)
   }
 }
 
@@ -523,9 +547,24 @@ where E: SerialExecutor {
 @_unavailableInEmbedded
 @available(SwiftStdlib 6.0, *)
 @_silgen_name("_swift_task_enqueueOnTaskExecutor")
-internal func _enqueueOnTaskExecutor<E>(job unownedJob: UnownedJob, executor: E) where E: TaskExecutor {
+internal func _enqueueOnTaskExecutor<E>(
+  job unownedJob: UnownedJob, executor: E
+) where E: TaskExecutor {
   #if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
   executor.enqueue(ExecutorJob(context: unownedJob._context))
+  #else // SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+  executor.enqueue(unownedJob)
+  #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+}
+
+@_unavailableInEmbedded
+@available(SwiftStdlib 6.0, *)
+@_silgen_name("_swift_task_enqueueOnSerialAndTaskExecutor")
+internal func _enqueueOnSerialAndTaskExecutor<TE>(
+  job unownedJob: UnownedJob, unownedSerialExecutor: UnownedSerialExecutor, taskExecutor: TE
+) where TE: TaskExecutor {
+  #if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+  taskExecutor.enqueue(ExecutorJob(context: unownedJob._context), isolatedTo: unownedSerialExecutor)
   #else // SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
   executor.enqueue(unownedJob)
   #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY

@@ -363,24 +363,22 @@ static void destroyTask(SWIFT_CONTEXT HeapObject *obj) {
   free(task);
 }
 
-static SerialExecutorRef executorForEnqueuedJob(Job *job) {
+SerialExecutorRef SerialExecutorRef::forEnqueuedJob(Job *job) {
 #if !SWIFT_CONCURRENCY_ENABLE_DISPATCH
   return SerialExecutorRef::generic();
 #else
   void *jobQueue = job->SchedulerPrivate[Job::DispatchQueueIndex];
   if (jobQueue == DISPATCH_QUEUE_GLOBAL_EXECUTOR) {
     return SerialExecutorRef::generic();
-  } else {
-    auto identity = reinterpret_cast<HeapObject *>(jobQueue);
-    assert(identity);
+  }
+
+  if (auto identity = reinterpret_cast<HeapObject *>(jobQueue)) {
     return SerialExecutorRef::forOrdinary(
         identity, _swift_task_getDispatchQueueSerialExecutorWitnessTable());
   }
-#endif
-}
 
-SerialExecutorRef SerialExecutorRef::forEnqueuedJob(Job *job) {
-  return executorForEnqueuedJob(job);
+  return SerialExecutorRef::generic();
+#endif
 }
 
 static void jobInvoke(void *obj, void *unused, uint32_t flags) {
@@ -388,7 +386,7 @@ static void jobInvoke(void *obj, void *unused, uint32_t flags) {
   (void)unused;
   Job *job = reinterpret_cast<Job *>(obj);
 
-  auto serialExecutor = executorForEnqueuedJob(job);
+  auto serialExecutor = SerialExecutorRef::forEnqueuedJob(job);
   fprintf(stderr, "[%s:%d](%s) executorForEnqueuedJob ::: %p\n", __FILE_NAME__, __LINE__, __FUNCTION__,
           serialExecutor.getIdentity());
   swift_job_run(job, serialExecutor);
