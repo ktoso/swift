@@ -1512,7 +1512,7 @@ Job *DefaultActorImpl::drainOne() {
 // of the same actor that we had started off with, so we need to reevaluate what
 // the current actor is
 static void defaultActorDrain(DefaultActorImpl *actor) {
-  SWIFT_TASK_DEBUG_LOG("Draining default actor %p", actor);
+  SWIFT_TASK_DEBUG_LOG_ON("Draining default actor %p", actor);
   DefaultActorImpl *currentActor = actor;
 
   bool actorLockAcquired = actor->tryLock(true);
@@ -1528,6 +1528,7 @@ static void defaultActorDrain(DefaultActorImpl *actor) {
 
   // Setup a TSD for tracking current execution info
   ExecutorTrackingInfo trackingInfo;
+  SWIFT_TASK_DEBUG_LOG_ON("Enter and shadow %p", actor);
   trackingInfo.enterAndShadow(
       SerialExecutorRef::forDefaultActor(asAbstract(currentActor)),
       /*taskExecutor, will be replaced per each job. */
@@ -1846,6 +1847,8 @@ bool DefaultActorImpl::unlock(bool forceUnlock)
 
 SWIFT_CC(swift)
 static void swift_job_runImpl(Job *job, SerialExecutorRef executor) {
+  fprintf(stderr, "[%s:%d](%s) >>>>> swift_job_runImpl \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+  SWIFT_TASK_DEBUG_LOG_ON("Run job %p on serial executor %p (default:%d)", job, executor.getIdentity(), executor.isDefaultActor());
   ExecutorTrackingInfo trackingInfo;
 
   // swift_job_run is a primary entrypoint for executors telling us to
@@ -1856,7 +1859,7 @@ static void swift_job_runImpl(Job *job, SerialExecutorRef executor) {
 
   trackingInfo.enterAndShadow(executor, TaskExecutorRef::undefined());
 
-  SWIFT_TASK_DEBUG_LOG("job %p", job);
+  SWIFT_TASK_DEBUG_LOG_ON("job %p", job);
   runJobInEstablishedExecutorContext(job);
 
   trackingInfo.leave();
@@ -1874,7 +1877,11 @@ SWIFT_CC(swift)
 static void swift_job_run_on_serial_and_task_executorImpl(Job *job,
                                                SerialExecutorRef serialExecutor,
                                                TaskExecutorRef taskExecutor) {
+  fprintf(stderr, "[%s:%d](%s) >>> swift_job_run_on_serial_and_task_executorImpl\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+
   ExecutorTrackingInfo trackingInfo;
+  SWIFT_TASK_DEBUG_LOG_ON("Run job %p on serial executor %p task executor %p", job,
+                          serialExecutor.getIdentity(), taskExecutor.getIdentity());
 
   // TODO: we don't allow switching
   trackingInfo.disallowSwitching();
@@ -1897,8 +1904,17 @@ static void swift_job_run_on_serial_and_task_executorImpl(Job *job,
 SWIFT_CC(swift)
 static void swift_job_run_on_task_executorImpl(Job *job,
                                                TaskExecutorRef taskExecutor) {
+  SWIFT_TASK_DEBUG_LOG_ON(">>> swift_job_run_on_task_executorImpl, job: %p",
+          job);
+
+  // FIXME(xxx): probably not this?
+//  auto serialExecutor = SerialExecutorRef::forEnqueuedJob(job);
+  auto serialExecutor = SerialExecutorRef::generic();
+
+  fprintf(stderr, "[%s:%d](%s) serial executor = %p (%s)\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+          serialExecutor.getIdentity(), serialExecutor.getIdentityDebugName());
   swift_job_run_on_serial_and_task_executor(
-      job, SerialExecutorRef::generic(), taskExecutor);
+      job, serialExecutor, taskExecutor);
 }
 
 void swift::swift_defaultActor_initialize(DefaultActor *_actor) {
@@ -2080,6 +2096,7 @@ SWIFT_CC(swiftasync)
 static void swift_task_switchImpl(SWIFT_ASYNC_CONTEXT AsyncContext *resumeContext,
                                   TaskContinuationFunction *resumeFunction,
                                   SerialExecutorRef newExecutor) {
+  fprintf(stderr, "[%s:%d](%s) SWITCH!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   auto task = swift_task_getCurrent();
   assert(task && "no current task!");
 
@@ -2090,16 +2107,14 @@ static void swift_task_switchImpl(SWIFT_ASYNC_CONTEXT AsyncContext *resumeContex
   auto currentTaskExecutor = (trackingInfo ? trackingInfo->getTaskExecutor()
                                            : TaskExecutorRef::undefined());
   auto newTaskExecutor = task->getPreferredTaskExecutor();
-  SWIFT_TASK_DEBUG_LOG("Task %p trying to switch executors: executor %p to "
+  SWIFT_TASK_DEBUG_LOG_ON("Task %p trying to switch executors: executor %p%s to "
                        "%p%s; task executor: from %p%s to %p%s",
-                       task, currentExecutor.getIdentity(),
-                       currentExecutor.isMainExecutor() ? " (MainActorExecutor)"
-                       : currentExecutor.isGeneric()    ? " (GenericExecutor)"
-                                                        : "",
+                       task,
+
+                       currentExecutor.getIdentity(),
+                       currentExecutor.getIdentityDebugName(),
                        newExecutor.getIdentity(),
-                       newExecutor.isMainExecutor() ? " (MainActorExecutor)"
-                       : newExecutor.isGeneric()    ? " (GenericExecutor)"
-                                                    : "",
+                       newExecutor.getIdentityDebugName(),
                        currentTaskExecutor.getIdentity(),
                        currentTaskExecutor.isDefined() ? "" : " (undefined)",
                        newTaskExecutor.getIdentity(),
@@ -2164,7 +2179,7 @@ extern "C" SWIFT_CC(swift) void _swift_task_makeAnyTaskExecutor(
 
 SWIFT_CC(swift)
 static void swift_task_enqueueImpl(Job *job, SerialExecutorRef executor) {
-  SWIFT_TASK_DEBUG_LOG("enqueue job %p on serial executor %p", job,
+  SWIFT_TASK_DEBUG_LOG_ON("enqueue job %p on serial executor %p", job,
                        executor.getIdentity());
 
   assert(job && "no job provided");
@@ -2172,7 +2187,6 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef executor) {
   _swift_tsan_release(job);
 
   if (executor.isGeneric()) {
-    // TODO: check the task for a flag if we need to look for task executor
     if (auto task = dyn_cast<AsyncTask>(job)) {
       auto taskExecutor = task->getPreferredTaskExecutor();
       if (taskExecutor.isDefined()) {
@@ -2182,6 +2196,13 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef executor) {
         auto wtable = taskExecutor.getTaskExecutorWitnessTable();
         auto taskExecutorObject = taskExecutor.getIdentity();
         auto taskExecutorType = swift_getObjectType(taskExecutorObject);
+
+        SWIFT_TASK_DEBUG_LOG_ON("enqueue job %p on GENERIC serial executor %p, and task executor = %p", job,
+                                executor.getIdentity(), taskExecutorObject);
+        fprintf(stderr, "[%s:%d](%s) executor.isDefaultActor() == %d (executor = %p)\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+                executor.isDefaultActor(), executor.getIdentity());
+
+        fprintf(stderr, "[%s:%d](%s) CALL _swift_task_enqueueOnTaskExecutor\n", __FILE_NAME__, __LINE__, __FUNCTION__);
         return _swift_task_enqueueOnTaskExecutor(job, taskExecutorObject,
                                                  taskExecutorType, wtable);
 #endif // SWIFT_CONCURRENCY_EMBEDDED
@@ -2203,6 +2224,7 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef executor) {
       auto wtable = taskExecutor.getTaskExecutorWitnessTable();
       auto executorObject = taskExecutor.getIdentity();
       auto executorType = swift_getObjectType(executorObject);
+      fprintf(stderr, "[%s:%d](%s) CALL _swift_task_enqueueOnTaskExecutor\n", __FILE_NAME__, __LINE__, __FUNCTION__);
       return _swift_task_enqueueOnTaskExecutor(job, executorObject,
                                                executorType, wtable);
     } else {
@@ -2218,6 +2240,8 @@ static void swift_task_enqueueImpl(Job *job, SerialExecutorRef executor) {
   auto wtable = executor.getSerialExecutorWitnessTable();
   auto executorObject = executor.getIdentity();
   auto executorType = swift_getObjectType(executorObject);
+  fprintf(stderr, "[%s:%d](%s) ENQUEUE on target serial executor %p\n", __FILE_NAME__, __LINE__, __FUNCTION__,
+          executorObject);
   _swift_task_enqueueOnExecutor(job, executorObject, executorType, wtable);
 #endif // SWIFT_CONCURRENCY_EMBEDDED
 }

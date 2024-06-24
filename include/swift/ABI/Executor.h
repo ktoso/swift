@@ -124,6 +124,14 @@ public:
     return Identity;
   }
 
+  const char* getIdentityDebugName() const {
+    return isMainExecutor() ? " (MainActorExecutor)"
+           : isGeneric()    ? " (GenericExecutor)"
+                            : "";
+  }
+
+  static SerialExecutorRef forEnqueuedJob(Job *job);
+
   /// Is this the generic executor reference?
   bool isGeneric() const {
     return Identity == 0;

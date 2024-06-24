@@ -51,6 +51,12 @@ namespace swift {
 #define SWIFT_TASK_DEBUG_LOG(fmt, ...) (void)0
 #endif
 
+#define SWIFT_TASK_DEBUG_LOG_ON(fmt, ...)                                         \
+  fprintf(stderr, "[%#lx] [%s:%d](%s) " fmt "\n",                              \
+          (unsigned long)Thread::current().platformThreadId(), __FILE__,       \
+          __LINE__, __FUNCTION__, __VA_ARGS__)
+
+
 class AsyncTask;
 class TaskGroup;
 class ActiveTaskStatus;

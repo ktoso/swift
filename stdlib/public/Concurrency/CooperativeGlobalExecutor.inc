@@ -246,6 +246,7 @@ static Job *claimNextFromCooperativeGlobalQueue() {
 void swift::
 swift_task_donateThreadToGlobalExecutorUntil(bool (*condition)(void *),
                                              void *conditionContext) {
+  fprintf(stderr, "[%s:%d](%s) swift_task_donateThreadToGlobalExecutorUntil\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   while (!condition(conditionContext)) {
     auto job = claimNextFromCooperativeGlobalQueue();
     if (!job) return;

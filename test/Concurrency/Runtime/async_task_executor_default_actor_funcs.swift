@@ -7,21 +7,26 @@
 // REQUIRES: concurrency_runtime
 // UNSUPPORTED: back_deployment_runtime
 
+import Darwin
 import Dispatch
 import StdlibUnittest
 import _Concurrency
 
 final class NaiveQueueExecutor: TaskExecutor {
   let queue: DispatchQueue
+  var actorExecutor: UnownedSerialExecutor?
 
   init(_ queue: DispatchQueue) {
     self.queue = queue
   }
 
   public func enqueue(_ _job: consuming ExecutorJob) {
+    fputs("\n\n\n\n Swift enqueue job: job.runSynchronously(on: self.asUnownedTaskExecutor())\n", stderr)
     let job = UnownedJob(_job)
     queue.async {
-      job.runSynchronously(on: self.asUnownedTaskExecutor())
+      job.runSynchronously(
+        isolatedTo: self.actorExecutor!,
+        taskExecutor: self.asUnownedTaskExecutor())
     }
   }
 
@@ -34,7 +39,13 @@ final class NaiveQueueExecutor: TaskExecutor {
 }
 
 actor ThreaddyTheDefaultActor {
+  func justActorIsolated() async {
+    self.assertIsolated()
+  }
+
   func actorIsolated(expectedExecutor: NaiveQueueExecutor) async {
+    fputs(">>>>>> INSIDE ACTOR <<<<<\n", stderr)
+    self.assertIsolated()
     dispatchPrecondition(condition: .onQueue(expectedExecutor.queue))
   }
 }
@@ -46,14 +57,19 @@ actor ThreaddyTheDefaultActor {
     let executor = NaiveQueueExecutor(queue)
 
     let defaultActor = ThreaddyTheDefaultActor()
+    executor.actorExecutor = defaultActor.unownedExecutor
+
+    fputs("\n\n\n\nSTART TASK....\n", stderr)
 
     await Task(executorPreference: executor) {
-      dispatchPrecondition(condition: .onQueue(executor.queue))
+//    await Task.detached {
+
+//      dispatchPrecondition(condition: .onQueue(executor.queue))
       await defaultActor.actorIsolated(expectedExecutor: executor)
     }.value
 
-    await withTaskExecutorPreference(executor) {
-      await defaultActor.actorIsolated(expectedExecutor: executor)
-    }
+//    await withTaskExecutorPreference(executor) {
+//      await defaultActor.actorIsolated(expectedExecutor: executor)
+//    }
   }
 }
