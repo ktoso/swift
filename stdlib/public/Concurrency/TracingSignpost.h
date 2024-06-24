@@ -208,14 +208,14 @@ inline void task_status_changed(AsyncTask *task, uint8_t maxPriority,
                                 bool isCancelled, bool isEscalated,
                                 bool isStarting, bool isRunning, bool isEnqueued) {
   ENSURE_LOGS();
-//  auto id = os_signpost_id_make_with_pointer(TaskLog, task);
-//  os_signpost_event_emit(
-//      TaskLog, id, SWIFT_LOG_TASK_STATUS_CHANGED_NAME,
-//      "task=%" PRIx64 " resumefn=%p "
-//      "maxPriority=%u, isCancelled=%{bool}d "
-//      "isEscalated=%{bool}d, isRunning=%{bool}d, isEnqueued=%{bool}d",
-//      task->getTaskId(), task->getResumeFunctionForLogging(isStarting), maxPriority,
-//      isCancelled, isEscalated, isRunning, isEnqueued);
+  auto id = os_signpost_id_make_with_pointer(TaskLog, task);
+  os_signpost_event_emit(
+      TaskLog, id, SWIFT_LOG_TASK_STATUS_CHANGED_NAME,
+      "task=%" PRIx64 " resumefn=%p "
+      "maxPriority=%u, isCancelled=%{bool}d "
+      "isEscalated=%{bool}d, isRunning=%{bool}d, isEnqueued=%{bool}d",
+      task->getTaskId(), task->getResumeFunctionForLogging(isStarting), maxPriority,
+      isCancelled, isEscalated, isRunning, isEnqueued);
 }
 
 inline void task_flags_changed(AsyncTask *task, uint8_t jobPriority,
@@ -233,12 +233,12 @@ inline void task_flags_changed(AsyncTask *task, uint8_t jobPriority,
 
 inline void task_wait(AsyncTask *task, AsyncTask *waitingOn, uintptr_t status) {
   ENSURE_LOGS();
-//  auto id = os_signpost_id_make_with_pointer(TaskLog, task);
-//  auto waitingID = waitingOn ? waitingOn->getTaskId() : 0;
-//  os_signpost_interval_begin(TaskLog, id, SWIFT_LOG_TASK_WAIT_NAME,
-//                             "task=%" PRIx64 " waitingOnTask=%" PRIx64
-//                             " status=0x%" PRIxPTR,
-//                             task->getTaskId(), waitingID, status);
+  auto id = os_signpost_id_make_with_pointer(TaskLog, task);
+  auto waitingID = waitingOn ? waitingOn->getTaskId() : 0;
+  os_signpost_interval_begin(TaskLog, id, SWIFT_LOG_TASK_WAIT_NAME,
+                             "task=%" PRIx64 " waitingOnTask=%" PRIx64
+                             " status=0x%" PRIxPTR,
+                             task->getTaskId(), waitingID, status);
 }
 
 inline void task_resume(AsyncTask *task) {

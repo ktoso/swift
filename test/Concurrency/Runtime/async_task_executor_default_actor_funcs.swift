@@ -49,8 +49,7 @@ actor ThreaddyTheDefaultActor {
     self.assertIsolated()
   }
 
-  func actorIsolated(expectedExecutor: NaiveQueueExecutor) async {
-    fputs(">>>>>> INSIDE ACTOR <<<<<\n", stderr)
+  func actorIsolated() async {
     self.assertIsolated()
     dispatchPrecondition(condition: .onQueue(expectedExecutor.queue))
   }
@@ -67,14 +66,12 @@ actor ThreaddyTheDefaultActor {
     fputs("\n\n\n\nSTART TASK....\n", stderr)
 
     await Task(executorPreference: executor) {
-//    await Task.detached {
-
-//      dispatchPrecondition(condition: .onQueue(executor.queue))
+      dispatchPrecondition(condition: .onQueue(executor.queue))
       await defaultActor.actorIsolated(expectedExecutor: executor)
     }.value
 
-//    await withTaskExecutorPreference(executor) {
-//      await defaultActor.actorIsolated(expectedExecutor: executor)
-//    }
+    await withTaskExecutorPreference(executor) {
+      await defaultActor.actorIsolated(expectedExecutor: executor)
+    }
   }
 }

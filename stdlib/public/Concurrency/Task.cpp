@@ -112,7 +112,6 @@ FutureFragment::Status AsyncTask::waitFuture(AsyncTask *waitingTask,
                                              TaskContinuationFunction *resumeFn,
                                              AsyncContext *callerContext,
                                              OpaqueValue *result) {
-  fprintf(stderr, "[%s:%d](%s) wait future\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   using Status = FutureFragment::Status;
   using WaitQueueItem = FutureFragment::WaitQueueItem;
 
@@ -126,7 +125,7 @@ FutureFragment::Status AsyncTask::waitFuture(AsyncTask *waitingTask,
     switch (queueHead.getStatus()) {
     case Status::Error:
     case Status::Success:
-      SWIFT_TASK_DEBUG_LOG_ON("task %p waiting on task %p, completed immediately",
+      SWIFT_TASK_DEBUG_LOG("task %p waiting on task %p, completed immediately",
                            waitingTask, this);
       _swift_tsan_acquire(static_cast<Job *>(this));
       if (contextInitialized) waitingTask->flagAsRunning();
@@ -134,7 +133,7 @@ FutureFragment::Status AsyncTask::waitFuture(AsyncTask *waitingTask,
       return queueHead.getStatus();
 
     case Status::Executing:
-      SWIFT_TASK_DEBUG_LOG_ON("task %p waiting on task %p, going to sleep",
+      SWIFT_TASK_DEBUG_LOG("task %p waiting on task %p, going to sleep",
                            waitingTask, this);
       _swift_tsan_release(static_cast<Job *>(waitingTask));
       concurrency::trace::task_wait(
@@ -382,13 +381,10 @@ SerialExecutorRef SerialExecutorRef::forEnqueuedJob(Job *job) {
 }
 
 static void jobInvoke(void *obj, void *unused, uint32_t flags) {
-  fprintf(stderr, "[%s:%d](%s) JobInvoke\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   (void)unused;
   Job *job = reinterpret_cast<Job *>(obj);
 
   auto serialExecutor = SerialExecutorRef::forEnqueuedJob(job);
-  fprintf(stderr, "[%s:%d](%s) executorForEnqueuedJob ::: %p\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-          serialExecutor.getIdentity());
   swift_job_run(job, serialExecutor);
 }
 
@@ -1160,7 +1156,6 @@ SWIFT_CC(swift)
 void swift::swift_task_run_inline(OpaqueValue *result, void *closureAFP,
                                   OpaqueValue *closureContext,
                                   const Metadata *futureResultTypeMetadata) {
-  fprintf(stderr, "[%s:%d](%s) swift_task_run_inline\n", __FILE_NAME__, __LINE__, __FUNCTION__);
   // Ensure that we're currently in a synchronous context.
   if (swift_task_getCurrent()) {
     swift_Concurrency_fatalError(0, "called runInline within an async context");

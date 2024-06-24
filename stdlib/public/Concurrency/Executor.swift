@@ -234,7 +234,9 @@ public protocol TaskExecutor: Executor {
   // avoid drilling down to the base conformance just for the basic
   // work-scheduling operation.
   @_nonoverride
+  @available(*, deprecated, message: "Implement 'enqueue(_: UnownedJob, isolatedTo: UnownedSerialExecutor)' instead")
   func enqueue(_ job: UnownedJob)
+
   @_nonoverride
   func enqueue(_ job: UnownedJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor)
 
@@ -244,10 +246,11 @@ public protocol TaskExecutor: Executor {
   // avoid drilling down to the base conformance just for the basic
   // work-scheduling operation.
   @_nonoverride
-  @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob)' instead")
+  @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob, isolatedTo: UnownedSerialExecutor)' instead")
   func enqueue(_ job: consuming Job)
+
   @_nonoverride
-  @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob)' instead")
+  @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob, isolatedTo: UnownedSerialExecutor)' instead")
   func enqueue(_ job: consuming Job, isolatedTo unownedSerialExecutor: UnownedSerialExecutor)
   #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
 
@@ -257,7 +260,9 @@ public protocol TaskExecutor: Executor {
   // avoid drilling down to the base conformance just for the basic
   // work-scheduling operation.
   @_nonoverride
+  @available(*, deprecated, message: "Implement 'enqueue(_: UnownedJob, isolatedTo: UnownedSerialExecutor)' instead")
   func enqueue(_ job: consuming ExecutorJob)
+
   @_nonoverride
   func enqueue(_ job: consuming ExecutorJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor)
   #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
