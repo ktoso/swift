@@ -282,12 +282,26 @@ extension TaskExecutor {
 @_unavailableInEmbedded
 @available(SwiftStdlib 6.0, *)
 extension TaskExecutor {
+
+//  @available(*, deprecated, message: "Implement 'enqueue(_: UnownedJob, isolatedTo: UnownedSerialExecutor)' instead")
+  public func enqueue(_ job: UnownedJob) {
+    fatalError("Implement enqueue(_:isolatedTo:) instead of enqueue(_:)")
+  }
   public func enqueue(_ job: UnownedJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
     self.enqueue(job)
   }
 
+//  @available(*, deprecated, message: "Implement 'enqueue(_: consuming Job, isolatedTo: UnownedSerialExecutor)' instead")
+  public func enqueue(_ job: consuming Job) {
+    fatalError("Implement enqueue(_:isolatedTo:) instead of enqueue(_:)")
+  }
   public func enqueue(_ job: consuming Job, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
     self.enqueue(job)
+  }
+
+//  @available(*, deprecated, message: "Implement 'enqueue(_: consuming ExecutorJob, isolatedTo: UnownedSerialExecutor)' instead")
+  public func enqueue(_ job: consuming ExecutorJob) {
+    fatalError("Implement enqueue(_:isolatedTo:) instead of enqueue(_:)")
   }
 
   public func enqueue(_ job: consuming ExecutorJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {

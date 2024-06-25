@@ -130,6 +130,8 @@ public struct UnownedJob: Sendable {
   @available(SwiftStdlib 6.0, *)
   @_alwaysEmitIntoClient
   @inlinable
+  // TODO: make it immediately not available out of Betas?
+  @available(*, deprecated, message: "Use runSynchronously(isolatedTo:taskExecutor:) instead, as this version does not ensure proper actor isolation.")
   public func runSynchronously(on executor: UnownedTaskExecutor) {
     _swiftJobRunOnTaskExecutor(self, executor)
   }
@@ -343,6 +345,8 @@ extension ExecutorJob {
   @available(SwiftStdlib 6.0, *)
   @_alwaysEmitIntoClient
   @inlinable
+  // TODO: make it immediately not available out of Betas?
+  @available(*, deprecated, message: "Use runSynchronously(isolatedTo:taskExecutor:) instead, as this version does not ensure proper actor isolation.")
   __consuming public func runSynchronously(on executor: UnownedTaskExecutor) {
     _swiftJobRunOnTaskExecutor(UnownedJob(self), executor)
   }

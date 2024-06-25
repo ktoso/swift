@@ -11,7 +11,7 @@ import Dispatch
 import StdlibUnittest
 import _Concurrency
 
-final class NaiveQueueExecutor: TaskExecutor {
+final class QueueSerialExecutor: SerialExecutor {
   let queue: DispatchQueue
 
   init(_ queue: DispatchQueue) {
@@ -21,9 +21,26 @@ final class NaiveQueueExecutor: TaskExecutor {
   public func enqueue(_ _job: consuming ExecutorJob) {
     let job = UnownedJob(_job)
     queue.async {
-      job.runSynchronously(on: self.asUnownedTaskExecutor())
+      job.runSynchronously(on: self.asUnownedSerialExecutor())
     }
   }
+
+  func asUnownedSerialExecutor() -> UnownedSerialExecutor {
+    UnownedSerialExecutor(ordinary: self)
+  }
+}
+
+final class QueueTaskExecutor: TaskExecutor {
+  let queue: DispatchQueue
+
+  init(_ queue: DispatchQueue) {
+    self.queue = queue
+  }
+
+  public func enqueue(_ _job: consuming ExecutorJob) {
+    fatalError("Should not be used when enqueue(_:isolatedTo:) is present")
+  }
+
   public func enqueue(_ _job: consuming ExecutorJob, isolatedTo unownedSerialExecutor: UnownedSerialExecutor) {
     let job = UnownedJob(_job)
     queue.async {
@@ -32,41 +49,67 @@ final class NaiveQueueExecutor: TaskExecutor {
         taskExecutor: self.asUnownedTaskExecutor())
     }
   }
-
-  public func apiTest(serialExecutor: any SerialExecutor, _ job: consuming ExecutorJob) {
-    job.runSynchronously(
-      isolatedTo: serialExecutor.asUnownedSerialExecutor(),
-      taskExecutor: self.asUnownedTaskExecutor())
-  }
-
 }
 
 actor ThreaddyTheDefaultActor {
-  func justActorIsolated() async {
-    self.assertIsolated()
-  }
-
-  func actorIsolated(expectedExecutor: NaiveQueueExecutor) async {
+  func actorIsolated(expectedExecutor: QueueTaskExecutor) async {
     self.assertIsolated()
     dispatchPrecondition(condition: .onQueue(expectedExecutor.queue))
   }
 }
 
+actor CharlieTheCustomExecutorActor {
+  let executor: QueueSerialExecutor
+
+  init(executor: QueueSerialExecutor) {
+    self.executor = executor
+  }
+
+  func actorIsolated(notExpectedExecutor: QueueTaskExecutor) async {
+    self.assertIsolated()
+    dispatchPrecondition(condition: .notOnQueue(notExpectedExecutor.queue))
+  }
+}
+
 @main struct Main {
-
   static func main() async {
-    let queue = DispatchQueue(label: "example-queue")
-    let executor = NaiveQueueExecutor(queue)
+    let tests = TestSuite("\(#fileID)")
 
-    let defaultActor = ThreaddyTheDefaultActor()
+    tests.test("'default actor' should execute on present task executor preference, and keep isolation") {
+      let queue = DispatchQueue(label: "example-queue")
+      let executor = QueueTaskExecutor(queue)
 
-    await Task(executorPreference: executor) {
-      dispatchPrecondition(condition: .onQueue(executor.queue))
-      await defaultActor.actorIsolated(expectedExecutor: executor)
-    }.value
+      let defaultActor = ThreaddyTheDefaultActor()
 
-    await withTaskExecutorPreference(executor) {
-      await defaultActor.actorIsolated(expectedExecutor: executor)
+      await Task(executorPreference: executor) {
+        dispatchPrecondition(condition: .onQueue(executor.queue))
+        await defaultActor.actorIsolated(expectedExecutor: executor)
+      }
+        .value
+
+      await withTaskExecutorPreference(executor) {
+        await defaultActor.actorIsolated(expectedExecutor: executor)
+      }
     }
+
+    tests.test("'custom executor actor' should NOT execute on present task executor preference, and keep isolation") {
+      let queue = DispatchQueue(label: "example-queue")
+      let serialExecutor = QueueSerialExecutor(queue)
+      let taskExecutor = QueueTaskExecutor(queue)
+
+      let customActor = CharlieTheCustomExecutorActor(executor: serialExecutor)
+
+      await Task(executorPreference: taskExecutor) {
+        dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
+        await customActor.actorIsolated(notExpectedExecutor: taskExecutor)
+      }
+        .value
+
+      await withTaskExecutorPreference(taskExecutor) {
+        await customActor.actorIsolated(notExpectedExecutor: taskExecutor)
+      }
+    }
+
+    await runAllTestsAsync()
   }
 }
