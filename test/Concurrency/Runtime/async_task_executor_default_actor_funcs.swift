@@ -65,8 +65,14 @@ actor CharlieTheCustomExecutorActor {
     self.executor = executor
   }
 
-  func actorIsolated(notExpectedExecutor: QueueTaskExecutor) async {
+  nonisolated var unownedExecutor: UnownedSerialExecutor {
+    self.executor.asUnownedSerialExecutor()
+  }
+
+  func actorIsolated(expectedExecutor: QueueSerialExecutor,
+                     notExpectedExecutor: QueueTaskExecutor) async {
     self.assertIsolated()
+    dispatchPrecondition(condition: .onQueue(expectedExecutor.queue))
     dispatchPrecondition(condition: .notOnQueue(notExpectedExecutor.queue))
   }
 }
@@ -93,20 +99,23 @@ actor CharlieTheCustomExecutorActor {
     }
 
     tests.test("'custom executor actor' should NOT execute on present task executor preference, and keep isolation") {
-      let queue = DispatchQueue(label: "example-queue")
-      let serialExecutor = QueueSerialExecutor(queue)
-      let taskExecutor = QueueTaskExecutor(queue)
+      let serialExecutor = QueueSerialExecutor(DispatchQueue(label: "serial-exec-queue"))
+      let taskExecutor = QueueTaskExecutor(DispatchQueue(label: "task-queue"))
 
       let customActor = CharlieTheCustomExecutorActor(executor: serialExecutor)
 
       await Task(executorPreference: taskExecutor) {
         dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
-        await customActor.actorIsolated(notExpectedExecutor: taskExecutor)
+        await customActor.actorIsolated(
+          expectedExecutor: serialExecutor,
+          notExpectedExecutor: taskExecutor)
       }
         .value
 
       await withTaskExecutorPreference(taskExecutor) {
-        await customActor.actorIsolated(notExpectedExecutor: taskExecutor)
+        await customActor.actorIsolated(
+          expectedExecutor: serialExecutor,
+          notExpectedExecutor: taskExecutor)
       }
     }
 
