@@ -967,8 +967,6 @@ swift_task_create_commonImpl(size_t rawTaskCreateFlags,
                                     captureCurrentVoucher);
   }
 
-  SWIFT_TASK_DEBUG_LOG_ON("CREATED TASK: %p", task);
-
   // Initialize the child fragment if applicable.
   if (parent) {
     auto childFragment = task->childFragment();

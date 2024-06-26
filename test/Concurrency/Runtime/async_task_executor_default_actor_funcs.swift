@@ -54,8 +54,7 @@ final class QueueTaskExecutor: TaskExecutor {
     let job = UnownedJob(_job)
     queue.async {
       job.runSynchronously(
-        isolatedTo: unownedSerialExecutor,
-        taskExecutor: self.asUnownedTaskExecutor())
+        on: self.asUnownedTaskExecutor())
     }
   }
 }

@@ -364,8 +364,6 @@ public:
   /// runInExecutorContext.
   SWIFT_CC(swiftasync)
   void runInFullyEstablishedContext() {
-    fprintf(stderr, "[%s:%d](%s) run in fully established context, job = %p\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-            this);
     return ResumeTask(ResumeContext); // 'return' forces tail call
   }
 
