@@ -1649,13 +1649,13 @@ bool DefaultActorImpl::tryLock(bool asDrainer) {
 #else /* SWIFT_CONCURRENCY_ACTORS_AS_LOCKS */
 
 #if SWIFT_CONCURRENCY_ENABLE_PRIORITY_ESCALATION
-  SWIFT_TASK_DEBUG_LOG("Thread %#x attempting to jump onto %p, as drainer = %d", dispatch_lock_value_for_self(), this, asDrainer);
+  SWIFT_TASK_DEBUG_LOG_ON("Thread %#x attempting to jump onto %p, as drainer = %d", dispatch_lock_value_for_self(), this, asDrainer);
   dispatch_thread_override_info_s threadOverrideInfo;
   threadOverrideInfo = swift_dispatch_thread_get_current_override_qos_floor();
   qos_class_t overrideFloor = threadOverrideInfo.override_qos_floor;
 retry:;
 #else
-  SWIFT_TASK_DEBUG_LOG("Thread attempting to jump onto %p, as drainer = %d", this, asDrainer);
+  SWIFT_TASK_DEBUG_LOG_ON("Thread attempting to jump onto %p, as drainer = %d", this, asDrainer);
 #endif
 
   bool distributedActorIsRemote = swift_distributed_actor_is_remote(this);
@@ -2180,7 +2180,7 @@ void _swift_task_makeAnyTaskExecutor(
 
 SWIFT_CC(swift)
 static void swift_task_enqueueImpl(Job *job, SerialExecutorRef serialExecutorRef) {
-  SWIFT_TASK_DEBUG_LOG("enqueue job %p on serial serialExecutor %p", job,
+  SWIFT_TASK_DEBUG_LOG_ON("enqueue job %p on serial serialExecutor %p", job,
                           serialExecutorRef.getIdentity());
 
   assert(job && "no job provided");

@@ -11,6 +11,15 @@ import Dispatch
 import StdlibUnittest
 import _Concurrency
 
+// for sleep
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Android)
+import Android
+#endif
+
 final class QueueSerialExecutor: SerialExecutor {
   let queue: DispatchQueue
 
@@ -56,6 +65,31 @@ actor ThreaddyTheDefaultActor {
     self.assertIsolated()
     dispatchPrecondition(condition: .onQueue(expectedExecutor.queue))
   }
+
+  var phase: Phase = .start
+  enum Phase: String {
+    case start = "Start"
+    case hello = "Hello"
+    case world = "World"
+  }
+
+  func printBlockingSleepPrint(name: String) async -> String {
+    print("Enter: \(phase) - \(name)")
+//    precondition(phase == .start, "Must start method call after previous had completed!")
+    defer { phase = .start }
+
+    phase = .hello
+    print("- Before sleep: \(phase) - \(name)")
+    var reply = "\(phase)"
+
+    sleep(1)
+
+    phase = .world
+    print("- After sleep: \(phase) - \(name)")
+    reply = "\(reply) \(phase)"
+
+    return reply
+  }
 }
 
 actor CharlieTheCustomExecutorActor {
@@ -81,27 +115,23 @@ actor CharlieTheCustomExecutorActor {
   static func main() async {
     let tests = TestSuite("\(#fileID)")
 
-    tests.test("'default actor' should execute on present task executor preference, and keep isolation") {
-      let queue = DispatchQueue(label: "example-queue")
-      let executor = QueueTaskExecutor(queue)
+    let serialExecutor = QueueSerialExecutor(DispatchQueue(label: "serial-exec-queue"))
+    let taskExecutor = QueueTaskExecutor(DispatchQueue(label: "task-executor-queue"))
 
+    tests.test("'default actor' should execute on present task executor preference, and keep isolation") {
       let defaultActor = ThreaddyTheDefaultActor()
 
-      await Task(executorPreference: executor) {
-        dispatchPrecondition(condition: .onQueue(executor.queue))
-        await defaultActor.actorIsolated(expectedExecutor: executor)
-      }
-        .value
+      await Task(executorPreference: taskExecutor) {
+        dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
+        await defaultActor.actorIsolated(expectedExecutor: taskExecutor)
+      }.value
 
-      await withTaskExecutorPreference(executor) {
-        await defaultActor.actorIsolated(expectedExecutor: executor)
+      await withTaskExecutorPreference(taskExecutor) {
+        await defaultActor.actorIsolated(expectedExecutor: taskExecutor)
       }
     }
 
     tests.test("'custom executor actor' should NOT execute on present task executor preference, and keep isolation") {
-      let serialExecutor = QueueSerialExecutor(DispatchQueue(label: "serial-exec-queue"))
-      let taskExecutor = QueueTaskExecutor(DispatchQueue(label: "task-queue"))
-
       let customActor = CharlieTheCustomExecutorActor(executor: serialExecutor)
 
       await Task(executorPreference: taskExecutor) {
@@ -109,14 +139,31 @@ actor CharlieTheCustomExecutorActor {
         await customActor.actorIsolated(
           expectedExecutor: serialExecutor,
           notExpectedExecutor: taskExecutor)
-      }
-        .value
+      }.value
 
       await withTaskExecutorPreference(taskExecutor) {
         await customActor.actorIsolated(
           expectedExecutor: serialExecutor,
           notExpectedExecutor: taskExecutor)
       }
+    }
+
+    tests.test("'default actor' must not be entered concurrently from non-task executor and task executor") {
+      // The serial executor must be used to serialize the actor execution properly.
+      let defaultActor = ThreaddyTheDefaultActor()
+
+      let t1 = Task {
+        let reply = await defaultActor.printBlockingSleepPrint(name: "Task()")
+        print("= Task() got reply: \(reply)")
+      }
+
+//      let t2 = Task(executorPreference: taskExecutor) {
+      let t2 = Task() {
+        let reply = await defaultActor.printBlockingSleepPrint(name: "Task(executorPreference:)")
+        print("= Task(executorPreference:) got reply: \(reply)")
+      }
+
+      _ = await [t1.value, t2.value]
     }
 
     await runAllTestsAsync()
