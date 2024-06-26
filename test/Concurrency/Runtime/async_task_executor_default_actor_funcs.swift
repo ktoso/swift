@@ -113,61 +113,60 @@ actor CharlieTheCustomExecutorActor {
 
 @main struct Main {
   static func main() async {
-//    let tests = TestSuite("\(#fileID)")
+    let tests = TestSuite("\(#fileID)")
 
-//    let serialExecutor = QueueSerialExecutor(DispatchQueue(label: "serial-exec-queue"))
+    let serialExecutor = QueueSerialExecutor(DispatchQueue(label: "serial-exec-queue"))
     let taskExecutor = QueueTaskExecutor(DispatchQueue(label: "task-executor-queue"))
 
-//    tests.test("'default actor' should execute on present task executor preference, and keep isolation") {
-//      let defaultActor = ThreaddyTheDefaultActor()
-//
-//      await Task(executorPreference: taskExecutor) {
-//        dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
-//        await defaultActor.actorIsolated(expectedExecutor: taskExecutor)
-//      }.value
-//
-//      await withTaskExecutorPreference(taskExecutor) {
-//        await defaultActor.actorIsolated(expectedExecutor: taskExecutor)
-//      }
-//    }
-//
-//    tests.test("'custom executor actor' should NOT execute on present task executor preference, and keep isolation") {
-//      let customActor = CharlieTheCustomExecutorActor(executor: serialExecutor)
-//
-//      await Task(executorPreference: taskExecutor) {
-//        dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
-//        await customActor.actorIsolated(
-//          expectedExecutor: serialExecutor,
-//          notExpectedExecutor: taskExecutor)
-//      }.value
-//
-//      await withTaskExecutorPreference(taskExecutor) {
-//        await customActor.actorIsolated(
-//          expectedExecutor: serialExecutor,
-//          notExpectedExecutor: taskExecutor)
-//      }
-//    }
+    tests.test("'default actor' should execute on present task executor preference, and keep isolation") {
+      let defaultActor = ThreaddyTheDefaultActor()
 
-//    tests.test("'default actor' must not be entered concurrently from non-task executor and task executor") {
+      await Task(executorPreference: taskExecutor) {
+        dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
+        await defaultActor.actorIsolated(expectedExecutor: taskExecutor)
+      }.value
+
+      await withTaskExecutorPreference(taskExecutor) {
+        await defaultActor.actorIsolated(expectedExecutor: taskExecutor)
+      }
+    }
+
+    tests.test("'custom executor actor' should NOT execute on present task executor preference, and keep isolation") {
+      let customActor = CharlieTheCustomExecutorActor(executor: serialExecutor)
+
+      await Task(executorPreference: taskExecutor) {
+        dispatchPrecondition(condition: .onQueue(taskExecutor.queue))
+        await customActor.actorIsolated(
+          expectedExecutor: serialExecutor,
+          notExpectedExecutor: taskExecutor)
+      }.value
+
+      await withTaskExecutorPreference(taskExecutor) {
+        await customActor.actorIsolated(
+          expectedExecutor: serialExecutor,
+          notExpectedExecutor: taskExecutor)
+      }
+    }
+
+    tests.test("'default actor' must not be entered concurrently from non-task executor and task executor") {
       // The serial executor must be used to serialize the actor execution properly.
       let defaultActor = ThreaddyTheDefaultActor()
 
       let t1 = Task {
         let reply = await defaultActor.printBlockingSleepPrint(name: "Task()")
-//        print("= Task() got reply: \(reply)")
+        print("= Task() got reply: \(reply)")
       }
 
     sleep(1)
 
       let t2 = Task(executorPreference: taskExecutor) {
-//      let t2 = Task() {
         let reply = await defaultActor.printBlockingSleepPrint(name: "Task(executorPreference:)")
-//        print("= Task(executorPreference:) got reply: \(reply)")
+        print("= Task(executorPreference:) got reply: \(reply)")
       }
 
       _ = await [t1.value, t2.value]
-//    }
-//
-//    await runAllTestsAsync()
+    }
+
+    await runAllTestsAsync()
   }
 }
