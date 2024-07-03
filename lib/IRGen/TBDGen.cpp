@@ -109,6 +109,16 @@ if (name == "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12a
   //    (type_unqualified_ident id="AchievementDescription" bind="GameServicesProtocols.(file).AchievementDescription@/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:102:15")))
   //  Fix-it applied, fixed expression was:
   //    declRef.getDecl()->dump()
+
+  // SECOND TIME ENTERING
+  //
+  // (lldb) e declRef.dump()
+  // #AchievementServiceProtocol.describe
+  //(lldb) e declRef.getDecl()->dump()
+  //(func_decl implicit "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (Self) -> (sending [AchievementRef]) async throws -> [AchievementDescription]" access=public captures=(<generic> ) nonisolated distributed_thunk
+  //  (parameter "self")
+  //  (parameter_list
+  //    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]")))
 }
 #ifndef NDEBUG
   if (kind == EncodeKind::GlobalSymbol) {
