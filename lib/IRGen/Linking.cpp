@@ -119,26 +119,10 @@ void LinkEntity::mangle(raw_ostream &buffer) const {
 
 /// Mangle this entity as a std::string.
 std::string LinkEntity::mangleAsString() const {
-  if (isDeclKind(getKind()) && (
-                                   getKind() == Kind::DispatchThunk ||
-                                   getKind() == Kind::DistributedAccessor ||
-                                   getKind() == Kind::MethodDescriptor
-                                   )) {
-    fprintf(stderr, "[%s:%d](%s) mangle as string: \n", __FILE_NAME__, __LINE__,
-            __FUNCTION__);
-    getSILDeclRef().dump();
-  }
-
   IRGenMangler mangler;
   switch (getKind()) {
   case Kind::DispatchThunk: {
-    // TODO: do the same as we do for funcs for the dispatch thunks etc
     auto *func = cast<FuncDecl>(getDecl());
-
-//    if (func->isDistributedThunk() && isa<ProtocolDecl>(func->getDeclContext())) {
-//      return;
-//    }
-
     return mangler.mangleDispatchThunk(func);
   }
 
