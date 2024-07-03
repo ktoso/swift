@@ -1447,8 +1447,23 @@ public:
   }
 
   const ValueDecl *getDecl() const {
+    // TODO: can we return the requirement decl for a distributed THUNK?
     assert(isDeclKind(getKind()));
-    return reinterpret_cast<ValueDecl*>(Pointer);
+
+    // if it is a distributed thunk, find the thunk decl and mangled based on it...
+    auto decl = reinterpret_cast<ValueDecl*>(Pointer);
+
+    if (auto afd = dyn_cast<AbstractFunctionDecl>(decl)) {
+      if (afd->isDistributed()) {
+        fprintf(stderr, "[%s:%d](%s) swap for thunk distributed !\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+        decl = afd->getDistributedThunk();
+      }
+    }
+
+//    if (auto thunk = decl->getDistributedThunk()) {
+//
+//    }
+    return decl;
   }
   
   const ExtensionDecl *getExtension() const {

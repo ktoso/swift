@@ -401,13 +401,16 @@ template<typename T> class SILGenWitnessTable : public SILWitnessVisitor<T> {
 
 public:
   void addMethod(SILDeclRef requirementRef) {
-    // TODO: here the requirement is thunk_decl of the protocol; it is a FUNC
-    // detect here that it is a func dec + thunk.
-    // walk up to DC, and find storage.
-    // e  requirementRef->getDecl()->dump()
-    //(func_decl implicit "distributedVariable()" interface type="<Self where Self : WorkerProtocol> (Self) -> () async throws -> String" access=internal nonisolated distributed_thunk
-    //  (parameter "self")
-    //  (parameter_list))
+//    fprintf(stderr, "[%s:%d](%s) add method: ", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    requirementRef.dump();
+
+      // TODO: here the requirement is thunk_decl of the protocol; it is a FUNC
+      // detect here that it is a func dec + thunk.
+      // walk up to DC, and find storage.
+      // e  requirementRef->getDecl()->dump()
+      //(func_decl implicit "distributedVariable()" interface type="<Self where Self : WorkerProtocol> (Self) -> () async throws -> String" access=internal nonisolated distributed_thunk
+      //  (parameter "self")
+      //  (parameter_list))
 
     auto reqDecl = requirementRef.getDecl();
 
@@ -473,7 +476,6 @@ public:
     // Here we notice a `distributed var` thunk requirement,
     // and witness it with the distributed thunk -- the "getter thunk".
     if (requirementRef.isDistributedThunk()) {
-
       return addMethodImplementation(
           requirementRef, getWitnessRef(requirementRef, witnessStorage->getDistributedThunk()),
           witness);

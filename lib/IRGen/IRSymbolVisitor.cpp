@@ -102,6 +102,13 @@ public:
   }
 
   void addDispatchThunk(SILDeclRef declRef) override {
+//    fprintf(stderr, "[%s:%d](%s) add dispatch thunk: ", __FILE_NAME__, __LINE__, __FUNCTION__);
+//    declRef.dump();
+
+//    if (declRef.isDistributedThunk())
+//      return;
+
+    // TODO: carry along TE
     auto entity = LinkEntity::forDispatchThunk(declRef);
     addLinkEntity(entity);
 

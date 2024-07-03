@@ -128,6 +128,7 @@ void swift_distributed_execute_target(
     ) {
   auto *accessor = findDistributedAccessor(targetNameStart, targetNameLength);
   if (!accessor) {
+    fprintf(stderr, "[%s:%d](%s) fail = \n", __FILE_NAME__, __LINE__, __FUNCTION__);
     SwiftError *error =
         swift_distributed_makeDistributedTargetAccessorNotFoundError();
     auto resumeInParent =

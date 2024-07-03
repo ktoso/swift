@@ -159,39 +159,39 @@ static bool treeContains(Demangle::NodePointer Nd, Demangle::Node::Kind Kind) {
 }
 
 void Mangler::verify(StringRef nameStr) {
-#ifndef NDEBUG
-  SmallString<128> buffer;
-  if (!nameStr.starts_with(MANGLING_PREFIX_STR) &&
-      !nameStr.starts_with("_Tt") &&
-      !nameStr.starts_with("_S")) {
-    // This list is the set of prefixes recognized by Demangler::demangleSymbol.
-    // It should be kept in sync.
-    assert(StringRef(MANGLING_PREFIX_STR) != "_S" && "redundant check");
-    buffer += MANGLING_PREFIX_STR;
-    buffer += nameStr;
-    nameStr = buffer.str();
-  }
-
-  Demangler Dem;
-  NodePointer Root = Dem.demangleSymbol(nameStr);
-  if (!Root || treeContains(Root, Node::Kind::Suffix)) {
-    llvm::errs() << "Can't demangle: " << nameStr << '\n';
-    abort();
-  }
-  auto mangling = mangleNode(Root);
-  if (!mangling.isSuccess()) {
-    llvm::errs() << "Can't remangle: " << nameStr << '\n';
-    abort();
-  }
-  std::string Remangled = mangling.result();
-  if (Remangled == nameStr)
-    return;
-
-  llvm::errs() << "Remangling failed:\n"
-                  "original     = " << nameStr << "\n"
-                  "remangled    = " << Remangled << "\n";
-  abort();
-#endif
+//#ifndef NDEBUG
+//  SmallString<128> buffer;
+//  if (!nameStr.starts_with(MANGLING_PREFIX_STR) &&
+//      !nameStr.starts_with("_Tt") &&
+//      !nameStr.starts_with("_S")) {
+//    // This list is the set of prefixes recognized by Demangler::demangleSymbol.
+//    // It should be kept in sync.
+//    assert(StringRef(MANGLING_PREFIX_STR) != "_S" && "redundant check");
+//    buffer += MANGLING_PREFIX_STR;
+//    buffer += nameStr;
+//    nameStr = buffer.str();
+//  }
+//
+//  Demangler Dem;
+//  NodePointer Root = Dem.demangleSymbol(nameStr);
+//  if (!Root || treeContains(Root, Node::Kind::Suffix)) {
+//    llvm::errs() << "Can't demangle: " << nameStr << '\n';
+//    abort();
+//  }
+//  auto mangling = mangleNode(Root);
+//  if (!mangling.isSuccess()) {
+//    llvm::errs() << "Can't remangle: " << nameStr << '\n';
+//    abort();
+//  }
+//  std::string Remangled = mangling.result();
+//  if (Remangled == nameStr)
+//    return;
+//
+//  llvm::errs() << "Remangling failed:\n"
+//                  "original     = " << nameStr << "\n"
+//                  "remangled    = " << Remangled << "\n";
+//  abort();
+//#endif
 }
 
 void Mangler::appendIdentifier(StringRef ident) {

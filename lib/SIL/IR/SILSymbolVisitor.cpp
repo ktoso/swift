@@ -811,6 +811,11 @@ public:
                   V.Ctx.getOpts().WitnessMethodElimination} {}
 
         void addMethod(SILDeclRef declRef) {
+//          if (declRef.isDistributedThunk() &&
+//              declRef.getDecl() && isa<ProtocolDecl>(declRef.getDecl()->getDeclContext())) {
+//            return;
+//          }
+
           if (Resilient || WitnessMethodElimination) {
             Visitor.addDispatchThunk(declRef);
             Visitor.addMethodDescriptor(declRef);
