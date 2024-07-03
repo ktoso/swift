@@ -102,47 +102,12 @@ public:
   }
 
   void addDispatchThunk(SILDeclRef declRef) override {
-//    fprintf(stderr, "[%s:%d](%s) add dispatch thunk: ", __FILE_NAME__, __LINE__, __FUNCTION__);
-//    declRef.dump();
-
-//    if (declRef.isDistributedThunk())
-//      return;
-
-    // TODO: carry along TE
     auto entity = LinkEntity::forDispatchThunk(declRef);
-    if (declRef.isDistributedThunk()) {
-      fprintf(stderr, "[%s:%d](%s) DECLREF IS DISTRIBUTED THUNK MARKED >>> \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      fprintf(stderr, "[%s:%d](%s) is thunk!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      fprintf(stderr, "[%s:%d](%s) IS DISTRIBUTED THUNK DECL REF = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-              declRef.isDistributedThunk());
 
-      declRef.dump();
-      declRef.getAbstractFunctionDecl()->dump();
-
-      auto decl = declRef.getAbstractFunctionDecl();
-      fprintf(stderr, "[%s:%d](%s) DECL IS DISTRIBUTED = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-              decl->isDistributed());
-      fprintf(stderr, "[%s:%d](%s) DECL IS DISTRIBUTED THUNK = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-              decl->isDistributedThunk());
-    } else if (declRef.hasFuncDecl()) {
-      fprintf(stderr, "[%s:%d](%s) has func\n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      fprintf(stderr, "[%s:%d](%s) DECLREF IS DISTRIBUTED THUNK MARKED >>> \n", __FILE_NAME__, __LINE__, __FUNCTION__);
-      fprintf(stderr, "[%s:%d](%s) IS DISTRIBUTED THUNK DECL REF = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-              declRef.isDistributedThunk());
-      auto decl = declRef.getAbstractFunctionDecl();
-      fprintf(stderr, "[%s:%d](%s) DECL IS DISTRIBUTED = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-              decl->isDistributed());
-      fprintf(stderr, "[%s:%d](%s) DECL IS DISTRIBUTED THUNK = %d\n", __FILE_NAME__, __LINE__, __FUNCTION__,
-              decl->isDistributedThunk());
-
-      decl->dump();
-    }
-
+    // TODO: explain why
     if (declRef.isDistributedThunk()) {
       auto afd = declRef.getAbstractFunctionDecl();
-      auto DC = afd->getDeclContext();
-      if (isa<ProtocolDecl>(DC)) {
-        fprintf(stderr, "[%s:%d](%s) AVOID DISPATCH THUNK FOR THUNK IN PROTOCOL\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      if (afd && isa<ProtocolDecl>(afd->getDeclContext())) {
         return;
       }
     }
@@ -195,7 +160,6 @@ public:
       auto afd = declRef.getAbstractFunctionDecl();
       auto DC = afd->getDeclContext();
       if (isa<ProtocolDecl>(DC)) {
-        fprintf(stderr, "[%s:%d](%s) AVOID METHOD DESC FOR THUNK IN PROTOCOL\n", __FILE_NAME__, __LINE__, __FUNCTION__);
         return;
       }
     }

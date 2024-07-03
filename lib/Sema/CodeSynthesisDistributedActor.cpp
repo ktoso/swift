@@ -936,9 +936,6 @@ FuncDecl *GetDistributedThunkRequest::evaluate(Evaluator &evaluator,
     if (!C.getLoadedModule(C.Id_Distributed))
       return nullptr;
 
-    // TODO: see if we can get a real AST for the requirement
-    // ---- Then inside linking, mangle the distributed THUNK requirement when there is one
-
     // --- Prepare the "distributed thunk" which does the "maybe remote" dance:
     return createDistributedThunkFunction(func);
   }

@@ -811,11 +811,7 @@ public:
                   V.Ctx.getOpts().WitnessMethodElimination} {}
 
         void addMethod(SILDeclRef declRef) {
-//          if (declRef.isDistributedThunk() &&
-//              declRef.getDecl() && isa<ProtocolDecl>(declRef.getDecl()->getDeclContext())) {
-//            return;
-//          }
-
+          // TODO: alternatively maybe prevent adding distributed thunk here rather than inside those?
           if (Resilient || WitnessMethodElimination) {
             Visitor.addDispatchThunk(declRef);
             Visitor.addMethodDescriptor(declRef);

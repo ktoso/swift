@@ -757,7 +757,6 @@ public:
 
     LinkEntity entity;
     entity.setForDecl(kind, declRef.getDecl());
-    // CHECK SOMETHING HERE?
     return entity;
   }
 
@@ -1449,7 +1448,6 @@ public:
 
   const ValueDecl *getDecl() const {
     assert(isDeclKind(getKind()));
-
     auto decl = reinterpret_cast<ValueDecl*>(Pointer);
 
     // FIXME: determine if this matters after all or not

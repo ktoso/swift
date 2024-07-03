@@ -99,7 +99,6 @@ static bool validateSymbols(DiagnosticEngine &diags,
   }
 
   std::sort(irNotTBD.begin(), irNotTBD.end());
-  // FIXME: may need to comment?
   for (auto &name : irNotTBD) {
     diags.diagnose(SourceLoc(), diag::symbol_in_ir_not_in_tbd, name,
                    Demangle::demangleSymbolAsString(name));

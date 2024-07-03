@@ -75,11 +75,6 @@ void TBDGenVisitor::addSymbolInternal(StringRef name, EncodeKind kind,
   if (!source.isLinkerDirective() && Opts.LinkerDirectivesOnly)
     return;
 
-if (name == "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj") {
-  fprintf(stderr, "[%s:%d](%s) emit the symbol: %s\n", __FILE_NAME__, __LINE__, __FUNCTION__, name.str().c_str());
-
-
-}
 #ifndef NDEBUG
   if (kind == EncodeKind::GlobalSymbol) {
     if (!DuplicateSymbolChecker.insert(name).second) {
