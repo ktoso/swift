@@ -1,0 +1,310 @@
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------- first entry --------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+dispatch thunk YES
+
+
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+  * frame #0: 0x00000001012c5e2c swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbolInternal(this=0x000000016fdf5748, name=(Data = "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj", Length = 128), kind=GlobalSymbol, source=SymbolSource @ 0x000000016fdf4830, flags=Text) at TBDGen.cpp:79:11
+    frame #1: 0x00000001012c7ffc swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbol(this=0x000000016fdf5748, name=(Data = "$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj", Length = 127), source=SymbolSource @ 0x000000016fdf4ad0, flags=Text, kind=GlobalSymbol) at TBDGen.cpp:473:3
+    frame #2: 0x00000001012c863c swift-frontend`swift::tbdgen::TBDGenVisitor::addLinkEntity(this=0x000000016fdf5748, entity=(Pointer = 0x000000014a2883f8, SecondaryPointer = 0x0000000000000000, Data = 0)) at TBDGen.cpp:520:3
+    frame #3: 0x00000001011c7b28 swift-frontend`IRSymbolVisitorImpl::addLinkEntity(this=0x000000016fdf54f8, entity=(Pointer = 0x000000014a2883f8, SecondaryPointer = 0x0000000000000000, Data = 0), ignoreVisibility=false) at IRSymbolVisitor.cpp:66:13
+    frame #4: 0x00000001011c6d2c swift-frontend`IRSymbolVisitorImpl::addDispatchThunk(this=0x000000016fdf54f8, declRef=SILDeclRef @ 0x000000016fdf4d10) at IRSymbolVisitor.cpp:113:5
+    frame #5: 0x0000000102773ddc swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::addMethod(this=0x000000016fdf5148, declRef=SILDeclRef @ 0x000000016fdf4d90) at SILSymbolVisitor.cpp:820:21
+    frame #6: 0x0000000102773680 swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitFuncDecl(this=0x000000016fdf5148, func=0x000000014a2883d8) at SILWitnessVisitor.h:154:17
+    frame #7: 0x0000000102772f4c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor, void, void, void, void, void, void>::visit(this=0x000000016fdf5148, D=0x000000014a2883f8) at DeclNodes.def:178:5
+    frame #8: 0x00000001027729ec swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitProtocolDecl(this=0x000000016fdf5148, protocol=0x000000014a288020) at SILWitnessVisitor.h:111:22
+    frame #9: 0x00000001027723b4 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::doIt(this=0x000000016fdf5148) at SILSymbolVisitor.cpp:844:11
+    frame #10: 0x000000010276fb68 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(this=0x000000016fdf5468, PD=0x000000014a288020) at SILSymbolVisitor.cpp:848:33
+    frame #11: 0x000000010276f42c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl, void, void, void, void, void, void>::visit(this=0x000000016fdf5468, D=0x000000014a288040) at DeclNodes.def:160:9
+    frame #12: 0x000000010276e984 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5468, D=0x000000014a288040) at SILSymbolVisitor.cpp:415:17
+    frame #13: 0x0000000102777b64 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5418, file=0x000000014904a000)::'lambda'(swift::FileUnit*)::operator()(swift::FileUnit*) const at SILSymbolVisitor.cpp:430:9
+    frame #14: 0x000000010276ea8c swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5468, file=0x000000014904a000) at SILSymbolVisitor.cpp:434:5
+    frame #15: 0x000000010276ea2c swift-frontend`swift::SILSymbolVisitor::visitFile(this=0x000000016fdf54f8, file=0x000000014904a000, ctx=0x000000016fdf5640) at SILSymbolVisitor.cpp:903:36
+    frame #16: 0x00000001011c6900 swift-frontend`swift::irgen::IRSymbolVisitor::visitFile(this=0x000000016fdf5748, file=0x000000014904a000, Ctx=0x000000016fdf5620) at IRSymbolVisitor.cpp:249:35
+    frame #17: 0x00000001012c8d8c swift-frontend`swift::tbdgen::TBDGenVisitor::visit(this=0x000000016fdf5748, desc=0x000000016fdf59e8) at TBDGen.cpp:582:5
+    frame #18: 0x00000001012c99ec swift-frontend`swift::PublicSymbolsRequest::evaluate(this=0x000000016fdf5c68, evaluator=0x000000014a00d678, desc=TBDGenDescriptor @ 0x000000016fdf59e8) const at TBDGen.cpp:712:11
+    frame #19: 0x00000001012e3688 swift-frontend`std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> swift::SimpleRequest<swift::PublicSymbolsRequest, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> (swift::TBDGenDescriptor), (swift::RequestFlags)1>::callDerived<0ul>(this=0x000000016fdf5c68, evaluator=0x000000014a00d678, (null)=std::__1::index_sequence<0UL> @ 0x000000016fdf59df) const at SimpleRequest.h:272:24
+    frame #20: 0x00000001012e34f0 swift-frontend`swift::SimpleRequest<swift::PublicSymbolsRequest, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> (swift::TBDGenDescriptor), (swift::RequestFlags)1>::evaluateRequest(request=0x000000016fdf5c68, evaluator=0x000000014a00d678) at SimpleRequest.h:295:20
+    frame #21: 0x00000001012deca0 swift-frontend`swift::PublicSymbolsRequest::OutputType swift::Evaluator::getResultUncached<swift::PublicSymbolsRequest, swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(swift::Evaluator&, swift::PublicSymbolsRequest)::'lambda'()>(this=0x000000014a00d678, request=0x000000016fdf5c68, defaultValueFn=(unnamed class) @ 0x000000016fdf5b8f) at Evaluator.h:322:19
+    frame #22: 0x00000001012deb9c swift-frontend`swift::PublicSymbolsRequest::OutputType swift::Evaluator::operator()<swift::PublicSymbolsRequest, swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(swift::Evaluator&, swift::PublicSymbolsRequest)::'lambda'(), (void*)0>(this=0x000000014a00d678, request=0x000000016fdf5c68, defaultValueFn=(unnamed class) @ 0x000000016fdf5be7) at Evaluator.h:237:12
+    frame #23: 0x00000001012c9b68 swift-frontend`swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(eval=0x000000014a00d678, req=PublicSymbolsRequest @ 0x000000016fdf5c68) at Evaluator.h:423:10
+    frame #24: 0x00000001012c9b08 swift-frontend`swift::getPublicSymbols(desc=TBDGenDescriptor @ 0x000000016fdf5d78) at TBDGen.cpp:718:10
+    frame #25: 0x00000001003caeac swift-frontend`swift::validateTBD(file=0x000000014904a000, IRModule=0x000000014987b200, opts=0x000000016fdf5e78, diagnoseExtraSymbolsInTBD=false) at TBD.cpp:138:18
+    frame #26: 0x0000000100388214 swift-frontend`validateTBDIfNeeded(Invocation=0x000000015003f200, MSF=swift::ModuleOrSourceFile @ 0x000000016fdf5f50, IRModule=0x000000014987b200) at FrontendTool.cpp:1539:12
+    frame #27: 0x0000000100382e60 swift-frontend`performCompileStepsPostSILGen(Instance=0x000000015003f200, SM=nullptr, MSF=swift::ModuleOrSourceFile @ 0x000000016fdf6220, PSPs=0x000000016fdf6540, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:1775:7
+    frame #28: 0x00000001003821e0 swift-frontend`swift::performCompileStepsPostSema(Instance=0x000000015003f200, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:751:17
+    frame #29: 0x00000001003a3ea0 swift-frontend`performAction(swift::CompilerInstance&, int&, swift::FrontendObserver*)::$_26::operator()(this=0x000000016fdf7610, Instance=0x000000015003f200) const at FrontendTool.cpp:1300:18
+    frame #30: 0x00000001003a3e04 swift-frontend`bool llvm::function_ref<bool (swift::CompilerInstance&)>::callback_fn<performAction(swift::CompilerInstance&, int&, swift::FrontendObserver*)::$_26>(callable=6171883024, params=0x000000015003f200) at STLFunctionalExtras.h:45:12
+    frame #31: 0x00000001003a31b4 swift-frontend`llvm::function_ref<bool (swift::CompilerInstance&)>::operator()(this=0x000000016fdf7548, params=0x000000015003f200) const at STLFunctionalExtras.h:68:12
+    frame #32: 0x00000001003a20c0 swift-frontend`withSemanticAnalysis(Instance=0x000000015003f200, observer=0x0000000000000000, cont=function_ref<bool (swift::CompilerInstance &)> @ 0x000000016fdf7548, runDespiteErrors=false) at FrontendTool.cpp:1160:10
+    frame #33: 0x000000010039cb70 swift-frontend`performAction(Instance=0x000000015003f200, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:1296:12
+    frame #34: 0x0000000100384418 swift-frontend`performCompile(Instance=0x000000015003f200, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:1371:19
+    frame #35: 0x0000000100383874 swift-frontend`swift::performFrontend(Args=ArrayRef<const char *> @ 0x000000016fdf7d98, Argv0="/Users/ktoso/code/swift-project/build/Ninja-DebugAssert/swift-macosx-arm64/bin/swift-frontend", MainAddr=0x000000010004e2c0, observer=0x0000000000000000) at FrontendTool.cpp:2054:19
+    frame #36: 0x000000010004f370 swift-frontend`run_driver(ExecName=(Data = "swift-frontend", Length = 14), argv=ArrayRef<const char *> @ 0x000000016fdfa1d0, originalArgv=const llvm::ArrayRef<const char *> @ 0x000000016fdfa1c0) at driver.cpp:254:14
+    frame #37: 0x000000010004e784 swift-frontend`swift::mainEntry(argc_=115, argv_=0x000000016fdfcdb8) at driver.cpp:530:10
+    frame #38: 0x000000010004dfc4 swift-frontend`main(argc_=115, argv_=0x000000016fdfcdb8) at driver.cpp:20:10
+    frame #39: 0x000000019afdf274 dyld`start + 2840
+
+   819 	          if (Resilient || WitnessMethodElimination) {
+-> 820 	            Visitor.addDispatchThunk(declRef);
+   821 	            Visitor.addMethodDescriptor(declRef);
+   822 	          }
+   823 	        }
+
+   110
+   111 	    // TODO: carry along TE
+   112 	    auto entity = LinkEntity::forDispatchThunk(declRef);
+-> 113 	    addLinkEntity(entity);
+   114
+   115 	    if (declRef.getAbstractFunctionDecl()->hasAsync())
+   116 	      addLinkEntity(LinkEntity::forAsyncFunctionPointer(entity));
+
+(lldb) e declRef.dump()
+#AchievementServiceProtocol.describe
+
+(lldb) e declRef.getDecl()->dump()
+(func_decl range=[/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:20:17 - line:20:102] "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (isolated Self) -> ([AchievementRef]) async throws -> [AchievementDescription]"
+        access=public captures=(<generic> ) distributed
+  (parameter "self" interface type="Self")
+  (parameter_list range=[/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:20:30 - line:20:61]
+    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]"))
+  (result=type_array
+    (type_unqualified_ident id="AchievementDescription" bind="GameServicesProtocols.(file).AchievementDescription@/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:102:15")))
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------- second entry ---------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
+  * frame #0: 0x00000001012c5e2c swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbolInternal(this=0x000000016fdf5748, name=(Data = "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj\x90\xd8\xc4", Length = 128), kind=GlobalSymbol, source=SymbolSource @ 0x000000016fdf4780, flags=Text) at TBDGen.cpp:79:11
+    frame #1: 0x00000001012c7ffc swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbol(this=0x000000016fdf5748, name=(Data = "$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj", Length = 127), source=SymbolSource @ 0x000000016fdf4a20, flags=Text, kind=GlobalSymbol) at TBDGen.cpp:473:3
+    frame #2: 0x00000001012c863c swift-frontend`swift::tbdgen::TBDGenVisitor::addLinkEntity(this=0x000000016fdf5748, entity=(Pointer = 0x0000000148abc788, SecondaryPointer = 0x0000000000000000, Data = 0)) at TBDGen.cpp:520:3
+    frame #3: 0x00000001011c7b28 swift-frontend`IRSymbolVisitorImpl::addLinkEntity(this=0x000000016fdf54f8, entity=(Pointer = 0x0000000148abc788, SecondaryPointer = 0x0000000000000000, Data = 0), ignoreVisibility=false) at IRSymbolVisitor.cpp:66:13
+    frame #4: 0x00000001011c6d2c swift-frontend`IRSymbolVisitorImpl::addDispatchThunk(this=0x000000016fdf54f8, declRef=SILDeclRef @ 0x000000016fdf4c60) at IRSymbolVisitor.cpp:113:5
+    frame #5: 0x0000000102773ddc swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::addMethod(this=0x000000016fdf5148, declRef=SILDeclRef @ 0x000000016fdf4cf8) at SILSymbolVisitor.cpp:820:21
+    frame #6: 0x000000010277418c swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::addDistributedWitnessMethodsIfRequired(this=0x000000016fdf5148, AFD=0x000000014a2883d8, kind=Func) at SILWitnessVisitor.h:218:17
+    frame #7: 0x00000001027736a0 swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitFuncDecl(this=0x000000016fdf5148, func=0x000000014a2883d8) at SILWitnessVisitor.h:156:5
+    frame #8: 0x0000000102772f4c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor, void, void, void, void, void, void>::visit(this=0x000000016fdf5148, D=0x000000014a2883f8) at DeclNodes.def:178:5
+    frame #9: 0x00000001027729ec swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitProtocolDecl(this=0x000000016fdf5148, protocol=0x000000014a288020) at SILWitnessVisitor.h:111:22
+    frame #10: 0x00000001027723b4 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::doIt(this=0x000000016fdf5148) at SILSymbolVisitor.cpp:844:11
+    frame #11: 0x000000010276fb68 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(this=0x000000016fdf5468, PD=0x000000014a288020) at SILSymbolVisitor.cpp:848:33
+    frame #12: 0x000000010276f42c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl, void, void, void, void, void, void>::visit(this=0x000000016fdf5468, D=0x000000014a288040) at DeclNodes.def:160:9
+    frame #13: 0x000000010276e984 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5468, D=0x000000014a288040) at SILSymbolVisitor.cpp:415:17
+    frame #14: 0x0000000102777b64 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5418, file=0x000000014904a000)::'lambda'(swift::FileUnit*)::operator()(swift::FileUnit*) const at SILSymbolVisitor.cpp:430:9
+    frame #15: 0x000000010276ea8c swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5468, file=0x000000014904a000) at SILSymbolVisitor.cpp:434:5
+    frame #16: 0x000000010276ea2c swift-frontend`swift::SILSymbolVisitor::visitFile(this=0x000000016fdf54f8, file=0x000000014904a000, ctx=0x000000016fdf5640) at SILSymbolVisitor.cpp:903:36
+    frame #17: 0x00000001011c6900 swift-frontend`swift::irgen::IRSymbolVisitor::visitFile(this=0x000000016fdf5748, file=0x000000014904a000, Ctx=0x000000016fdf5620) at IRSymbolVisitor.cpp:249:35
+    frame #18: 0x00000001012c8d8c swift-frontend`swift::tbdgen::TBDGenVisitor::visit(this=0x000000016fdf5748, desc=0x000000016fdf59e8) at TBDGen.cpp:582:5
+    frame #19: 0x00000001012c99ec swift-frontend`swift::PublicSymbolsRequest::evaluate(this=0x000000016fdf5c68, evaluator=0x000000014a00d678, desc=TBDGenDescriptor @ 0x000000016fdf59e8) const at TBDGen.cpp:712:11
+    frame #20: 0x00000001012e3688 swift-frontend`std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> swift::SimpleRequest<swift::PublicSymbolsRequest, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> (swift::TBDGenDescriptor), (swift::RequestFlags)1>::callDerived<0ul>(this=0x000000016fdf5c68, evaluator=0x000000014a00d678, (null)=std::__1::index_sequence<0UL> @ 0x000000016fdf59df) const at SimpleRequest.h:272:24
+    frame #21: 0x00000001012e34f0 swift-frontend`swift::SimpleRequest<swift::PublicSymbolsRequest, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> (swift::TBDGenDescriptor), (swift::RequestFlags)1>::evaluateRequest(request=0x000000016fdf5c68, evaluator=0x000000014a00d678) at SimpleRequest.h:295:20
+    frame #22: 0x00000001012deca0 swift-frontend`swift::PublicSymbolsRequest::OutputType swift::Evaluator::getResultUncached<swift::PublicSymbolsRequest, swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(swift::Evaluator&, swift::PublicSymbolsRequest)::'lambda'()>(this=0x000000014a00d678, request=0x000000016fdf5c68, defaultValueFn=(unnamed class) @ 0x000000016fdf5b8f) at Evaluator.h:322:19
+    frame #23: 0x00000001012deb9c swift-frontend`swift::PublicSymbolsRequest::OutputType swift::Evaluator::operator()<swift::PublicSymbolsRequest, swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(swift::Evaluator&, swift::PublicSymbolsRequest)::'lambda'(), (void*)0>(this=0x000000014a00d678, request=0x000000016fdf5c68, defaultValueFn=(unnamed class) @ 0x000000016fdf5be7) at Evaluator.h:237:12
+    frame #24: 0x00000001012c9b68 swift-frontend`swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(eval=0x000000014a00d678, req=PublicSymbolsRequest @ 0x000000016fdf5c68) at Evaluator.h:423:10
+    frame #25: 0x00000001012c9b08 swift-frontend`swift::getPublicSymbols(desc=TBDGenDescriptor @ 0x000000016fdf5d78) at TBDGen.cpp:718:10
+    frame #26: 0x00000001003caeac swift-frontend`swift::validateTBD(file=0x000000014904a000, IRModule=0x000000014987b200, opts=0x000000016fdf5e78, diagnoseExtraSymbolsInTBD=false) at TBD.cpp:138:18
+    frame #27: 0x0000000100388214 swift-frontend`validateTBDIfNeeded(Invocation=0x000000015003f200, MSF=swift::ModuleOrSourceFile @ 0x000000016fdf5f50, IRModule=0x000000014987b200) at FrontendTool.cpp:1539:12
+    frame #28: 0x0000000100382e60 swift-frontend`performCompileStepsPostSILGen(Instance=0x000000015003f200, SM=nullptr, MSF=swift::ModuleOrSourceFile @ 0x000000016fdf6220, PSPs=0x000000016fdf6540, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:1775:7
+    frame #29: 0x00000001003821e0 swift-frontend`swift::performCompileStepsPostSema(Instance=0x000000015003f200, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:751:17
+    frame #30: 0x00000001003a3ea0 swift-frontend`performAction(swift::CompilerInstance&, int&, swift::FrontendObserver*)::$_26::operator()(this=0x000000016fdf7610, Instance=0x000000015003f200) const at FrontendTool.cpp:1300:18
+    frame #31: 0x00000001003a3e04 swift-frontend`bool llvm::function_ref<bool (swift::CompilerInstance&)>::callback_fn<performAction(swift::CompilerInstance&, int&, swift::FrontendObserver*)::$_26>(callable=6171883024, params=0x000000015003f200) at STLFunctionalExtras.h:45:12
+    frame #32: 0x00000001003a31b4 swift-frontend`llvm::function_ref<bool (swift::CompilerInstance&)>::operator()(this=0x000000016fdf7548, params=0x000000015003f200) const at STLFunctionalExtras.h:68:12
+    frame #33: 0x00000001003a20c0 swift-frontend`withSemanticAnalysis(Instance=0x000000015003f200, observer=0x0000000000000000, cont=function_ref<bool (swift::CompilerInstance &)> @ 0x000000016fdf7548, runDespiteErrors=false) at FrontendTool.cpp:1160:10
+    frame #34: 0x000000010039cb70 swift-frontend`performAction(Instance=0x000000015003f200, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:1296:12
+    frame #35: 0x0000000100384418 swift-frontend`performCompile(Instance=0x000000015003f200, ReturnValue=0x000000016fdf7bac, observer=0x0000000000000000) at FrontendTool.cpp:1371:19
+    frame #36: 0x0000000100383874 swift-frontend`swift::performFrontend(Args=ArrayRef<const char *> @ 0x000000016fdf7d98, Argv0="/Users/ktoso/code/swift-project/build/Ninja-DebugAssert/swift-macosx-arm64/bin/swift-frontend", MainAddr=0x000000010004e2c0, observer=0x0000000000000000) at FrontendTool.cpp:2054:19
+    frame #37: 0x000000010004f370 swift-frontend`run_driver(ExecName=(Data = "swift-frontend", Length = 14), argv=ArrayRef<const char *> @ 0x000000016fdfa1d0, originalArgv=const llvm::ArrayRef<const char *> @ 0x000000016fdfa1c0) at driver.cpp:254:14
+    frame #38: 0x000000010004e784 swift-frontend`swift::mainEntry(argc_=115, argv_=0x000000016fdfcdb8) at driver.cpp:530:10
+    frame #39: 0x000000010004dfc4 swift-frontend`main(argc_=115, argv_=0x000000016fdfcdb8) at driver.cpp:20:10
+    frame #40: 0x000000019afdf274 dyld`start + 2840
+
+
+
+frame #4: 0x00000001011c6d2c swift-frontend`IRSymbolVisitorImpl::addDispatchThunk(this=0x000000016fdf54f8, declRef=SILDeclRef @ 0x000000016fdf4c60) at IRSymbolVisitor.cpp:113:5
+   110
+   111 	    // TODO: carry along TE
+   112 	    auto entity = LinkEntity::forDispatchThunk(declRef);
+-> 113 	    addLinkEntity(entity);
+   114
+   115 	    if (declRef.getAbstractFunctionDecl()->hasAsync())
+   116 	      addLinkEntity(LinkEntity::forAsyncFunctionPointer(entity));
+
+
+(lldb) e declRef.dump()
+#AchievementServiceProtocol.describe
+
+
+(lldb) e declRef.getDecl()->dump()
+(func_decl implicit "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (Self) -> (sending [AchievementRef]) async throws -> [AchievementDescription]"
+            access=public captures=(<generic> ) nonisolated distributed_thunk
+  (parameter "self")
+  (parameter_list
+    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]")))
+
+
+
+   120 	/// Mangle this entity as a std::string.
+   121 	std::string LinkEntity::mangleAsString() const {
+-> 122 	  if (isDeclKind(getKind()) && (
+   123 	                                   getKind() == Kind::DispatchThunk ||
+   124 	                                   getKind() == Kind::DistributedAccessor ||
+   125 	                                   getKind() == Kind::MethodDescriptor
+Target 0: (swift-frontend) stopped.
+(lldb) bt
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 10.1
+  * frame #0: 0x00000001011c849c swift-frontend`swift::irgen::LinkEntity::mangleAsString(this=0x000000016fdf4ba0) const at Linking.cpp:122:18
+    frame #1: 0x00000001011c8424 swift-frontend`swift::irgen::LinkEntity::mangle(this=0x000000016fdf4ba0, buffer=0x000000016fdf48f8) const at Linking.cpp:116:24
+    frame #2: 0x00000001011c83ec swift-frontend`swift::irgen::LinkEntity::mangle(this=0x000000016fdf4ba0, buffer=0x000000016fdf4a80) const at Linking.cpp:111:3
+    frame #3: 0x0000000100e23d64 swift-frontend`swift::irgen::LinkInfo::get(linkInfo=0x000000016fdf5948, swiftModule=0x000000015809cf88, entity=0x000000016fdf4ba0, isDefinition=ForDefinition) at GenDecl.cpp:2379:10
+    frame #4: 0x00000001011c7994 swift-frontend`IRSymbolVisitorImpl::addLinkEntity(this=0x000000016fdf5508, entity=(Pointer = 0x000000014e0a2f88, SecondaryPointer = 0x0000000000000000, Data = 0), ignoreVisibility=false) at IRSymbolVisitor.cpp:55:11
+    frame #5: 0x00000001011c6c58 swift-frontend`IRSymbolVisitorImpl::addDispatchThunk(this=0x000000016fdf5508, declRef=SILDeclRef @ 0x000000016fdf4c70) at IRSymbolVisitor.cpp:138:5
+    frame #6: 0x0000000102773d0c swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::addMethod(this=0x000000016fdf5158, declRef=SILDeclRef @ 0x000000016fdf4d08) at SILSymbolVisitor.cpp:820:21
+    frame #7: 0x00000001027740bc swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::addDistributedWitnessMethodsIfRequired(this=0x000000016fdf5158, AFD=0x000000014c9a5fd8, kind=Func) at SILWitnessVisitor.h:218:17
+    frame #8: 0x00000001027735d0 swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitFuncDecl(this=0x000000016fdf5158, func=0x000000014c9a5fd8) at SILWitnessVisitor.h:156:5
+    frame #9: 0x0000000102772e7c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor, void, void, void, void, void, void>::visit(this=0x000000016fdf5158, D=0x000000014c9a5ff8) at DeclNodes.def:178:5
+    frame #10: 0x000000010277291c swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitProtocolDecl(this=0x000000016fdf5158, protocol=0x000000014c9a5c20) at SILWitnessVisitor.h:111:22
+    frame #11: 0x00000001027722e4 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::doIt(this=0x000000016fdf5158) at SILSymbolVisitor.cpp:844:11
+    frame #12: 0x000000010276fa98 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(this=0x000000016fdf5478, PD=0x000000014c9a5c20) at SILSymbolVisitor.cpp:848:33
+    frame #13: 0x000000010276f35c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl, void, void, void, void, void, void>::visit(this=0x000000016fdf5478, D=0x000000014c9a5c40) at DeclNodes.def:160:9
+    frame #14: 0x000000010276e8b4 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5478, D=0x000000014c9a5c40) at SILSymbolVisitor.cpp:415:17
+    frame #15: 0x0000000102777a94 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5428, file=0x00000001580a1c00)::'lambda'(swift::FileUnit*)::operator()(swift::FileUnit*) const at SILSymbolVisitor.cpp:430:9
+    frame #16: 0x000000010276e9bc swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf5478, file=0x00000001580a1c00) at SILSymbolVisitor.cpp:434:5
+    frame #17: 0x000000010276e95c swift-frontend`swift::SILSymbolVisitor::visitFile(this=0x000000016fdf5508, file=0x00000001580a1c00, ctx=0x000000016fdf5650) at SILSymbolVisitor.cpp:903:36
+    frame #18: 0x00000001011c654c swift-frontend`swift::irgen::IRSymbolVisitor::visitFile(this=0x000000016fdf5758, file=0x00000001580a1c00, Ctx=0x000000016fdf5630) at IRSymbolVisitor.cpp:274:35
+    frame #19: 0x00000001012c8cbc swift-frontend`swift::tbdgen::TBDGenVisitor::visit(this=0x000000016fdf5758, desc=0x000000016fdf59f8) at TBDGen.cpp:535:5
+    frame #20: 0x00000001012c991c swift-frontend`swift::PublicSymbolsRequest::evaluate(this=0x000000016fdf5c78, evaluator=0x000000014f018878, desc=TBDGenDescriptor @ 0x000000016fdf59f8) const at TBDGen.cpp:665:11
+    frame #21: 0x00000001012e35b8 swift-frontend`std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> swift::SimpleRequest<swift::PublicSymbolsRequest, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> (swift::TBDGenDescriptor), (swift::RequestFlags)1>::callDerived<0ul>(this=0x000000016fdf5c78, evaluator=0x000000014f018878, (null)=std::__1::index_sequence<0UL> @ 0x000000016fdf59ef) const at SimpleRequest.h:272:24
+    frame #22: 0x00000001012e3420 swift-frontend`swift::SimpleRequest<swift::PublicSymbolsRequest, std::__1::vector<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, std::__1::allocator<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>>> (swift::TBDGenDescriptor), (swift::RequestFlags)1>::evaluateRequest(request=0x000000016fdf5c78, evaluator=0x000000014f018878) at SimpleRequest.h:295:20
+    frame #23: 0x00000001012debd0 swift-frontend`swift::PublicSymbolsRequest::OutputType swift::Evaluator::getResultUncached<swift::PublicSymbolsRequest, swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(swift::Evaluator&, swift::PublicSymbolsRequest)::'lambda'()>(this=0x000000014f018878, request=0x000000016fdf5c78, defaultValueFn=(unnamed class) @ 0x000000016fdf5b9f) at Evaluator.h:322:19
+    frame #24: 0x00000001012deacc swift-frontend`swift::PublicSymbolsRequest::OutputType swift::Evaluator::operator()<swift::PublicSymbolsRequest, swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(swift::Evaluator&, swift::PublicSymbolsRequest)::'lambda'(), (void*)0>(this=0x000000014f018878, request=0x000000016fdf5c78, defaultValueFn=(unnamed class) @ 0x000000016fdf5bf7) at Evaluator.h:237:12
+    frame #25: 0x00000001012c9a98 swift-frontend`swift::PublicSymbolsRequest::OutputType swift::evaluateOrFatal<swift::PublicSymbolsRequest>(eval=0x000000014f018878, req=PublicSymbolsRequest @ 0x000000016fdf5c78) at Evaluator.h:423:10
+    frame #26: 0x00000001012c9a38 swift-frontend`swift::getPublicSymbols(desc=TBDGenDescriptor @ 0x000000016fdf5d88) at TBDGen.cpp:671:10
+    frame #27: 0x00000001003caaf8 swift-frontend`swift::validateTBD(file=0x00000001580a1c00, IRModule=0x000000014dbca9b0, opts=0x000000016fdf5e88, diagnoseExtraSymbolsInTBD=false) at TBD.cpp:138:18
+    frame #28: 0x0000000100387e60 swift-frontend`validateTBDIfNeeded(Invocation=0x000000014f81a800, MSF=swift::ModuleOrSourceFile @ 0x000000016fdf5f60, IRModule=0x000000014dbca9b0) at FrontendTool.cpp:1539:12
+    frame #29: 0x0000000100382aac swift-frontend`performCompileStepsPostSILGen(Instance=0x000000014f81a800, SM=nullptr, MSF=swift::ModuleOrSourceFile @ 0x000000016fdf6230, PSPs=0x000000016fdf6550, ReturnValue=0x000000016fdf7bbc, observer=0x0000000000000000) at FrontendTool.cpp:1775:7
+    frame #30: 0x0000000100381e2c swift-frontend`swift::performCompileStepsPostSema(Instance=0x000000014f81a800, ReturnValue=0x000000016fdf7bbc, observer=0x0000000000000000) at FrontendTool.cpp:751:17
+    frame #31: 0x00000001003a3aec swift-frontend`performAction(swift::CompilerInstance&, int&, swift::FrontendObserver*)::$_26::operator()(this=0x000000016fdf7620, Instance=0x000000014f81a800) const at FrontendTool.cpp:1300:18
+    frame #32: 0x00000001003a3a50 swift-frontend`bool llvm::function_ref<bool (swift::CompilerInstance&)>::callback_fn<performAction(swift::CompilerInstance&, int&, swift::FrontendObserver*)::$_26>(callable=6171883040, params=0x000000014f81a800) at STLFunctionalExtras.h:45:12
+    frame #33: 0x00000001003a2e00 swift-frontend`llvm::function_ref<bool (swift::CompilerInstance&)>::operator()(this=0x000000016fdf7558, params=0x000000014f81a800) const at STLFunctionalExtras.h:68:12
+    frame #34: 0x00000001003a1d0c swift-frontend`withSemanticAnalysis(Instance=0x000000014f81a800, observer=0x0000000000000000, cont=function_ref<bool (swift::CompilerInstance &)> @ 0x000000016fdf7558, runDespiteErrors=false) at FrontendTool.cpp:1160:10
+    frame #35: 0x000000010039c7bc swift-frontend`performAction(Instance=0x000000014f81a800, ReturnValue=0x000000016fdf7bbc, observer=0x0000000000000000) at FrontendTool.cpp:1296:12
+    frame #36: 0x0000000100384064 swift-frontend`performCompile(Instance=0x000000014f81a800, ReturnValue=0x000000016fdf7bbc, observer=0x0000000000000000) at FrontendTool.cpp:1371:19
+    frame #37: 0x00000001003834c0 swift-frontend`swift::performFrontend(Args=ArrayRef<const char *> @ 0x000000016fdf7da8, Argv0="/Users/ktoso/code/swift-project/build/Ninja-DebugAssert/swift-macosx-arm64/bin/swift-frontend", MainAddr=0x000000010004df0c, observer=0x0000000000000000) at FrontendTool.cpp:2054:19
+    frame #38: 0x000000010004efbc swift-frontend`run_driver(ExecName=(Data = "swift-frontend", Length = 14), argv=ArrayRef<const char *> @ 0x000000016fdfa1e0, originalArgv=const llvm::ArrayRef<const char *> @ 0x000000016fdfa1d0) at driver.cpp:254:14
+    frame #39: 0x000000010004e3d0 swift-frontend`swift::mainEntry(argc_=115, argv_=0x000000016fdfcdc0) at driver.cpp:530:10
+    frame #40: 0x000000010004dc10 swift-frontend`main(argc_=115, argv_=0x000000016fdfcdc0) at driver.cpp:20:10
+    frame #41: 0x000000019afdf274 dyld`start + 2840
+
+
+
+-------------
+
+[IRSymbolVisitor.cpp:128](addDispatchThunk) has func
+[IRSymbolVisitor.cpp:129](addDispatchThunk) DECLREF IS DISTRIBUTED THUNK MARKED >>>
+[IRSymbolVisitor.cpp:130](addDispatchThunk) IS DISTRIBUTED THUNK DECL REF = 0
+[IRSymbolVisitor.cpp:133](addDispatchThunk) DECL IS DISTRIBUTED = 1
+[IRSymbolVisitor.cpp:135](addDispatchThunk) DECL IS DISTRIBUTED THUNK = 0
+(func_decl range=[/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:20:17 - line:20:102] "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (isolated Self) -> ([AchievementRef]) async throws -> [AchievementDescription]" access=public captures=(<generic> ) distributed
+  (parameter "self" interface type="Self")
+  (parameter_list range=[/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:20:30 - line:20:61]
+    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]"))
+  (result=type_array
+    (type_unqualified_ident id="AchievementDescription" bind="GameServicesProtocols.(file).AchievementDescription@/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:102:15")))
+[Linking.cpp:127](mangleAsString) mangle as string:
+[Linking.h:1459](getDecl) swap for thunk distributed !
+#AchievementServiceProtocol.describe
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.cpp:127](mangleAsString) mangle as string:
+[Linking.h:1459](getDecl) swap for thunk distributed !
+#AchievementServiceProtocol.describe
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[TBDGen.cpp:79](addSymbolInternal) emit the symbol: _$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj
+[Linking.cpp:127](mangleAsString) mangle as string:
+[Linking.h:1459](getDecl) swap for thunk distributed !
+#AchievementServiceProtocol.describe
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.cpp:127](mangleAsString) mangle as string:
+[Linking.h:1459](getDecl) swap for thunk distributed !
+#AchievementServiceProtocol.describe
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.cpp:127](mangleAsString) mangle as string:
+[Linking.h:1459](getDecl) swap for thunk distributed !
+#AchievementServiceProtocol.describe
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.cpp:127](mangleAsString) mangle as string:
+[Linking.h:1459](getDecl) swap for thunk distributed !
+#AchievementServiceProtocol.describe
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[Linking.h:1459](getDecl) swap for thunk distributed !
+[IRSymbolVisitor.cpp:114](addDispatchThunk) DECLREF IS DISTRIBUTED THUNK MARKED >>>
+[IRSymbolVisitor.cpp:115](addDispatchThunk) is thunk!
+[IRSymbolVisitor.cpp:116](addDispatchThunk) IS DISTRIBUTED THUNK DECL REF = 1
+#AchievementServiceProtocol.describe
+(func_decl implicit "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (Self) -> (sending [AchievementRef]) async throws -> [AchievementDescription]" access=public captures=(<generic> ) nonisolated distributed_thunk
+  (parameter "self")
+  (parameter_list
+    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]")))
+[IRSymbolVisitor.cpp:123](addDispatchThunk) DECL IS DISTRIBUTED = 0
+[IRSymbolVisitor.cpp:125](addDispatchThunk) DECL IS DISTRIBUTED THUNK = 1
+[IRSymbolVisitor.cpp:145](addDispatchThunk) AVOID DISPATCH THUNK FOR THUNK IN PROTOCOL
+[Linking.cpp:127](mangleAsString) mangle as string:
+#AchievementServiceProtocol.describe
+[Linking.cpp:127](mangleAsString) mangle as string:
+#AchievementServiceProtocol.describe
+TBDGen duplicate symbol: _$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTq
+Assertion failed: (false && "TBDGen symbol appears twice"), function addSymbolInternal, file TBDGen.cpp, line 87.
+Process 38406 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = hit program assert
+    frame #4: 0x00000001012c5de4 swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbolInternal(this=0x000000016fdf5758, name=(Data = "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTq$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTq", Length = 128), kind=GlobalSymbol, source=SymbolSource @ 0x000000016fdf47e0, flags=Text) at TBDGen.cpp:87:7
+   84  	  if (kind == EncodeKind::GlobalSymbol) {
+   85  	    if (!DuplicateSymbolChecker.insert(name).second) {
+   86  	      llvm::dbgs() << "TBDGen duplicate symbol: " << name << '\n';
+-> 87  	      assert(false && "TBDGen symbol appears twice");
+   88  	    }
+   89  	  }
+   90  	#endif
+Target 0: (swift-frontend) stopped.
+
+>>>>>>>>>
+>>>>>>>>>
+>>>>>>>>> Note how the sildeclref is distributed for the distributed func AND the distributed THUNK.
+>>>>>>>>>
+
+
+
+
+
+........................................................................................................................................................................................
+........................................................................................................................................................................................
+........................................................................................................................................................................................
+........................................................................................................................................................................................
+
+
+{
+  "kind": "finished",
+  "name": "compile",
+  "pid": 40701,
+  "output": "<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP10clearCacheyyYaKFTq.97' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.clearCache() async throws -> () with unmangled suffix \".97\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP11getProgress12achievements11belongingToSayAA0dH0VGSayAA3RefVyAA0D0_pGG_AKyAA6Player_pGtYaKFTq.73' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.getProgress(achievements: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Achievement>>, belongingTo: GameServicesProtocols.Ref<GameServicesProtocols.Player>) async throws -> Swift.Array<GameServicesProtocols.AchievementProgress> with unmangled suffix \".73\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP11listFriends6having5afterSayAA4PageVyAA3RefVyAA6Player_pGGGSayAJyAA0D0_pGG_AA6CursorVSgtYaKFTq.78' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.listFriends(having: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Achievement>>, after: Swift.Optional<GameServicesProtocols.Cursor>) async throws -> Swift.Array<GameServicesProtocols.Page<GameServicesProtocols.Ref<GameServicesProtocols.Player>>> with unmangled suffix \".78\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP13resetProgress12achievements11belongingToySayAA3RefVyAA0D0_pGG_SayAHyAA6Player_pGGtYaKFTq.83' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.resetProgress(achievements: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Achievement>>, belongingTo: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Player>>) async throws -> () with unmangled suffix \".83\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP16listAchievements5games5afterSayAA4PageVyAA3RefVyAA0D0_pGGGSayAJyAA0A0_pGG_AA6CursorVSgtYaKFTq.68' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.listAchievements(games: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Game>>, after: Swift.Optional<GameServicesProtocols.Cursor>) async throws -> Swift.Array<GameServicesProtocols.Page<GameServicesProtocols.Ref<GameServicesProtocols.Achievement>>> with unmangled suffix \".68\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP6reveal12achievements11belongingToySayAA3RefVyAA0D0_pGG_SayAHyAA6Player_pGGtYaKFTq.88' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.reveal(achievements: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Achievement>>, belongingTo: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Player>>) async throws -> () with unmangled suffix \".88\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP6submit8progressySayAA0D8ProgressVG_tYaKFTq.93' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.submit(progress: Swift.Array<GameServicesProtocols.AchievementProgress>) async throws -> () with unmangled suffix \".93\") is in generated IR file, but not in TBD file\n<unknown>:0: error: symbol '$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTq.64' (method descriptor for GameServicesProtocols.AchievementServiceProtocol.describe(achievements: Swift.Array<GameServicesProtocols.Ref<GameServicesProtocols.Achievement>>) async throws -> Swift.Array<GameServicesProtocols.AchievementDescription> with unmangled suffix \".64\") is in generated IR file, but not in TBD file\n<unknown>:0: error: please submit a bug report (https:\/\/swift.org\/contributing\/#reporting-bugs), and add '-Xfrontend -validate-tbd-against-ir=none' to squash the errors\n",
+  "process": {
+    "real_pid": 40709
+  },
+  "exit-status": 1
+}

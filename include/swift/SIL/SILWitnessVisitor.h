@@ -215,8 +215,7 @@ private:
 //      return;
 
     SILDeclRef declRef(thunk, kind);
-
-     asDerived().addMethod(declRef.asDistributed());
+    asDerived().addMethod(declRef.asDistributed());
   }
 };
 

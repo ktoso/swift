@@ -78,47 +78,7 @@ void TBDGenVisitor::addSymbolInternal(StringRef name, EncodeKind kind,
 if (name == "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj") {
   fprintf(stderr, "[%s:%d](%s) emit the symbol: %s\n", __FILE_NAME__, __LINE__, __FUNCTION__, name.str().c_str());
 
-  // first time:
-  // dispatch thunk YES
-  //
-  // frame #3: 0x00000001011c7bf8 swift-frontend`IRSymbolVisitorImpl::addLinkEntity(this=0x000000016fdf4f18, entity=(Pointer = 0x000000012d1573f8, SecondaryPointer = 0x0000000000000000, Data = 0), ignoreVisibility=false) at IRSymbolVisitor.cpp:66:13
-  //   63  	        return;
-  //   64  	    }
-  //   65
-  //-> 66  	    Visitor.addLinkEntity(entity);
-  //   67  	  }
-  //   68
-  //   69  	public:
-  //(lldb) e entity
-  //(swift::irgen::LinkEntity) $2 = (Pointer = 0x000000012d1573f8, SecondaryPointer = 0x0000000000000000, Data = 0) (lldb) e entity.isDispatchThunk() (bool) $3 = true (lldb) bt
-  //* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 2.1
-  //    frame #0: 0x00000001012c5e2c swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbolInternal(this=0x000000016fdf5168, name=(Data = "_$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj\x80\x8aY\U00000003", Length = 128), kind=GlobalSymbol, source=SymbolSource @ 0x000000016fdf4250, flags=Text) at TBDGen.cpp:79:11 frame #1: 0x00000001012c7ffc swift-frontend`swift::tbdgen::TBDGenVisitor::addSymbol(this=0x000000016fdf5168, name=(Data = "$s21GameServicesProtocols26AchievementServiceProtocolP8describe12achievementsSayAA0D11DescriptionVGSayAA3RefVyAA0D0_pGG_tYaKFTj", Length = 127), source=SymbolSource @ 0x000000016fdf44f0, flags=Text, kind=GlobalSymbol) at TBDGen.cpp:424:3 frame #2: 0x00000001012c863c swift-frontend`swift::tbdgen::TBDGenVisitor::addLinkEntity(this=0x000000016fdf5168, entity=(Pointer = 0x000000012d1573f8, SecondaryPointer = 0x0000000000000000, Data = 0)) at TBDGen.cpp:471:3
-  //  * frame #3: 0x00000001011c7bf8 swift-frontend`IRSymbolVisitorImpl::addLinkEntity(this=0x000000016fdf4f18, entity=(Pointer = 0x000000012d1573f8, SecondaryPointer = 0x0000000000000000, Data = 0), ignoreVisibility=false) at IRSymbolVisitor.cpp:66:13
-  //    frame #4: 0x00000001011c6dfc swift-frontend`IRSymbolVisitorImpl::addDispatchThunk(this=0x000000016fdf4f18, declRef=SILDeclRef @ 0x000000016fdf4730) at IRSymbolVisitor.cpp:113:5
-  //    frame #5: 0x0000000102773ddc swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::addMethod(this=0x000000016fdf4b68, declRef=SILDeclRef @ 0x000000016fdf47b0) at SILSymbolVisitor.cpp:820:21
-  //    frame #6: 0x0000000102773680 swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitFuncDecl(this=0x000000016fdf4b68, func=0x000000012d1573d8) at SILWitnessVisitor.h:154:17 frame #7: 0x0000000102772f4c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor, void, void, void, void, void, void>::visit(this=0x000000016fdf4b68, D=0x000000012d1573f8) at DeclNodes.def:178:5 frame #8: 0x00000001027729ec swift-frontend`swift::SILWitnessVisitor<SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor>::visitProtocolDecl(this=0x000000016fdf4b68, protocol=0x000000012d157020) at SILWitnessVisitor.h:111:22 frame #9: 0x00000001027723b4 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(swift::ProtocolDecl*)::WitnessVisitor::doIt(this=0x000000016fdf4b68) at SILSymbolVisitor.cpp:844:11 frame #10: 0x000000010276fb68 swift-frontend`SILSymbolVisitorImpl::visitProtocolDecl(this=0x000000016fdf4e88, PD=0x000000012d157020) at SILSymbolVisitor.cpp:848:33 frame #11: 0x000000010276f42c swift-frontend`swift::ASTVisitor<SILSymbolVisitorImpl, void, void, void, void, void, void>::visit(this=0x000000016fdf4e88, D=0x000000012d157040) at DeclNodes.def:160:9 frame #12: 0x000000010276e984 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf4e88, D=0x000000012d157040) at SILSymbolVisitor.cpp:415:17 frame #13: 0x0000000102777b64 swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf4e38, file=0x000000012d0d7a00)::'lambda'(swift::FileUnit*)::operator()(swift::FileUnit*) const at SILSymbolVisitor.cpp:430:9 frame #14: 0x000000010276ea8c swift-frontend`SILSymbolVisitorImpl::visit(this=0x000000016fdf4e88, file=0x000000012d0d7a00) at SILSymbolVisitor.cpp:434:5 frame #15: 0x000000010276ea2c swift-frontend`swift::SILSymbolVisitor::visitFile(this=0x000000016fdf4f18, file=0x000000012d0d7a00, ctx=0x000000016fdf5060) at SILSymbolVisitor.cpp:903:36 frame #16: 0x00000001011c69d0 swift-frontend`swift::irgen::IRSymbolVisitor::visitFile(this=0x000000016fdf5168, file=0x000000012d0d7a00, Ctx=0x000000016fdf5040) at IRSymbolVisitor.cpp:249:35 frame #17: 0x00000001012c8d8c swift-frontend`swift::tbdgen::TBDGenVisitor::visit(this=0x000000016fdf5168, desc=0x000000016fdf5408) at TBDGen.cpp:533:5
-  //
-  // the declref is not distributed
-  //
-  // (lldb) e declRef->getDecl()->dump()
-  //(func_decl range=[/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:20:17 - line:20:102] "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (isolated Self) -> ([AchievementRef]) async throws -> [AchievementDescription]" access=public captures=(<generic> ) distributed
-  //  (parameter "self" interface type="Self")
-  //  (parameter_list range=[/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:20:30 - line:20:61]
-  //    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]"))
-  //  (result=type_array
-  //    (type_unqualified_ident id="AchievementDescription" bind="GameServicesProtocols.(file).AchievementDescription@/Users/ktoso/code/apple/gamecenter/Frameworks/GameServices/GameServicesProtocols/AchievementServiceProtocol.swift:102:15")))
-  //  Fix-it applied, fixed expression was:
-  //    declRef.getDecl()->dump()
 
-  // SECOND TIME ENTERING
-  //
-  // (lldb) e declRef.dump()
-  // #AchievementServiceProtocol.describe
-  //(lldb) e declRef.getDecl()->dump()
-  //(func_decl implicit "describe(achievements:)" interface type="<Self where Self : AchievementServiceProtocol> (Self) -> (sending [AchievementRef]) async throws -> [AchievementDescription]" access=public captures=(<generic> ) nonisolated distributed_thunk
-  //  (parameter "self")
-  //  (parameter_list
-  //    (parameter "achievements" apiName="achievements" interface type="[AchievementRef]")))
 }
 #ifndef NDEBUG
   if (kind == EncodeKind::GlobalSymbol) {

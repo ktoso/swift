@@ -134,7 +134,10 @@ std::string LinkEntity::mangleAsString() const {
   case Kind::DispatchThunk: {
     // TODO: do the same as we do for funcs for the dispatch thunks etc
     auto *func = cast<FuncDecl>(getDecl());
-//    if (auto thunk = dyn_cast<FuncDecl>(getDecl())->getDistributedThunk())
+
+//    if (func->isDistributedThunk() && isa<ProtocolDecl>(func->getDeclContext())) {
+//      return;
+//    }
 
     return mangler.mangleDispatchThunk(func);
   }
@@ -1315,6 +1318,18 @@ bool LinkEntity::isText() const {
   case Kind::AccessibleFunctionRecord:
     return false;
   }
+}
+
+bool LinkEntity::isDistributedThunk() const {
+  if (!hasDecl())
+    return false;
+
+  auto value = getDecl();
+  if (auto afd = dyn_cast<AbstractFunctionDecl>(value)) {
+    return afd->isDistributedThunk();
+  }
+
+  return false;
 }
 
 bool LinkEntity::isWeakImported(ModuleDecl *module) const {

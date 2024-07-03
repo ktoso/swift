@@ -757,6 +757,7 @@ public:
 
     LinkEntity entity;
     entity.setForDecl(kind, declRef.getDecl());
+    // CHECK SOMETHING HERE?
     return entity;
   }
 
@@ -1623,6 +1624,7 @@ public:
   bool isTypeMetadataAccessFunction() const {
     return getKind() == Kind::TypeMetadataAccessFunction;
   }
+  bool isDistributedThunk() const;
   bool isDispatchThunk() const {
     return getKind() == Kind::DispatchThunk ||
            getKind() == Kind::DispatchThunkInitializer ||
