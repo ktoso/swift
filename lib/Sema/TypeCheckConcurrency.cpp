@@ -4790,6 +4790,7 @@ getIsolationFromAttributes(const Decl *decl, bool shouldDiagnose = true,
           ASTContext &ctx = decl->getASTContext();
           ctx.Diags.diagnose(isolatedAttr->getLocation(),
                              diag::isolated_deinit_no_isolation,
+                             selfTypeDecl->getDescriptiveKind(),
                              selfTypeDecl->getName());
         }
         // Try to use isolation of the overridden decl as a recovery strategy.

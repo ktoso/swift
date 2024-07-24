@@ -5937,8 +5937,8 @@ ERROR(async_unavailable_decl,none,
       
       
 ERROR(isolated_deinit_no_isolation,none,
-      "deinit is marked isolated, but containing class %0 is not isolated to an actor",
-      (DeclName))
+      "deinit is marked isolated, but containing %0 %1 is not isolated to an actor",
+      (DescriptiveDeclKind, DeclName))
 
 //------------------------------------------------------------------------------
 // MARK: String Processing

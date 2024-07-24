@@ -546,6 +546,10 @@ class DifferentIsolatedDeinitIsolated2: BaseWithDeinitIsolatedOnSecondActor {
     }
 }
 
+struct BadDeinitOnStruct: ~Copyable {
+  isolated deinit {} // expected-error {{deinit is marked isolated, but containing class 'BadDeinitOnStruct' is not isolated to an actor}}
+}
+
 #if !SILGEN
 public class PublicIsolatedOnPrivateActor {
     // TODO: Both should be producing an error
