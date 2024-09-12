@@ -933,6 +933,11 @@ AbstractFunctionDecl::isDistributedTargetInvocationEncoderRecordReturnType() con
       C.getProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder);
 
   auto encoderNominal = getDeclContext()->getSelfNominalTypeDecl();
+  if (!encoderNominal) {
+    // if we found a top level function, return immediately
+    return false;
+  }
+
   auto protocolConformance = lookupConformance(
       encoderNominal->getDeclaredInterfaceType(), encoderProto);
 
@@ -1059,6 +1064,11 @@ AbstractFunctionDecl::isDistributedTargetInvocationEncoderRecordErrorType() cons
         C.getProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder);
 
     auto encoderNominal = getDeclContext()->getSelfNominalTypeDecl();
+    if (!encoderNominal) {
+      // if we found a top level function, return immediately
+      return false;
+    }
+
     auto protocolConformance = lookupConformance(
         encoderNominal->getDeclaredInterfaceType(), encoderProto);
 
@@ -1166,6 +1176,11 @@ AbstractFunctionDecl::isDistributedTargetInvocationDecoderDecodeNextArgument() c
         C.getProtocol(KnownProtocolKind::DistributedTargetInvocationDecoder);
 
     auto decoderNominal = getDeclContext()->getSelfNominalTypeDecl();
+    if (!decoderNominal) {
+      // if we found a top level function, return immediately
+      return false;
+    }
+
     auto protocolConformance = lookupConformance(
         decoderNominal->getDeclaredInterfaceType(), decoderProto);
 
@@ -1259,6 +1274,11 @@ AbstractFunctionDecl::isDistributedTargetInvocationResultHandlerOnReturn() const
         C.getProtocol(KnownProtocolKind::DistributedTargetInvocationResultHandler);
 
     auto decoderNominal = getDeclContext()->getSelfNominalTypeDecl();
+    if (!decoderNominal) {
+      // if we found a top level function, return immediately
+      return false;
+    }
+
     auto protocolConformance = lookupConformance(
         decoderNominal->getDeclaredInterfaceType(), decoderProto);
 
