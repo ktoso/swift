@@ -797,6 +797,11 @@ AbstractFunctionDecl::isDistributedTargetInvocationEncoderRecordArgument() const
       C.getProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder);
 
   auto encoderNominal = getDeclContext()->getSelfNominalTypeDecl();
+  if (!encoderNominal) {
+    // if we found a top level function, return immediately
+    return false;
+  }
+
   auto protocolConformance = lookupConformance(
       encoderNominal->getDeclaredInterfaceType(), encoderProto);
 
