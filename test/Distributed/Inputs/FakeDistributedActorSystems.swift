@@ -14,13 +14,16 @@
 
 import Distributed
 
+fileprivate func log(_ message: String, file: String = #fileID, line: UInt = #line, function: String = #function) {
+  print("[\(function) @ \(file):\(line)] \(message)")
+}
+
 // ==== Example Distributed Actors ----------------------------------------------
 
 @available(SwiftStdlib 5.7, *)
 public distributed actor FakeRoundtripActorSystemDistributedActor {
   public typealias ActorSystem = FakeRoundtripActorSystem
 }
-
 
 @available(SwiftStdlib 5.7, *)
 @_transparent
@@ -95,7 +98,7 @@ public struct FakeActorSystem: DistributedActorSystem, CustomStringConvertible {
   let someValue4: String = ""
 
   public init() {
-    print("Initialized new FakeActorSystem")
+    log("Initialized new FakeActorSystem")
   }
 
   public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
@@ -168,7 +171,7 @@ public struct FakeNotLoadableAddressActorSystem: DistributedActorSystem, CustomS
   let someValue4: String = ""
 
   public init() {
-    print("Initialized new FakeActorSystem")
+    log("Initialized new FakeActorSystem")
   }
 
   public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
@@ -247,26 +250,234 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
 
   public func resolve<Act>(id: ActorID, as actorType: Act.Type)
     throws -> Act? where Act: DistributedActor {
-    print("| resolve \(id) as remote // this system always resolves as remote")
+    log("| resolve \(id) as remote // this system always resolves as remote")
     return nil
   }
 
   public func assignID<Act>(_ actorType: Act.Type) -> ActorID
     where Act: DistributedActor {
     let id = ActorAddress(parse: "<unique-id>")
-    print("| assign id: \(id) for \(actorType)")
+    log("| assign id: \(id) for \(actorType)")
     return id
   }
 
   public func actorReady<Act>(_ actor: Act)
     where Act: DistributedActor,
     Act.ID == ActorID {
-    print("| actor ready: \(actor)")
+    log("| actor ready: \(actor)")
     self.activeActors[actor.id] = actor
   }
 
   public func resignID(_ id: ActorID) {
-    print("X resign id: \(id)")
+    log("X resign id: \(id)")
+  }
+
+  public func makeInvocationEncoder() -> InvocationEncoder {
+    .init()
+  }
+
+  private var remoteCallResult: Any? = nil
+  private var remoteCallError: Error? = nil
+
+  public func forceNextRemoteCallReply(_ reply: Any) {
+    self.forcedNextRemoteCallReply = reply
+  }
+
+  public func deliverRemoteCall<Err, Res>(
+    on actorID: ActorAddress,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder,
+    throwing errorType: Err.Type,
+    returning returnType: Res.Type
+  ) async throws -> Res
+    where Err: Error,
+          Res: SerializationRequirement {
+    log("  >> remoteCall: on:\(actorID), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(String(reflecting: returnType))")
+    guard let targetActor = activeActors[actorID] else {
+      fatalError("Attempted to call mock 'roundtrip' on: \(actorID) without active actor: \(target.identifier)")
+    }
+    log("  >> remoteCall: found target actor: \(targetActor) for id:\(actorID)")
+
+    if let forcedNextRemoteCallReply {
+      defer { self.forcedNextRemoteCallReply = nil }
+      return forcedNextRemoteCallReply as! Res
+    }
+
+    func doIt<A: DistributedActor>(active: A) async throws -> Res {
+      guard (actorID) == active.id as! ActorID else {
+        fatalError("Attempted to call mock 'roundtrip' on unknown actor: \(actorID), known: \(active.id)")
+      }
+
+      let resultHandler = FakeRoundtripResultHandler { value in
+        self.remoteCallResult = value
+        self.remoteCallError = nil
+      } onError: { error in
+        self.remoteCallResult = nil
+        self.remoteCallError = error
+      }
+
+      var decoder = invocation.makeDecoder()
+      print("DECODER = \(decoder)")
+
+      try await executeDistributedTarget(
+        on: active,
+        target: target,
+        invocationDecoder: &decoder,
+        handler: resultHandler
+      )
+
+      switch (remoteCallResult, remoteCallError) {
+      case (.some(let value), nil):
+        log("  << remoteCall return: \(value)")
+        return remoteCallResult! as! Res
+      case (nil, .some(let error)):
+        log("  << remoteCall throw: \(error)")
+        throw error
+      default:
+        fatalError("No reply!")
+      }
+    }
+    return try await _openExistential(targetActor, do: doIt)
+  }
+
+  public func remoteCall<Act, Err, Res>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder,
+    throwing errorType: Err.Type,
+    returning returnType: Res.Type
+  ) async throws -> Res
+    where Act: DistributedActor,
+    Act.ID == ActorID,
+    Err: Error,
+    Res: SerializationRequirement {
+    log("  >> remoteCall: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(returnType)")
+
+    return try await self.deliverRemoteCall(
+      on: actor.id,
+      target: target,
+      invocation: &invocation,
+      throwing: errorType,
+      returning: returnType)
+  }
+
+  public func deliverRemoteCallVoid<Err>(
+    on actorID: ActorID,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder,
+    throwing errorType: Err.Type
+  ) async throws
+    where Err: Error {
+    log("  >> deliverRemoteCallVoid: on:\(actorID), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
+    guard let targetActor = activeActors[actorID] else {
+      fatalError("Attempted to call mock 'roundtrip' on: \(actorID) without active actor")
+    }
+
+    func doIt<A: DistributedActor>(active: A) async throws {
+      guard (actorID) == active.id as! ActorID else {
+        fatalError("Attempted to call mock 'roundtrip' on unknown actor: \(actorID), known: \(active.id)")
+      }
+
+      let resultHandler = FakeRoundtripResultHandler { value in
+        self.remoteCallResult = value
+        self.remoteCallError = nil
+      } onError: { error in
+        self.remoteCallResult = nil
+        self.remoteCallError = error
+      }
+
+      var decoder = invocation.makeDecoder()
+
+      log(" > execute distributed target: \(target)")
+      try await executeDistributedTarget(
+        on: active,
+        target: target,
+        invocationDecoder: &decoder,
+        handler: resultHandler
+      )
+
+      switch (remoteCallResult, remoteCallError) {
+      case (.some, nil):
+        return
+      case (nil, .some(let error)):
+        log("  << remoteCall throw: \(error)")
+        throw error
+      default:
+        fatalError("No reply!")
+      }
+    }
+    try await _openExistential(targetActor, do: doIt)
+  }
+
+  public func remoteCallVoid<Act, Err>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder,
+    throwing errorType: Err.Type
+  ) async throws
+    where Act: DistributedActor,
+          Act.ID == ActorID,
+          Err: Error {
+    log("  >> deliver remoteCallVoid: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
+
+    try await self.deliverRemoteCallVoid(
+      on: actor.id,
+      target: target,
+      invocation: &invocation,
+      throwing: errorType)
+  }
+
+}
+
+@available(SwiftStdlib 6.0, *)
+public final class FakeRemoteCallActorSystem
+  // <TargetRemoteSystem> // FIXME: Assertion failed: (!type->hasPrimaryArchetype() && "Archetype in interface type"), function cacheResult, file TypeCheckRequests.cpp, line 1177.
+  : DistributedActorSystem, @unchecked Sendable
+//    where TargetRemoteSystem: DistributedActorSystem<any Codable>,
+//          TargetRemoteSystem.ActorID == ActorAddress
+{
+  public typealias ActorID = ActorAddress
+  public typealias InvocationEncoder = FakeInvocationEncoder
+  public typealias InvocationDecoder = FakeInvocationDecoder
+  public typealias SerializationRequirement = Codable
+  public typealias ResultHandler = FakeRoundtripResultHandler
+
+  public typealias TargetRemoteSystem = FakeRoundtripActorSystem
+  let remoteSystem: TargetRemoteSystem
+
+  var activeActors: [ActorID: any DistributedActor] = [:]
+  var forcedNextRemoteCallReply: Any? = nil
+
+  public init(remoteSystem: TargetRemoteSystem) {
+    self.remoteSystem = remoteSystem
+  }
+
+  public func shutdown() {
+    self.activeActors = [:]
+  }
+
+  public func resolve<Act>(id: ActorID, as actorType: Act.Type)
+    throws -> Act? where Act: DistributedActor {
+    log("| resolve \(id) as remote // this system always resolves as remote")
+    return nil
+  }
+
+  public func assignID<Act>(_ actorType: Act.Type) -> ActorID
+    where Act: DistributedActor {
+    let id = ActorAddress(parse: "<unique-id>")
+    log("| assign id: \(id) for \(actorType)")
+    return id
+  }
+
+  public func actorReady<Act>(_ actor: Act)
+    where Act: DistributedActor,
+    Act.ID == ActorID {
+    log("| actor ready: \(actor)")
+    self.activeActors[actor.id] = actor
+  }
+
+  public func resignID(_ id: ActorID) {
+    log("X resign id: \(id)")
   }
 
   public func makeInvocationEncoder() -> InvocationEncoder {
@@ -291,51 +502,54 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
           Act.ID == ActorID,
           Err: Error,
           Res: SerializationRequirement {
-    print("  >> remoteCall: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(String(reflecting: returnType))")
-    print(" > execute distributed target: \(target), identifier: \(target.identifier)")
-    guard let targetActor = activeActors[actor.id] else {
-      fatalError("Attempted to call mock 'roundtrip' on: \(actor.id) without active actor: \(target.identifier)")
-    }
+    log("  >> remoteCall: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(returnType)")
+    if let targetActor = activeActors[actor.id] {
+      func doIt<A: DistributedActor>(active: A) async throws -> Res {
+        guard (actor.id) == active.id as! ActorID else {
+          fatalError("Attempted to call mock 'roundtrip' on unknown actor: \(actor.id), known: \(active.id)")
+        }
 
-    if let forcedNextRemoteCallReply {
-      defer { self.forcedNextRemoteCallReply = nil }
-      return forcedNextRemoteCallReply as! Res
-    }
+        let resultHandler = FakeRoundtripResultHandler { value in
+          self.remoteCallResult = value
+          self.remoteCallError = nil
+        } onError: { error in
+          self.remoteCallResult = nil
+          self.remoteCallError = error
+        }
 
-    func doIt<A: DistributedActor>(active: A) async throws -> Res {
-      guard (actor.id) == active.id as! ActorID else {
-        fatalError("Attempted to call mock 'roundtrip' on unknown actor: \(actor.id), known: \(active.id)")
+        var decoder = invocation.makeDecoder()
+
+        log(" > execute distributed target: \(target)")
+        try await executeDistributedTarget(
+          on: active,
+          target: target,
+          invocationDecoder: &decoder,
+          handler: resultHandler
+        )
+
+        switch (remoteCallResult, remoteCallError) {
+        case (.some(let value), nil):
+          log("  << remoteCall return: \(value)")
+          return remoteCallResult! as! Res
+        case (nil, .some(let error)):
+          log("  << remoteCall throw: \(error)")
+          throw error
+        default:
+          fatalError("No reply!")
+        }
       }
+      return try await _openExistential(targetActor, do: doIt)
+    } else {
+      // make the remote call
+      log(">>>> Make remote call on id:\(actor.id) to remote system")
 
-      let resultHandler = FakeRoundtripResultHandler { value in
-        self.remoteCallResult = value
-        self.remoteCallError = nil
-      } onError: { error in
-        self.remoteCallResult = nil
-        self.remoteCallError = error
-      }
-
-      var decoder = invocation.makeDecoder()
-
-      try await executeDistributedTarget(
-        on: active,
+      return try await self.remoteSystem.deliverRemoteCall(
+        on: actor.id,
         target: target,
-        invocationDecoder: &decoder,
-        handler: resultHandler
-      )
-
-      switch (remoteCallResult, remoteCallError) {
-      case (.some(let value), nil):
-        print("  << remoteCall return: \(value)")
-        return remoteCallResult! as! Res
-      case (nil, .some(let error)):
-        print("  << remoteCall throw: \(error)")
-        throw error
-      default:
-        fatalError("No reply!")
-      }
+        invocation: &invocation,
+        throwing: Err.self,
+        returning: Res.self)
     }
-    return try await _openExistential(targetActor, do: doIt)
   }
 
   public func remoteCallVoid<Act, Err>(
@@ -347,45 +561,52 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
     where Act: DistributedActor,
           Act.ID == ActorID,
           Err: Error {
-    print("  >> remoteCallVoid: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
-    guard let targetActor = activeActors[actor.id] else {
-      fatalError("Attempted to call mock 'roundtrip' on: \(actor.id) without active actor")
-    }
+    log("  >> remoteCallVoid: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
+    if let targetActor = activeActors[actor.id] {
+      func doIt<A: DistributedActor>(active: A) async throws {
+        guard (actor.id) == active.id as! ActorID else {
+          fatalError("Attempted to call mock 'roundtrip' on unknown actor: \(actor.id), known: \(active.id)")
+        }
 
-    func doIt<A: DistributedActor>(active: A) async throws {
-      guard (actor.id) == active.id as! ActorID else {
-        fatalError("Attempted to call mock 'roundtrip' on unknown actor: \(actor.id), known: \(active.id)")
+        let resultHandler = FakeRoundtripResultHandler { value in
+          self.remoteCallResult = value
+          self.remoteCallError = nil
+        } onError: { error in
+          self.remoteCallResult = nil
+          self.remoteCallError = error
+        }
+
+        var decoder = invocation.makeDecoder()
+
+        log(" > execute distributed target: \(target)")
+        try await executeDistributedTarget(
+          on: active,
+          target: target,
+          invocationDecoder: &decoder,
+          handler: resultHandler
+        )
+
+        switch (remoteCallResult, remoteCallError) {
+        case (.some, nil):
+          return
+        case (nil, .some(let error)):
+          log("  << remoteCall throw: \(error)")
+          throw error
+        default:
+          fatalError("No reply!")
+        }
       }
+      try await _openExistential(targetActor, do: doIt)
+    } else {
+      // make the remote call
+      log(">>>> Make remote call on id:\(actor.id) to remote system")
 
-      let resultHandler = FakeRoundtripResultHandler { value in
-        self.remoteCallResult = value
-        self.remoteCallError = nil
-      } onError: { error in
-        self.remoteCallResult = nil
-        self.remoteCallError = error
-      }
-
-      var decoder = invocation.makeDecoder()
-
-      print(" > execute distributed target: \(target)")
-      try await executeDistributedTarget(
-        on: active,
+      try await self.remoteSystem.deliverRemoteCallVoid(
+        on: actor.id,
         target: target,
-        invocationDecoder: &decoder,
-        handler: resultHandler
-      )
-
-      switch (remoteCallResult, remoteCallError) {
-      case (.some, nil):
-        return
-      case (nil, .some(let error)):
-        print("  << remoteCall throw: \(error)")
-        throw error
-      default:
-        fatalError("No reply!")
-      }
+        invocation: &invocation,
+        throwing: Err.self)
     }
-    try await _openExistential(targetActor, do: doIt)
   }
 
 }
@@ -402,28 +623,28 @@ public struct FakeInvocationEncoder : DistributedTargetInvocationEncoder {
   public init() {}
 
   public mutating func recordGenericSubstitution<T>(_ type: T.Type) throws {
-    print(" > encode generic sub: \(String(reflecting: type))")
+    log(" > encode generic sub: \(String(reflecting: type))")
     genericSubs.append(type)
   }
 
   public mutating func recordArgument<Value: SerializationRequirement>(
     _ argument: RemoteCallArgument<Value>) throws {
-    print(" > encode argument name:\(argument.label ?? "_"), value: \(argument.value)")
+    log(" > encode argument name:\(argument.label ?? "_"), value: \(argument.value)")
     arguments.append(argument.value)
   }
 
   public mutating func recordErrorType<E: Error>(_ type: E.Type) throws {
-    print(" > encode error type: \(String(reflecting: type))")
+    log(" > encode error type: \(String(reflecting: type))")
     self.errorType = type
   }
 
   public mutating func recordReturnType<R: SerializationRequirement>(_ type: R.Type) throws {
-    print(" > encode return type: \(String(reflecting: type))")
+    log(" > encode return type: \(String(reflecting: type))")
     self.returnType = type
   }
 
   public mutating func doneRecording() throws {
-    print(" > done recording")
+    log(" > done recording")
   }
 
   public mutating func makeDecoder() -> FakeInvocationDecoder {
@@ -469,10 +690,16 @@ public final class FakeInvocationDecoder: DistributedTargetInvocationDecoder {
     self.genericSubs = substitutions
     self.returnType = returnType
     self.errorType = errorType
+
+
+    print("DECODER.arguments = \(self.arguments)")
+    print("DECODER.genericSubs = \(self.genericSubs)")
+    print("DECODER.errorType = \(self.errorType)")
+    print("DECODER.returnType = \(self.returnType)")
   }
 
   public func decodeGenericSubstitutions() throws -> [Any.Type] {
-    print("  > decode generic subs: \(genericSubs)")
+    log("  > decode generic subs: \(genericSubs)")
     return genericSubs
   }
 
@@ -486,18 +713,18 @@ public final class FakeInvocationDecoder: DistributedTargetInvocationDecoder {
       fatalError("Cannot cast argument\(anyArgument) to expected \(Argument.self)")
     }
 
-    print("  > decode argument: \(argument)")
+    log("  > decode argument: \(argument)")
     argumentIndex += 1
     return argument
   }
 
   public func decodeErrorType() throws -> Any.Type? {
-    print("  > decode return type: \(errorType.map { String(reflecting: $0) }  ?? "nil")")
+    log("  > decode return type: \(errorType.map { String(reflecting: $0) }  ?? "nil")")
     return self.errorType
   }
 
   public func decodeReturnType() throws -> Any.Type? {
-    print("  > decode return type: \(returnType.map { String(reflecting: $0) }  ?? "nil")")
+    log("  > decode return type: \(returnType.map { String(reflecting: $0) }  ?? "nil")")
     return self.returnType
   }
 }
@@ -514,17 +741,17 @@ public struct FakeRoundtripResultHandler: DistributedTargetInvocationResultHandl
   }
 
   public func onReturn<Success: SerializationRequirement>(value: Success) async throws {
-    print(" << onReturn: \(value)")
+    log(" << onReturn: \(value)")
     storeReturn(value)
   }
 
   public func onReturnVoid() async throws {
-    print(" << onReturnVoid: ()")
+    log(" << onReturnVoid: ()")
     storeReturn(())
   }
 
   public func onThrow<Err: Error>(error: Err) async throws {
-    print(" << onThrow: \(error)")
+    log(" << onThrow: \(error)")
     storeError(error)
   }
 }
@@ -572,26 +799,26 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
 
   public func resolve<Act>(id: ActorID, as actorType: Act.Type)
     throws -> Act? where Act: DistributedActor {
-    print("| resolve \(id) as remote // this system always resolves as remote")
+    log("| resolve \(id) as remote // this system always resolves as remote")
     return nil
   }
 
   public func assignID<Act>(_ actorType: Act.Type) -> ActorID
     where Act: DistributedActor {
     let id = ActorAddress(parse: "<unique-id>")
-    print("| assign id: \(id) for \(actorType)")
+    log("| assign id: \(id) for \(actorType)")
     return id
   }
 
   public func actorReady<Act>(_ actor: Act)
     where Act: DistributedActor,
     Act.ID == ActorID {
-    print("| actor ready: \(actor)")
+    log("| actor ready: \(actor)")
     self.activeActors[actor.id] = actor
   }
 
   public func resignID(_ id: ActorID) {
-    print("X resign id: \(id)")
+    log("X resign id: \(id)")
   }
 
   public func makeInvocationEncoder() -> InvocationEncoder {
@@ -616,8 +843,8 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
     Act.ID == ActorID,
     Err: Error,
     Res: SerializationRequirement {
-    print("  >> remoteCall: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(String(reflecting: returnType))")
-    print(" > execute distributed target: \(target), identifier: \(target.identifier)")
+    log("  >> remoteCall: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(String(reflecting: returnType))")
+    log(" > execute distributed target: \(target), identifier: \(target.identifier)")
     guard let targetActor = activeActors[actor.id] else {
       fatalError("Attempted to call mock 'roundtrip' on: \(actor.id) without active actor: \(target.identifier)")
     }
@@ -651,10 +878,10 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
 
       switch (remoteCallResult, remoteCallError) {
       case (.some(let value), nil):
-        print("  << remoteCall return: \(value)")
+        log("  << remoteCall return: \(value)")
         return remoteCallResult! as! Res
       case (nil, .some(let error)):
-        print("  << remoteCall throw: \(error)")
+        log("  << remoteCall throw: \(error)")
         throw error
       default:
         fatalError("No reply!")
@@ -672,7 +899,7 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
     where Act: DistributedActor,
     Act.ID == ActorID,
     Err: Error {
-    print("  >> remoteCallVoid: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
+    log("  >> remoteCallVoid: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
     guard let targetActor = activeActors[actor.id] else {
       fatalError("Attempted to call mock 'roundtrip' on: \(actor.id) without active actor")
     }
@@ -692,7 +919,7 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
 
       var decoder = invocation.makeDecoder()
 
-      print(" > execute distributed target: \(target)")
+      log(" > execute distributed target: \(target)")
       try await executeDistributedTarget(
         on: active,
         target: target,
@@ -704,7 +931,7 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
       case (.some, nil):
         return
       case (nil, .some(let error)):
-        print("  << remoteCall throw: \(error)")
+        log("  << remoteCall throw: \(error)")
         throw error
       default:
         fatalError("No reply!")
@@ -725,28 +952,28 @@ public struct FakeCustomSerializationInvocationEncoder : DistributedTargetInvoca
   var errorType: Any.Type? = nil
 
   public mutating func recordGenericSubstitution<T>(_ type: T.Type) throws {
-    print(" > encode generic sub: \(String(reflecting: type))")
+    log(" > encode generic sub: \(String(reflecting: type))")
     genericSubs.append(type)
   }
 
   public mutating func recordArgument<Value: SerializationRequirement>(
     _ argument: RemoteCallArgument<Value>) throws {
-    print(" > encode argument name:\(argument.label ?? "_"), value: \(argument.value)")
+    log(" > encode argument name:\(argument.label ?? "_"), value: \(argument.value)")
     arguments.append(argument.value)
   }
 
   public mutating func recordErrorType<E: Error>(_ type: E.Type) throws {
-    print(" > encode error type: \(String(reflecting: type))")
+    log(" > encode error type: \(String(reflecting: type))")
     self.errorType = type
   }
 
   public mutating func recordReturnType<R: SerializationRequirement>(_ type: R.Type) throws {
-    print(" > encode return type: \(String(reflecting: type))")
+    log(" > encode return type: \(String(reflecting: type))")
     self.returnType = type
   }
 
   public mutating func doneRecording() throws {
-    print(" > done recording")
+    log(" > done recording")
   }
 
   public mutating func makeDecoder() -> FakeCustomSerializationInvocationDecoder {
@@ -795,7 +1022,7 @@ public final class FakeCustomSerializationInvocationDecoder: DistributedTargetIn
   }
 
   public func decodeGenericSubstitutions() throws -> [Any.Type] {
-    print("  > decode generic subs: \(genericSubs)")
+    log("  > decode generic subs: \(genericSubs)")
     return genericSubs
   }
 
@@ -809,18 +1036,18 @@ public final class FakeCustomSerializationInvocationDecoder: DistributedTargetIn
       fatalError("Cannot cast argument\(anyArgument) to expected \(Argument.self)")
     }
 
-    print("  > decode argument: \(argument)")
+    log("  > decode argument: \(argument)")
     argumentIndex += 1
     return argument
   }
 
   public func decodeErrorType() throws -> Any.Type? {
-    print("  > decode return type: \(errorType.map { String(reflecting: $0) }  ?? "nil")")
+    log("  > decode return type: \(errorType.map { String(reflecting: $0) }  ?? "nil")")
     return self.errorType
   }
 
   public func decodeReturnType() throws -> Any.Type? {
-    print("  > decode return type: \(returnType.map { String(reflecting: $0) }  ?? "nil")")
+    log("  > decode return type: \(returnType.map { String(reflecting: $0) }  ?? "nil")")
     return self.returnType
   }
 }
@@ -837,17 +1064,17 @@ public struct FakeCustomSerializationRoundtripResultHandler: DistributedTargetIn
   }
 
   public func onReturn<Success: SerializationRequirement>(value: Success) async throws {
-    print(" << onReturn: \(value)")
+    log(" << onReturn: \(value)")
     storeReturn(value)
   }
 
   public func onReturnVoid() async throws {
-    print(" << onReturnVoid: ()")
+    log(" << onReturnVoid: ()")
     storeReturn(())
   }
 
   public func onThrow<Err: Error>(error: Err) async throws {
-    print(" << onThrow: \(error)")
+    log(" << onThrow: \(error)")
     storeError(error)
   }
 }

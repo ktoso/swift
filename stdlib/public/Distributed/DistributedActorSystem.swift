@@ -545,7 +545,7 @@ extension DistributedActorSystem {
       }
     guard let returnTypeFromTypeInfo: Any.Type = maybeReturnTypeFromTypeInfo else {
       throw ExecuteDistributedTargetError(
-        message: "Failed to decode distributed target return type",
+        message: "Failed to decode distributed target return type: \(targetNameUTF8)",
         errorCode: .typeDeserializationFailure)
     }
 

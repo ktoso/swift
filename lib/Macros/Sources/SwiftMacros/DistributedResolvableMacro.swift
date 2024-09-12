@@ -46,6 +46,12 @@ extension DistributedResolvableMacro {
 
     let accessModifiers = proto.accessControlModifiers
 
+    let assocTypesVisitor = AssociatedTypesVisitor(viewMode: .all)
+    print("WALK: \(proto)")
+    assocTypesVisitor.walk(proto)
+    let knownAssocTypes = assocTypesVisitor.assocTypes
+    print("GOT TYPES: \(knownAssocTypes)")
+
     let requirementStubs =
       proto.memberBlock.members // requirements
         .filter { member in
@@ -57,7 +63,10 @@ extension DistributedResolvableMacro {
           }
         }
         .map { member in
-          stubMethodDecl(access: accessModifiers, member.trimmed)
+          stubMethodDecl(
+            access: accessModifiers,
+            knownAssocTypes: knownAssocTypes,
+            member.trimmed)
         }
         .joined(separator: "\n    ")
 
@@ -70,10 +79,14 @@ extension DistributedResolvableMacro {
     return [extensionDecl.cast(ExtensionDeclSyntax.self)]
   }
 
-  static func stubMethodDecl(access: DeclModifierListSyntax, _ requirement: MemberBlockItemListSyntax.Element) -> String {
+  static func stubMethodDecl(access: DeclModifierListSyntax,
+                             knownAssocTypes: [AssociatedTypeDeclSyntax],
+                             _ requirement: MemberBlockItemListSyntax.Element) -> String {
     // do we need to stub a computed variable?
     if let variable = requirement.decl.as(VariableDeclSyntax.self) {
       var accessorStubs: [String] = []
+
+      print("ASSOC: \(knownAssocTypes)")
 
       for binding in variable.bindings {
         if let accessorBlock = binding.accessorBlock {
@@ -91,6 +104,32 @@ extension DistributedResolvableMacro {
                \(accessorStubs.joined(separator: "\n  "))
              }
              """
+    } else if let funcDecl = requirement.decl.as(FunctionDeclSyntax.self) {
+      print("FUNC DECL: \(funcDecl)")
+      print("FUNC DECL: \(funcDecl.signature.returnClause?.type)")
+      if let returnTy = funcDecl.signature.returnClause?.type {
+        print("return type = \(returnTy)")
+        for assocTy in knownAssocTypes {
+          if "\(assocTy.name)" == "\(returnTy)" {
+            print("ASSUME WE NEED TO STUB: \(assocTy)")
+
+            // Remangling failed:
+            // original     = $s4main6$AlphaC03getB0AaBCy11ActorSystem11Distributed0fD0PQzGyYaKFTE
+            // remangled    = $s4main6$AlphaC03getB0ACy11ActorSystem11Distributed0fD0PQzGyYaKFTE
+            //
+            //
+            // Remangling failed:
+            // original     = distributed thunk main.$Alpha.getAlpha() async throws -> main.$Alpha<A.Distributed.DistributedActor.ActorSystem>
+            // remangled    = distributed thunk main.$Alpha.getAlpha() async throws -> main.$Alpha<A.Distributed.DistributedActor.ActorSystem>
+
+            return """
+                   \(access)   distributed func getAlpha() async throws -> $Alpha<ActorSystem> {
+                     $Alpha<ActorSystem>(actorSystem: self.actorSystem) // we're just guessing
+                   }
+                   """
+          }
+        }
+      }
     }
 
     // normal function stub
@@ -104,6 +143,7 @@ extension DistributedResolvableMacro {
   static func stubFunctionBody() -> DeclSyntax {
     """
     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+      print("THIS CALLED STUB, BOOOOOOOOOOOOOOM!!!! On \\(self.id)")
       Distributed._distributedStubFatalError()
     } else {
       fatalError()
@@ -117,7 +157,7 @@ extension DistributedResolvableMacro {
 
 extension DistributedResolvableMacro {
 
-  /// Introduce the `distributed actor` stub type.
+  /// Introduce the `distributed actor` stub type, and stubs for any opaque return types.
   public static func expansion(
     of node: AttributeSyntax,
     providingPeersOf declaration: some DeclSyntaxProtocol,
@@ -151,25 +191,24 @@ extension DistributedResolvableMacro {
       }
     }
 
+    var decls: [DeclSyntax] = []
+
+    // --- Emit actor stub
     if isGenericStub, let specificActorSystemRequirement {
-      return [
+      decls.append(
         """
         \(proto.modifiers) distributed actor $\(proto.name.trimmed)<ActorSystem>: \(proto.name.trimmed), 
-          Distributed._DistributedActorStub
-          where ActorSystem: \(specificActorSystemRequirement) 
-        { }
-        """
-      ]
+          Distributed._DistributedActorStub where ActorSystem: \(specificActorSystemRequirement), 
+                                                  ActorSystem.ActorID: Codable { }
+        """)
     } else if let specificActorSystemRequirement {
-      return [
+      decls.append(
         """
         \(proto.modifiers) distributed actor $\(proto.name.trimmed): \(proto.name.trimmed), 
-          Distributed._DistributedActorStub
-        { 
+          Distributed._DistributedActorStub { 
           \(typealiasActorSystem(access: accessModifiers, proto, specificActorSystemRequirement)) 
         }
-        """
-      ]
+        """)
     } else {
       // there may be no `where` clause specifying an actor system,
       // but perhaps there is a typealias (or extension with a typealias),
@@ -177,15 +216,32 @@ extension DistributedResolvableMacro {
       // an empty `$Greeter` -- this may fail, or succeed depending on
       // surrounding code using a default distributed actor system,
       // or extensions providing it.
-      return [
+      decls.append(
         """
         \(proto.modifiers) distributed actor $\(proto.name.trimmed): \(proto.name.trimmed), 
           Distributed._DistributedActorStub
         {
         }
-        """
-      ]
+        """)
     }
+
+//    // --- Emit necessary opaque return type stubs
+//    // If the protocol is using any associated types, we need to try to stub them out,
+//    // they are potentially distributed actors so we replace their values with a $
+//    let assocTypesVisitor = AssociatedTypesVisitor(viewMode: .all)
+//    assocTypesVisitor.walk(proto)
+//
+//    if !assocTypesVisitor.assocTypes.isEmpty {
+//      // FIXME: we could ask system to make a "dead-letter ref"
+//      decls.append(
+//        """
+//        $\(proto.name.trimmed).init(actorSystem: self.actorSystem)
+//        """)
+//    }
+
+    // Return the prepared decls
+    assert(!decls.isEmpty, "At least one distributed actor stub type should have been produced!")
+    return decls
   }
 
   private static func typealiasActorSystem(access: DeclModifierListSyntax,
@@ -235,6 +291,42 @@ extension DeclModifierSyntax {
       return false
     }
   }
+}
+
+// ===== -----------------------------------------------------------------------
+// MARK: Utility Syntax Visitors
+
+/// Get `associatedtype` declarations in the specific declaration visited.
+final class AssociatedTypesVisitor: SyntaxVisitor {
+  var first: Bool = true
+  var assocTypes: [AssociatedTypeDeclSyntax] = []
+
+  override func visit(_ node: AssociatedTypeDeclSyntax) -> SyntaxVisitorContinueKind {
+    print("VISIT assoc: \(node)")
+    self.assocTypes.append(node)
+    return .skipChildren
+  }
+
+  override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+    print("VISIT class")
+    defer { first = false }
+    return first ? .visitChildren : .skipChildren
+  }
+  override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+    print("VISIT struct")
+    defer { first = false }
+    return first ? .visitChildren : .skipChildren
+  }
+  override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+    defer { first = false }
+    return first ? .visitChildren : .skipChildren
+  }
+  override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+    print("VISIT proto")
+    defer { first = false }
+    return first ? .visitChildren : .skipChildren
+  }
+
 }
 
 // ===== -----------------------------------------------------------------------

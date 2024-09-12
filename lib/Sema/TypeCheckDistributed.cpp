@@ -452,6 +452,7 @@ static bool checkDistributedTargetResultType(
                                                "Codable" : // Codable is a typealias, easier to diagnose like that
                                                serializationReq->getNameStr();
 
+        fprintf(stderr, "[%s:%d](%s) FAIL HERE....\n", __FILE_NAME__, __LINE__, __FUNCTION__);
         auto diag = valueDecl->diagnose(
             diag::distributed_actor_target_result_not_codable,
             resultType,

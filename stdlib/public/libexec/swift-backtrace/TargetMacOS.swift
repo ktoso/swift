@@ -249,7 +249,7 @@ class Target {
 
       if info.thread_id == crashingThread {
         ctx = HostContext.fromHostMContext(mcontext)
-        crashingThreadNdx = Int(ndx)
+        crashingThreadNdx = threads.count
       } else {
         guard let threadCtx = HostContext.fromHostThread(ports[Int(ndx)]) else {
           // This can happen legitimately, e.g. when looking at a Rosetta 2
