@@ -560,6 +560,36 @@ bool CheckDistributedFunctionRequest::evaluate(
       // --- Check parameters for 'SerializationRequirement' conformance
       auto paramTy = func->mapTypeIntoContext(param->getInterfaceType());
 
+      fprintf(stderr, "[%s:%d](%s) param ty =====\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+      paramTy.dump();
+
+      if (paramTy->isDistributedActor()) {
+        fprintf(stderr, "[%s:%d](%s) its a distributed actor!\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+
+        fprintf(stderr, "[%s:%d](%s) get nominal ====\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+        paramTy->getAnyNominal()->dump();
+
+//        fprintf(stderr, "[%s:%d](%s) get ser ====\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+//        auto serReq = getDistributedSerializationRequirementType(paramTy->getAnyNominal(), C.getDistributedActorDecl());
+//        serReq.dump();
+
+        fprintf(stderr, "[%s:%d](%s) secondary ===== \n", __FILE_NAME__, __LINE__, __FUNCTION__);
+        auto serReq = getDistributedActorSerializationType(paramTy->getAnyNominal());
+        serReq.dump();
+
+        auto srl = serializationReqType->getExistentialLayout();
+
+        if (serReq->isEqual(serializationReqType)) {
+          fprintf(stderr, "[%s:%d](%s) THE SAME\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+          continue;
+        }
+
+        for (auto req: srl.getProtocols()) {
+
+        }
+
+      }
+
       auto srl = serializationReqType->getExistentialLayout();
       for (auto req: srl.getProtocols()) {
         if (checkConformance(paramTy, req).isInvalid()) {

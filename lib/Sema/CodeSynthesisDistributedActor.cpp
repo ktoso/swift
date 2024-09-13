@@ -378,6 +378,8 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   {
     auto recordArgumentName = DeclName(C, C.Id_recordArgument,
                                        /*labels=*/{Identifier()});
+    StructDecl *RCA = C.getRemoteCallArgumentDecl();
+
     if (auto params = thunk->getParameters()) {
       if (params->begin())
       for (auto param : *params) {
@@ -390,11 +392,16 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
               new (C) StringLiteralExpr(argumentName, SourceRange(), implicit);
         }
         auto parameterName = param->getParameterName().str();
+        auto paramTy = thunk->mapTypeIntoContext(param->getInterfaceType());
 
+
+        auto paramDeclRef = new (C) DeclRefExpr(
+            ConcreteDeclRef(param), dloc, implicit,
+            AccessSemantics::Ordinary,
+            paramTy);
 
         // --- Prepare the RemoteCallArgument<Value> for the argument
         auto argumentVarName = C.getIdentifier("_" + parameterName.str());
-        StructDecl *RCA = C.getRemoteCallArgumentDecl();
         VarDecl *callArgVar =
             new (C) VarDecl(/*isStatic=*/false, VarDecl::Introducer::Let, sloc,
                             argumentVarName, thunk);
@@ -405,8 +412,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 
         auto remoteCallArgumentInitDecl =
             RCA->getDistributedRemoteCallArgumentInitFunction();
-        auto boundRCAType = BoundGenericType::get(
-            RCA, Type(), {thunk->mapTypeIntoContext(param->getInterfaceType())});
+        auto boundRCAType = BoundGenericType::get(RCA, Type(), {paramTy});
         auto remoteCallArgumentInitDeclRef =
             TypeExpr::createImplicit(boundRCAType, C);
 
@@ -418,10 +424,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
              // name:
              new (C) StringLiteralExpr(parameterName, SourceRange(), implicit),
              // _ argument:
-             new (C) DeclRefExpr(
-                 ConcreteDeclRef(param), dloc, implicit,
-                 AccessSemantics::Ordinary,
-                 thunk->mapTypeIntoContext(param->getInterfaceType()))
+             paramDeclRef
             },
             C);
 
@@ -434,25 +437,92 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         remoteBranchStmts.push_back(callArgPB);
         remoteBranchStmts.push_back(callArgVar);
 
-        /// --- Pass the argumentRepr to the recordArgument function
-        auto recordArgArgsList = ArgumentList::forImplicitCallTo(
-            DeclNameRef(recordArgumentName),
-            {new (C) DeclRefExpr(ConcreteDeclRef(callArgVar), dloc, implicit,
-                                 AccessSemantics::Ordinary)},
-            C);
 
-        auto tryRecordArgExpr = TryExpr::createImplicit(
-            C, sloc,
-            CallExpr::createImplicit(
-                C,
-                UnresolvedDotExpr::createImplicit(
-                    C,
-                    new (C) DeclRefExpr(ConcreteDeclRef(invocationVar), dloc,
-                                        implicit, AccessSemantics::Ordinary),
-                    recordArgumentName),
-                recordArgArgsList));
+        /*
+         TODO: this is how ast looks like when calling:
 
-        remoteBranchStmts.push_back(tryRecordArgExpr);
+        3 protocol KappaPorotocol: Codable {}·
+        4
+        5 func test(p: any KappaPorotocol) throws {·
+        6     try RECORD_ARGUMENT(p)
+        7 }
+        8
+        9 public func RECORD_ARGUMENT<T: Codable>(_: T) throws {}
+
+         So would be nice to just be able to do this, rather than the _openExistential dance
+
+        (open_existential_expr implicit type="()"
+          (opaque_value_expr implicit type="any KappaProtocol" location=/tmp/example.swift:6:21 range=[/tmp/example.swift:6:21 - line:6:21] "0x14e068d58")
+
+          (declref_expr type="any KappaProtocol" function_ref=unapplied)
+
+          (call_expr type="()"  nothrow isolation_crossing="none"
+            (declref_expr type="(any KappaProtocol) -> ()" decl="example.(file).RECORD_ARGUMENT@/tmp/example.swift:9:13 [with (substitution_map generic_signature=<T where T : Decodable, T : Encodable> T -> any KappaProtocol)]" function_ref=single)
+            (argument_list
+              (argument
+                (opaque_value_expr implicit type="any KappaProtocol" location=/tmp/example.swift:6:21 range=[/tmp/example.swift:6:21 - line:6:21] "0x14e068d58")))))))
+ */
+        if (paramTy->isExistentialType()) {
+          fprintf(stderr, "[%s:%d](%s) param is existential!\n", __FILE_NAME__,
+                  __LINE__, __FUNCTION__);
+          paramTy.dump();
+
+          Type opaqueValueTy = paramTy->getMetatypeInstanceType();
+
+          auto openedRef = new (C) OpaqueValueExpr(sloc, opaqueValueTy);
+
+          /// --- Pass the argumentRepr to the recordArgument function
+          auto recordArgArgsList = ArgumentList::forImplicitCallTo(
+              DeclNameRef(recordArgumentName), {openedRef}, C);
+
+          auto recordArgExpr = CallExpr::createImplicit(
+              C,
+              UnresolvedDotExpr::createImplicit(
+                  C,
+                  new (C) DeclRefExpr(ConcreteDeclRef(invocationVar), dloc,
+                                      implicit, AccessSemantics::Ordinary),
+                  recordArgumentName),
+              recordArgArgsList);
+
+          auto openExExpr = new (C) OpenExistentialExpr(
+              /*existentialValue=*/paramDeclRef,
+              /*opaqueValue=*/openedRef,
+              /*subExpr=*/recordArgExpr,
+              /*subExprTy=*/C.getVoidType() // recordArgument returns ()
+          );
+
+          auto tryOpenRecordArgExpr =
+              TryExpr::createImplicit(C, sloc, openExExpr);
+
+          fprintf(stderr, "[%s:%d](%s) the expr\n", __FILE_NAME__, __LINE__, __FUNCTION__);
+          tryOpenRecordArgExpr->dump();
+          remoteBranchStmts.push_back(tryOpenRecordArgExpr);
+        } else {
+          fprintf(stderr, "[%s:%d](%s) add directly the \n", __FILE_NAME__,
+                  __LINE__, __FUNCTION__);
+
+          /// --- Pass the argumentRepr to the recordArgument function
+          auto recordArgArgsList = ArgumentList::forImplicitCallTo(
+              DeclNameRef(recordArgumentName),
+              {new (C) DeclRefExpr(ConcreteDeclRef(callArgVar), dloc, implicit,
+                                   AccessSemantics::Ordinary)},
+              C);
+
+          auto recordArgExpr = CallExpr::createImplicit(
+              C,
+              UnresolvedDotExpr::createImplicit(
+                  C,
+                  new (C) DeclRefExpr(ConcreteDeclRef(invocationVar), dloc,
+                                      implicit, AccessSemantics::Ordinary),
+                  recordArgumentName),
+              recordArgArgsList);
+
+          auto tryRecordArgExpr =
+              TryExpr::createImplicit(C, sloc, recordArgExpr);
+
+          tryRecordArgExpr->dump();
+          remoteBranchStmts.push_back(tryRecordArgExpr);
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 // RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend-emit-module -emit-module-path %t/FakeDistributedActorSystems.swiftmodule -module-name FakeDistributedActorSystems -disable-availability-checking %S/../Inputs/FakeDistributedActorSystems.swift
-// RUN: %target-build-swift -module-name main -Xfrontend -disable-availability-checking -j2 -parse-as-library -I %t %s %S/../Inputs/FakeDistributedActorSystems.swift -o %t/a.out
+// RUN: %target-build-swift -Xllvm -swift-diagnostics-assert-on-error -module-name main -Xfrontend -disable-availability-checking -j2 -parse-as-library -I %t %s %S/../Inputs/FakeDistributedActorSystems.swift -o %t/a.out
 // RUN: %target-codesign %t/a.out
 // RUN: %target-run %t/a.out | %FileCheck %s --dump-input=always
 
@@ -19,12 +19,10 @@ import FakeDistributedActorSystems
 
 typealias DefaultDistributedActorSystem = FakeRoundtripActorSystem
 
-protocol KappaProtocol: Codable, DistributedActor where ActorSystem == FakeRoundtripActorSystem {
-  distributed func get(param: any KappaProtocol)
-}
-
-distributed actor KappaProtocolImpl: KappaProtocol {
-  distributed func get(param: any KappaProtocol) {}
+distributed actor Impl: KappaProtocol {
+  distributed func get(_ integer: Int, _ string: String) -> String {
+    "\(string)-\(integer)"
+  }
 }
 
 func test() async throws {
