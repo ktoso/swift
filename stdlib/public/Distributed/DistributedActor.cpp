@@ -38,6 +38,15 @@ os_log_t DistributedLog;
 swift::once_t LogsToken;
 bool DistributedLoggingEnabled;
 
+static inline bool tracingReady() {
+#if SWIFT_USE_OS_TRACE_LAZY_INIT
+  if (!_os_trace_lazy_init_completed_4swift())
+    return false;
+#endif
+
+  return true;
+}
+
 void setupLogs(void *unused) {
   DistributedLoggingEnabled = true; // unconditionally enable for debugging purposes for now
 
@@ -56,6 +65,8 @@ using namespace swift::distributed::trace;
 // optimized out.
 #define ENSURE_DISTRIBUTED_LOG(log)                                            \
   do {                                                                         \
+    if (!runtime::trace::tracingReady())                                       \
+      return;                                                                  \
     swift::once(LogsToken, setupLogs, nullptr);                                \
     if (!DistributedLoggingEnabled)                                            \
       return;                                                                  \

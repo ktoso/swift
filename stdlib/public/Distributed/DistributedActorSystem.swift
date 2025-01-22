@@ -528,14 +528,16 @@ extension DistributedActorSystem {
     do {
       argumentTypes.reserveCapacity(Int(decodedNum))
       for argumentType in argumentTypesBuffer {
-        _distributed_log_info("executeDistributedTarget: append argumentType=\(argumentType)")
+        _distributed_log_info("executeDistributedTarget: append " +
+            "argumentType=\(argumentType) @ \(unsafeBitCast(R.self, to: UnsafeMutableRawPointer.self))")
         argumentTypes.append(argumentType)
       }
     }
 
     // Decode the return type
     func doAllocateReturnTypeBuffer<R>(_: R.Type) -> UnsafeMutableRawPointer? {
-      _distributed_log_info("doAllocateReturnTypeBuffer: R=\(R.self)")
+      _distributed_log_info("doAllocateReturnTypeBuffer: R=\(R.self) @ \(unsafeBitCast(R.self, to: UnsafeMutableRawPointer.self)) " +
+          "size=\(MemoryLayout<R>.size), alignment=\(MemoryLayout<R>.alignment)")
       return UnsafeMutableRawPointer(UnsafeMutablePointer<R>.allocate(capacity: 1))
     }
 
