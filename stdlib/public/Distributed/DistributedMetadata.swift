@@ -104,6 +104,18 @@ func _getGenericEnvironmentOfDistributedTarget(
     _ targetNameLength: UInt
 ) -> UnsafeRawPointer?
 
+@_silgen_name("swift_distributed_log_info")
+func _distributed_log_info(
+    _ targetNameStart: UnsafePointer<UInt8>,
+    _ targetNameLength: UInt
+)
+
+func _distributed_log_info(_ message: String) {
+  Array(message.utf8).withUnsafeBufferPointer { messageUTF8 in
+    _distributed_log_info(messageUTF8.baseAddress!, UInt(messageUTF8.endIndex))
+  }
+}
+
 @available(SwiftStdlib 5.7, *)
 @_silgen_name("swift_distributed_getWitnessTables")
 public // SPI Distributed

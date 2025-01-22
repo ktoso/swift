@@ -19,6 +19,49 @@
 #include "swift/ABI/Metadata.h"
 #include "swift/Runtime/AccessibleFunction.h"
 #include "swift/Runtime/Concurrency.h"
+#include "swift/Runtime/TracingCommon.h"
+
+#include <inttypes.h>
+#include <os/log.h>
+#include <os/signpost.h>
+
+// ==== Distributed Debug Logging ----------------------------------------------
+
+#define SWIFT_LOG_DISTRIBUTED_SUBSYSTEM "com.apple.swift.distributed"
+#define SWIFT_LOG_DISTRIBUTED_CATEGORY "Distributed"
+
+namespace swift {
+namespace distributed {
+namespace trace {
+
+os_log_t DistributedLog;
+swift::once_t LogsToken;
+bool DistributedLoggingEnabled;
+
+void setupLogs(void *unused) {
+  DistributedLoggingEnabled = true; // unconditionally enable for debugging purposes for now
+
+  DistributedLog = os_log_create(SWIFT_LOG_DISTRIBUTED_SUBSYSTEM,
+                                 SWIFT_LOG_DISTRIBUTED_CATEGORY);
+}
+
+} // namespace trace
+} // namespace distributed
+} // namespace swift
+
+using namespace swift::distributed::trace;
+
+// Check a representative os_signpost function for NULL rather than doing a
+// standard availability check, for better performance if the check doesn't get
+// optimized out.
+#define ENSURE_DISTRIBUTED_LOG(log)                                            \
+  do {                                                                         \
+    swift::once(LogsToken, setupLogs, nullptr);                                \
+    if (!DistributedLoggingEnabled)                                            \
+      return;                                                                  \
+  } while (0)
+
+// ==== Distributed Actor Support ----------------------------------------------
 
 using namespace swift;
 
@@ -32,6 +75,14 @@ findDistributedAccessor(const char *targetNameStart, size_t targetNameLength) {
   return nullptr;
 }
 
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+void swift_distributed_log_info(const char *messageStart,
+                                 size_t messageLength) {
+  ENSURE_DISTRIBUTED_LOG(DistributedLog);
+
+  os_log_with_type(DistributedLog, OS_LOG_TYPE_INFO, "%{public}s", messageStart);
+}
 
 SWIFT_CC(swift)
 SWIFT_EXPORT_FROM(swiftDistributed)

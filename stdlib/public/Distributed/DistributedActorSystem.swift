@@ -435,6 +435,7 @@ extension DistributedActorSystem {
     // Get the expected parameter count of the func
     let targetName = target.identifier
     let targetNameUTF8 = Array(targetName.utf8)
+    _distributed_log_info("executeDistributedTarget: target=\(targetName)")
 
     // Gen the generic environment (if any) associated with the target.
     let genericEnv =
@@ -463,6 +464,7 @@ extension DistributedActorSystem {
 
       substitutionsBuffer = .allocate(capacity: subs.count)
 
+      _distributed_log_info("executeDistributedTarget: subs.count=\(subs.count) subs=\(subs)")
       for (offset, substitution) in subs.enumerated() {
         let element = substitutionsBuffer?.advanced(by: offset)
         element?.initialize(to: substitution)
@@ -526,12 +528,14 @@ extension DistributedActorSystem {
     do {
       argumentTypes.reserveCapacity(Int(decodedNum))
       for argumentType in argumentTypesBuffer {
+        _distributed_log_info("executeDistributedTarget: append argumentType=\(argumentType)")
         argumentTypes.append(argumentType)
       }
     }
 
     // Decode the return type
     func doAllocateReturnTypeBuffer<R>(_: R.Type) -> UnsafeMutableRawPointer? {
+      _distributed_log_info("doAllocateReturnTypeBuffer: R=\(R.self)")
       return UnsafeMutableRawPointer(UnsafeMutablePointer<R>.allocate(capacity: 1))
     }
 
@@ -560,15 +564,18 @@ extension DistributedActorSystem {
     var executeDistributedTargetHasThrown = true
 
     func doDestroyReturnTypeBuffer<R>(_: R.Type) {
+      _distributed_log_info("doDestroyReturnTypeBuffer: R=\(R.self)")
       let buf = resultBuffer.assumingMemoryBound(to: R.self)
 
       if !executeDistributedTargetHasThrown {
         // since the _execute function has NOT thrown,
         // there must be a value in the result buffer that we must deinitialize
+        _distributed_log_info("doDestroyReturnTypeBuffer: deinitialize(\(buf)) R=\(R.self)")
         buf.deinitialize(count: 1)
       } // otherwise, the _execute has thrown and not populated the result buffer
 
       // finally, deallocate the buffer
+      _distributed_log_info("doDestroyReturnTypeBuffer: allocate(\(buf)) R=\(R.self) ")
       buf.deallocate()
     }
 
