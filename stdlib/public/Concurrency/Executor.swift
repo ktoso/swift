@@ -363,6 +363,10 @@ public protocol SerialExecutor: Executor {
   @available(SwiftStdlib 6.2, *)
   func isIsolatingCurrentContext() -> Bool?
 
+  @_weakLinked
+  @_spi(ConcurrencyToBeRemoved) // FIXME: This requirement must be removed, but its removal is being staged in.
+  func isIsolatingCurrentContext() -> Bool
+
 }
 
 @available(SwiftStdlib 6.0, *)
@@ -415,6 +419,12 @@ extension SerialExecutor {
   @available(SwiftStdlib 6.2, *)
   public func isIsolatingCurrentContext() -> Bool? {
     return nil
+  }
+
+  @_weakLinked
+  @_spi(ConcurrencyToBeRemoved) // FIXME: This must be removed, but its removal is being staged in.
+  func isIsolatingCurrentContext() -> Bool {
+    return false
   }
 }
 
