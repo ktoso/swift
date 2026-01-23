@@ -716,8 +716,11 @@ public:
     case Kind::WitnessMethod: {
       if (auto func = constant->getFuncDecl()) {
         if (SGF.shouldReplaceConstantForApplyWithDistributedThunk(func)) {
+          fprintf(stderr, "[swift][%s:%d](%s) replace for:\n", __FILE__, __LINE__, __FUNCTION__);
+          func->dump();
           auto thunk = func->getDistributedThunk();
           constant = SILDeclRef(thunk).asDistributed();
+          assert(constant);
         }
       }
 
@@ -806,7 +809,11 @@ public:
     case Kind::WitnessMethod: {
       if (auto func = constant->getFuncDecl()) {
         if (SGF.shouldReplaceConstantForApplyWithDistributedThunk(func)) {
-          constant = constant->asDistributed();
+          auto thunk = func->getDistributedThunk();
+          constant = SILDeclRef(thunk).asDistributed();
+          fprintf(stderr, "[swift][%s:%d](%s) replaced constant:\n", __FILE__, __LINE__, __FUNCTION__);
+          constant->dump();
+          assert(false);
         }
       }
 

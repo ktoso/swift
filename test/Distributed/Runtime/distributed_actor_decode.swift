@@ -1,284 +1,61 @@
-// RUN: %target-run-simple-swift( -target %target-swift-5.7-abi-triple -parse-as-library) | %FileCheck %s
-// RUN: %target-run-simple-swift(-Xfrontend -enable-sil-opaque-values -target %target-swift-5.7-abi-triple -parse-as-library) | %FileCheck %s
+// RUN: %empty-directory(%t)
+// RUN: %target-swift-frontend-emit-module -emit-module-path %t/FakeDistributedActorSystems.swiftmodule -module-name FakeDistributedActorSystems %S/../Inputs/FakeDistributedActorSystems.swift
+// RUN: %target-build-swift -module-name main -Xfrontend -disable-availability-checking -j2 -parse-as-library -I %t %s %S/../Inputs/FakeDistributedActorSystems.swift -emit-silgen 2>&1 | %FileCheck %s --dump-input=always
+// NEIN: %target-codesign %t/a.out
+// NEIN: %target-run %t/a.out | %FileCheck %s
 
 // REQUIRES: executable_test
 // REQUIRES: concurrency
 // REQUIRES: distributed
 
+// rdar://76038845
 // UNSUPPORTED: use_os_stdlib
 // UNSUPPORTED: back_deployment_runtime
 
+// FIXME(distributed): Distributed actors currently have some issues on windows rdar://82593574
+// UNSUPPORTED: OS=windows-msvc
+// https://github.com/apple/swift/issues/65529
+// UNSUPPORTED: single_threaded_concurrency
+
+
 import Distributed
+import FakeDistributedActorSystems
 
-distributed actor DA: CustomStringConvertible {
-  typealias ActorSystem = FakeActorSystem
+typealias DefaultDistributedActorSystem = FakeRoundtripActorSystem
 
-  nonisolated var description: String {
-    "DA(\(self.id))"
-  }
+@Resolvable
+protocol TestProtocol: DistributedActor where ActorSystem == FakeRoundtripActorSystem {
+    distributed func coolFunction() -> Int
+    distributed var coolValue: Int { get throws }
 }
 
-// ==== Fake Transport ---------------------------------------------------------
-
-struct ActorAddress: Hashable, Sendable, Codable {
-  let address: String
-  init(parse address : String) {
-    self.address = address
-  }
-
-  // Explicit implementations to make our TestEncoder/Decoder simpler
-  init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
-    self.address = try container.decode(String.self)
-    print("decode ActorAddress -> \(self)")
-  }
-
-  func encode(to encoder: Encoder) throws {
-    print("encode \(self)")
-    var container = encoder.singleValueContainer()
-    try container.encode(self.address)
-  }
-}
-
-final class FakeActorSystem: DistributedActorSystem {
-  typealias ActorID = ActorAddress
-  typealias InvocationDecoder = FakeInvocation
-  typealias InvocationEncoder = FakeInvocation
-  typealias SerializationRequirement = Codable
-  typealias ResultHandler = FakeResultHandler
-
-  func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
-      where Act: DistributedActor,
-            Act.ID == ActorID  {
-    print("resolve type:\(actorType), address:\(id)")
-    return nil
-  }
-
-  func assignID<Act>(_ actorType: Act.Type) -> ActorID
-      where Act: DistributedActor, Act.ID == ActorID {
-    let address = ActorAddress(parse: "xxx")
-    print("assign type:\(actorType), address:\(address)")
-    return address
-  }
-
-  func actorReady<Act>(_ actor: Act)
-      where Act: DistributedActor,
-      Act.ID == ActorID {
-    print("ready actor:\(actor), address:\(actor.id)")
-  }
-
-  func resignID(_ id: ActorID) {
-    print("resign address:\(id)")
-  }
-
-  func makeInvocationEncoder() -> InvocationEncoder {
-    .init()
-  }
-
-  func remoteCall<Act, Err, Res>(
-    on actor: Act,
-    target: RemoteCallTarget,
-    invocation invocationEncoder: inout InvocationEncoder,
-    throwing: Err.Type,
-    returning: Res.Type
-  ) async throws -> Res
-    where Act: DistributedActor,
-          Act.ID == ActorID,
-          Err: Error,
-          Res: SerializationRequirement {
-      fatalError("not implemented: \(#function)")
-  }
-
-  func remoteCallVoid<Act, Err>(
-    on actor: Act,
-    target: RemoteCallTarget,
-    invocation invocationEncoder: inout InvocationEncoder,
-    throwing: Err.Type
-  ) async throws
-    where Act: DistributedActor,
-          Act.ID == ActorID,
-          Err: Error {
-      fatalError("not implemented: \(#function)")
-  }
-
-}
-
-final class FakeInvocation: DistributedTargetInvocationEncoder, DistributedTargetInvocationDecoder {
-  typealias SerializationRequirement = Codable
-
-  func recordGenericSubstitution<T>(_ type: T.Type) throws {}
-  func recordArgument<Value: SerializationRequirement>(_ argument: RemoteCallArgument<Value>) throws {}
-  func recordReturnType<R: SerializationRequirement>(_ type: R.Type) throws {}
-  func recordErrorType<E: Error>(_ type: E.Type) throws {}
-  func doneRecording() throws {}
-
-  // === Receiving / decoding -------------------------------------------------
-
-  func decodeGenericSubstitutions() throws -> [Any.Type] { [] }
-  func decodeNextArgument<Argument: SerializationRequirement>() throws -> Argument { fatalError() }
-  func decodeReturnType() throws -> Any.Type? { nil }
-  func decodeErrorType() throws -> Any.Type? { nil }
-}
-
-@available(SwiftStdlib 5.5, *)
-typealias DefaultDistributedActorSystem = FakeActorSystem
-
-// ==== Test Coding ------------------------------------------------------------
-
-class TestEncoder: Encoder {
-  var codingPath: [CodingKey]
-  var userInfo: [CodingUserInfoKey: Any]
-
-  var data: String? = nil
-
-  init(system: FakeActorSystem) {
-    self.codingPath = []
-    self.userInfo = [.actorSystemKey: system]
-  }
-
-  func container<Key>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key> {
-    fatalError("Not implemented: \(#function)")
-  }
-
-  func unkeyedContainer() -> UnkeyedEncodingContainer {
-    fatalError("Not implemented: \(#function)")
-  }
-
-  func singleValueContainer() -> SingleValueEncodingContainer {
-    TestSingleValueEncodingContainer(parent: self)
-  }
-
-  class TestSingleValueEncodingContainer: SingleValueEncodingContainer {
-    let parent: TestEncoder
-    init(parent: TestEncoder) {
-      self.parent = parent
+distributed actor Dummy: TestProtocol {
+    distributed func coolFunction() -> Int { 0 }
+    distributed var coolValue: Int {
+        0
     }
-
-    var codingPath: [CodingKey] = []
-
-    func encodeNil() throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Bool) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: String) throws {
-
-    }
-    func encode(_ value: Double) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Float) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Int) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Int8) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Int16) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Int32) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: Int64) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: UInt) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: UInt8) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: UInt16) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: UInt32) throws { fatalError("Not implemented: \(#function)") }
-    func encode(_ value: UInt64) throws { fatalError("Not implemented: \(#function)") }
-    func encode<T: Encodable>(_ value: T) throws {
-      print("encode: \(value)")
-      if let address = value as? ActorAddress {
-        self.parent.data = address.address
-      }
-    }
-  }
-
-  func encode<Act: DistributedActor>(_ actor: Act) throws -> String where Act.ID: Codable {
-    try actor.encode(to: self)
-    return self.data!
-  }
 }
 
-@available(SwiftStdlib 5.5, *)
-public struct FakeResultHandler: DistributedTargetInvocationResultHandler {
-  public typealias SerializationRequirement = Codable
+// CHECK: // function_ref TestProtocol<>.coolFunction()
+// CHECK:   %30 = function_ref @$s4main12TestProtocolPAA11Distributed01_D9ActorStubRzrlE12coolFunctionSiyYaKFTE : $@convention(method) @async <τ_0_0 where τ_0_0 : _DistributedActorStub, τ_0_0 : TestProtocol> (@guaranteed τ_0_0) -> (Int, @error any Error) // user: %32
+// CHECK:   hop_to_executor %29 // id: %31
+// CHECK:   try_apply %30<$TestProtocol>(%29) : $@convention(method) @async <τ_0_0 where τ_0_0 : _DistributedActorStub, τ_0_0 : TestProtocol> (@guaranteed τ_0_0) -> (Int, @error any Error), normal bb2, error bb5 // id: %32
 
-  public func onReturn<Success: SerializationRequirement>(value: Success) async throws {
-    fatalError("Not implemented: \(#function)")
-  }
+// CHECK-NOT:   try_apply undef<$TestProtocol>(%37) : $@convention(method) @async <τ_0_0 where τ_0_0 : _DistributedActorStub, τ_0_0 : TestProtocol> (@sil_isolated @guaranteed τ_0_0) -> (Int, @error any Error), normal bb3, error bb6 // id: %39
 
-  public func onReturnVoid() async throws {
-    fatalError("Not implemented: \(#function)")
-  }
-
-  public func onThrow<Err: Error>(error: Err) async throws {
-    fatalError("Not implemented: \(#function)")
-  }
+func setup() async throws {
+    let system = FakeRoundtripActorSystem()
+    let dummy = Dummy(actorSystem: system)
+    let stub = try $TestProtocol.resolve(id: dummy.id, using: system)
+    try await setup(stub: stub)
 }
-
-class TestDecoder: Decoder {
-  let encoder: TestEncoder
-  let data: String
-
-  init(encoder: TestEncoder, system: FakeActorSystem, data: String) {
-    self.encoder = encoder
-    self.userInfo = [.actorSystemKey: system]
-    self.data = data
-  }
-
-  var codingPath: [CodingKey] = []
-  var userInfo: [CodingUserInfoKey : Any]
-
-  func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> where Key : CodingKey {
-    fatalError("Not implemented: \(#function)")
-  }
-  func unkeyedContainer() throws -> UnkeyedDecodingContainer {
-    fatalError("Not implemented: \(#function)")
-  }
-  func singleValueContainer() throws -> SingleValueDecodingContainer {
-    TestSingleValueDecodingContainer(parent: self)
-  }
-
-  class TestSingleValueDecodingContainer: SingleValueDecodingContainer {
-    let parent: TestDecoder
-    init(parent: TestDecoder) {
-      self.parent = parent
-    }
-
-    var codingPath: [CodingKey] = []
-    func decodeNil() -> Bool { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Bool.Type) throws -> Bool { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: String.Type) throws -> String {
-      print("decode String -> \(self.parent.data)")
-      return self.parent.data
-    }
-    func decode(_ type: Double.Type) throws -> Double { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Float.Type) throws -> Float { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Int.Type) throws -> Int { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Int8.Type) throws -> Int8 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Int16.Type) throws -> Int16 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Int32.Type) throws -> Int32 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: Int64.Type) throws -> Int64 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: UInt.Type) throws -> UInt { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: UInt8.Type) throws -> UInt8 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: UInt16.Type) throws -> UInt16 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: UInt32.Type) throws -> UInt32 { fatalError("Not implemented: \(#function)") }
-    func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("Not implemented: \(#function)") }
-    func decode<T>(_ type: T.Type) throws -> T where T : Decodable { fatalError("Not implemented: \(#function)") }
-  }
-}
-
-// ==== Execute ----------------------------------------------------------------
-
-func test() {
-  let system = DefaultDistributedActorSystem()
-
-  // CHECK: assign type:DA, address:ActorAddress(address: "xxx")
-  // CHECK: ready actor:DA(ActorAddress(address: "xxx"))
-  let da = DA(actorSystem: system)
-
-  // CHECK: encode: ActorAddress(address: "xxx")
-  let encoder = TestEncoder(system: system)
-  let data = try! encoder.encode(da)
-
-  // CHECK: decode String -> xxx
-  // CHECK: decode ActorAddress -> ActorAddress(address: "xxx")
-  let da2 = try! DA(from: TestDecoder(encoder: encoder, system: system, data: data))
-
-  // CHECK: decoded da2: DA(ActorAddress(address: "xxx"))
-  print("decoded da2: \(da2)")
+func setup(stub: $TestProtocol) async throws {
+    _ = try await stub.coolFunction()
+    _ = try await stub.coolValue
 }
 
 @main struct Main {
   static func main() async {
-    test()
+     try! await setup()
   }
 }

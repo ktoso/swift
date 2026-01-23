@@ -737,6 +737,24 @@ SILFunction *SILGenModule::emitProtocolWitness(
   auto requirementInfo =
       Types.getConstantInfo(TypeExpansionContext::minimal(), requirement);
 
+  bool isWitnessDistributed = false;
+  if (witnessRef.hasDecl() && witnessRef.getFuncDecl()) {
+    // fprintf(stderr, "\n\n[swift][%s:%d](%s) iswitness distributed FUNC %s\n", __FILE__, __LINE__, __FUNCTION__, witnessRef.getFuncDecl()->getNameStr().data());
+    if (auto accessor = dyn_cast<AccessorDecl>(witnessRef.getFuncDecl())) {
+      isWitnessDistributed = accessor->getStorage()->isDistributed();
+
+      // fprintf(stderr, "[swift][%s:%d](%s) iswitness distributed ACC == DIST = %d\n", __FILE__, __LINE__, __FUNCTION__, isWitnessDistributed);
+      // accessor->getStorage()->dump();
+
+      // fprintf(stderr, "[swift][%s:%d](%s) THUNK = %p\n", __FILE__, __LINE__, __FUNCTION__, witnessRef.getFuncDecl()->getDistributedThunk());
+      // fprintf(stderr, "[swift][%s:%d](%s) THUNK = %p\n", __FILE__, __LINE__, __FUNCTION__, accessor->getDistributedThunk());
+    } else {
+      isWitnessDistributed = witnessRef.getFuncDecl()->isDistributed() ||
+        witnessRef.getFuncDecl()->isDistributedGetAccessor();
+      // fprintf(stderr, "[swift][%s:%d](%s) THUNK = %p\n", __FILE__, __LINE__, __FUNCTION__, witnessRef.getFuncDecl()->getDistributedThunk());
+    }
+  }
+
   auto shouldUseDistributedThunkWitness =
       // always use a distributed thunk for distributed requirements:
       requirement.isDistributedThunk() ||
@@ -748,13 +766,16 @@ SILFunction *SILGenModule::emitProtocolWitness(
       (requirement.hasDecl() && requirement.getFuncDecl() && requirement.hasAsync() &&
        !requirement.getFuncDecl()->isDistributed() &&
        witnessRef.hasDecl() && witnessRef.getFuncDecl() &&
-       witnessRef.getFuncDecl()->isDistributed());
+       isWitnessDistributed);
   if (shouldUseDistributedThunkWitness) {
     // we may not have a thunk if we're in a protocol?
     if (auto thunk = witnessRef.getFuncDecl()->getDistributedThunk()) {
       auto thunkDeclRef = SILDeclRef(thunk, SILDeclRef::Kind::Func);
       witnessRef = thunkDeclRef.asDistributed();
     }
+    // else {
+      // fprintf(stderr, "[swift][%s:%d](%s) NOT APPLIED\n", __FILE__, __LINE__, __FUNCTION__);
+    // }
   }
 
   // Work out the lowered function type of the SIL witness thunk.

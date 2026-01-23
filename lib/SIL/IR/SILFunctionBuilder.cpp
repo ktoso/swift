@@ -364,7 +364,8 @@ SILFunction *SILFunctionBuilder::getOrCreateFunction(
 
   IsDistributed_t IsDistributed = IsDistributed_t::IsNotDistributed;
   // Mark both distributed thunks and methods as distributed.
-  if (constant.hasFuncDecl() && constant.getFuncDecl()->isDistributed()) {
+  if (constant.hasFuncDecl() &&
+    (constant.getFuncDecl()->isDistributed() || constant.getFuncDecl()->isDistributedGetAccessor())) {
     IsDistributed = IsDistributed_t::IsDistributed;
   }
 
