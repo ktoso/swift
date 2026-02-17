@@ -2102,6 +2102,17 @@ void TypeChecker::checkIgnoredExpr(Expr *E) {
         .highlight(call->getArgs()->getSourceRange());
       return;
     }
+
+    if (auto funcDecl = dyn_cast<AbstractFunctionDecl>(callee)) {
+      auto &ctx = callee->getASTContext();
+      if (!call->isImplicit()) {
+        if (auto structDecl = dyn_cast_or_null<StructDecl>(funcDecl->getDeclContext())) {
+          if (structDecl->getInterfaceType()->isEqual(ctx.getTaskDecl()->getInterfaceType())) {
+            DE.diagnose(fn->getLoc(), diag::expression_unused_result_call, callee)
+          }
+        }
+      }
+    }
     
     SourceRange SR1 = call->getArgs()->getSourceRange(), SR2;
     if (auto *BO = dyn_cast<BinaryExpr>(call)) {

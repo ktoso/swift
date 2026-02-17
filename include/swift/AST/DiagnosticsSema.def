@@ -5267,6 +5267,8 @@ WARNING(expression_unused_lvalue,NoUsage,
       (unsigned))
 WARNING(expression_unused_result_call,NoUsage,
         "result of call to %0 is unused", (const ValueDecl *))
+WARNING(expression_unused_result_unstructured_task_init,NoUsage,
+        "result of unstructured Task creation %0 is unused", (const ValueDecl *))
 WARNING(expression_unused_result_operator,NoUsage,
         "result of operator %0 is unused", (const ValueDecl *))
 WARNING(expression_unused_result_operator_name,NoUsage,
