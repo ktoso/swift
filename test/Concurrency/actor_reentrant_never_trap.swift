@@ -78,7 +78,7 @@ struct Main {
     await actor.nonReentrantMethod()
 
     // CHECK: Reentrancy violation
-    // CHECK: @reentrant(never)
+    // CHECK: @_reentrant(never)
 
     print("SHOULD NOT REACH HERE")
   }

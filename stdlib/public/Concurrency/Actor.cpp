@@ -2408,11 +2408,16 @@ static bool mustSwitchToRun(SerialExecutorRef currentSerialExecutor,
 
   // Check for reentrancy violation:
   // If we're on the same executor and it's a default actor currently executing
-  // non-reentrant code, we must prevent reentrancy.
+  // non-reentrant code, this is a reentrancy violation and we must trap.
+  // This implements the @_reentrant(never) semantics.
   if (currentSerialExecutor.isDefaultActor()) {
     auto *actor = asImpl(currentSerialExecutor.getDefaultActor());
     if (actor->isExecutingNonReentrant()) {
-      return true;
+      swift_Concurrency_fatalError(0,
+          "Reentrancy violation: actor marked with @_reentrant(never) "
+          "cannot be re-entered while executing. "
+          "A suspend point attempted to re-enter the same actor, "
+          "which is prohibited for non-reentrant actors.");
     }
   }
 
