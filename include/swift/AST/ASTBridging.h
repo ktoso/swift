@@ -1199,6 +1199,11 @@ BridgedInheritActorContextAttr BridgedInheritActorContextAttr_createParsed(
     BridgedASTContext cContext, swift::SourceLoc atLoc,
     swift::SourceRange range, swift::InheritActorContextModifier modifier);
 
+SWIFT_NAME("BridgedReentrantAttr.createParsed(_:atLoc:range:modifier:)")
+BridgedReentrantAttr BridgedReentrantAttr_createParsed(
+    BridgedASTContext cContext, swift::SourceLoc atLoc,
+    swift::SourceRange range, swift::ReentrantModifier modifier);
+
 SWIFT_NAME("BridgedObjCAttr.createParsedUnnamed(_:atLoc:attrNameLoc:)")
 BridgedObjCAttr
 BridgedObjCAttr_createParsedUnnamed(BridgedASTContext cContext,

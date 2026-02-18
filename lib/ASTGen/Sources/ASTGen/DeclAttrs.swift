@@ -200,6 +200,8 @@ extension ASTGenVisitor {
         return handle(self.generateSwiftNativeObjCRuntimeBaseAttr(attribute: node)?.asDeclAttribute)
       case .Warn:
         return handle(self.generateWarnAttr(attribute: node)?.asDeclAttribute)
+      case .Reentrant:
+        return handle(self.generateReentrantAttr(attribute: node)?.asDeclAttribute)
       case .Transpose:
         return handle(self.generateTransposeAttr(attribute: node)?.asDeclAttribute)
       case .TypeEraser:
@@ -1508,6 +1510,28 @@ extension ASTGenVisitor {
         }
       },
       valueIfOmitted: swift.InheritActorContextModifier.none
+    )
+    guard let modifier else {
+      return nil
+    }
+    return .createParsed(
+      self.ctx,
+      atLoc: self.generateSourceLoc(node.atSign),
+      range: self.generateAttrSourceRange(node),
+      modifier: modifier
+    )
+  }
+
+  func generateReentrantAttr(attribute node: AttributeSyntax) -> BridgedReentrantAttr? {
+    let modifier: swift.ReentrantModifier? = self.generateSingleAttrOption(
+      attribute: node,
+      {
+        switch $0.rawText {
+        case "never": return .never
+        default: return nil
+        }
+      },
+      valueIfOmitted: swift.ReentrantModifier.default
     )
     guard let modifier else {
       return nil

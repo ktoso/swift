@@ -4193,6 +4193,21 @@ ParserStatus Parser::parseNewDeclAttribute(DeclAttributes &Attributes,
 
     break;
   }
+  case DeclAttrKind::Reentrant: {
+    auto modifier = parseSingleAttrOption<ReentrantModifier>(
+        *this, Loc, AttrRange, AttrName, DK,
+        {{Context.Id_never, ReentrantModifier::Never}},
+        ReentrantModifier::Default,
+        ParameterizedDeclAttributeKind::Reentrant);
+    if (!modifier)
+      return makeParserSuccess();
+
+    if (!DiscardAttribute)
+      Attributes.add(new (Context) ReentrantAttr(AtLoc, AttrRange, *modifier,
+                                                 /*implicit*/ false));
+
+    break;
+  }
   }
 
   if (DuplicateAttribute) {

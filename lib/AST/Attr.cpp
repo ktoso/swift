@@ -2066,6 +2066,13 @@ StringRef DeclAttribute::getAttrName() const {
     return cast<LifetimeAttr>(this)->isUnderscored() ? "_lifetime" : "lifetime";
   case DeclAttrKind::Nonexhaustive:
     return "nonexhaustive";
+  case DeclAttrKind::Reentrant:
+    switch (cast<ReentrantAttr>(this)->getModifier()) {
+    case ReentrantModifier::Default:
+      return "_reentrant";
+    case ReentrantModifier::Never:
+      return "_reentrant(never)";
+    }
   }
   llvm_unreachable("bad DeclAttrKind");
 }

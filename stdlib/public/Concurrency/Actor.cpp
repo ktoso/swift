@@ -1226,6 +1226,7 @@ class DefaultActorImplHeader : public HeapObject {
 protected:
   // TODO (rokhinip): Make this a flagset
   bool isDistributedRemoteActor;
+  bool isExecutingNonReentrantCode;
 #if SWIFT_CONCURRENCY_ACTORS_AS_LOCKS
   // If actors are locks, we don't need to maintain any extra bookkeeping in the
   // ActiveActorStatus since all threads which are contending will block
@@ -1331,6 +1332,7 @@ public:
   /// Properly construct an actor, except for the heap header.
   void initialize(bool isDistributedRemote = false) {
     this->isDistributedRemoteActor = isDistributedRemote;
+    this->isExecutingNonReentrantCode = false;
 #if SWIFT_CONCURRENCY_ACTORS_AS_LOCKS
     new (&this->drainLock) Mutex();
     lockReferenceCount = 1;
@@ -1383,6 +1385,16 @@ public:
   /// Note that a distributed *local* actor instance is the same as any other
   /// ordinary default (local) actor, and no special handling is needed for them.
   bool isDistributedRemote();
+
+  /// Check if the actor is currently executing non-reentrant code
+  bool isExecutingNonReentrant() const {
+    return this->isExecutingNonReentrantCode;
+  }
+
+  /// Set the non-reentrant execution flag
+  void setExecutingNonReentrant(bool value) {
+    this->isExecutingNonReentrantCode = value;
+  }
 
 #if !SWIFT_CONCURRENCY_ACTORS_AS_LOCKS
   swift::atomic<ActiveActorStatus> &_status() {
@@ -1551,6 +1563,9 @@ void DefaultActorImpl::enqueue(Job *job, JobPriority priority) {
                        this, priority);
   concurrency::trace::actor_enqueue(this, job);
   bool distributedActorIsRemote = swift_distributed_actor_is_remote(this);
+
+  // TODO: if the actor is reentrant(never), only enqueue if it is not executing work yet.
+  // If the actor is idle, we can run schedule it as usual
 
   auto oldState = _status().load(std::memory_order_relaxed);
   SwiftDefensiveRetainRAII thisRetainHelper{this};
@@ -2391,6 +2406,16 @@ static bool mustSwitchToRun(SerialExecutorRef currentSerialExecutor,
     return true; // must switch, new isolation context
   }
 
+  // Check for reentrancy violation:
+  // If we're on the same executor and it's a default actor currently executing
+  // non-reentrant code, we must prevent reentrancy.
+  if (currentSerialExecutor.isDefaultActor()) {
+    auto *actor = asImpl(currentSerialExecutor.getDefaultActor());
+    if (actor->isExecutingNonReentrant()) {
+      return true;
+    }
+  }
+
   // else, we may have to switch if the preferred task executor is different
   if (currentTaskExecutor.getIdentity() == newTaskExecutor.getIdentity())
     return false;
@@ -2824,3 +2849,20 @@ bool swift::swift_distributed_actor_is_remote(HeapObject *_actor) {
 bool DefaultActorImpl::isDistributedRemote() {
   return this->isDistributedRemoteActor;
 }
+
+// ==== Test helpers for @reentrant(never) prototype ====
+
+/// Test helper: Set the non-reentrant execution flag on an actor.
+/// This is a prototype function to test reentrancy checking before
+/// full compiler integration of @reentrant(never) attribute.
+void swift::_swift_actor_setExecutingNonReentrant(HeapObject *_actor, bool value) {
+#if !SWIFT_CONCURRENCY_EMBEDDED
+  const ClassMetadata *metadata = cast<ClassMetadata>(_actor->metadata);
+  if (isDefaultActorClass(metadata)) {
+    auto actor = asImpl(reinterpret_cast<DefaultActor *>(_actor));
+    actor->setExecutingNonReentrant(value);
+  }
+  // Note: Non-default actors would need similar handling when supported
+#endif
+}
+

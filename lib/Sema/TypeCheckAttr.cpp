@@ -472,6 +472,7 @@ public:
   void visitIsolatedAttr(IsolatedAttr *attr);
 
   void visitInheritActorContextAttr(InheritActorContextAttr *attr);
+  void visitReentrantAttr(ReentrantAttr *attr);
 
   void visitNoImplicitCopyAttr(NoImplicitCopyAttr *attr);
 
@@ -8261,6 +8262,12 @@ void AttributeChecker::visitInheritActorContextAttr(
         attr)
         .warnUntilLanguageMode(LanguageMode::future);
   }
+}
+
+void AttributeChecker::visitReentrantAttr(ReentrantAttr *attr) {
+  // @_reentrant(never) is only valid on actor classes and their methods.
+  // For now, allow it anywhere that's syntactically valid and let
+  // semantic checking happen elsewhere.
 }
 
 void AttributeChecker::visitMarkerAttr(MarkerAttr *attr) {

@@ -5430,6 +5430,11 @@ public:
     printFlag(Attr->isAlways(), "always");
     printFoot();
   }
+  void visitReentrantAttr(ReentrantAttr *Attr, Label label) {
+    printCommon(Attr, "reentrant_attr", label);
+    printFlag(Attr->isNever(), "never");
+    printFoot();
+  }
   void visitObjCAttr(ObjCAttr *Attr, Label label) {
     printCommon(Attr, "objc_attr", label);
     if (Attr->hasName())

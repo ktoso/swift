@@ -6607,6 +6607,17 @@ llvm::Error DeclDeserializer::deserializeDeclCommon() {
         break;
       }
 
+      case decls_block::Reentrant_DECL_ATTR: {
+        unsigned modifier;
+        bool isImplicit{};
+        serialization::decls_block::ReentrantDeclAttrLayout::readRecord(
+            scratch, modifier, isImplicit);
+        Attr = new (ctx)
+            ReentrantAttr({}, {}, static_cast<ReentrantModifier>(modifier),
+                          isImplicit);
+        break;
+      }
+
       case decls_block::MacroRole_DECL_ATTR: {
         bool isImplicit;
         uint8_t rawMacroSyntax;

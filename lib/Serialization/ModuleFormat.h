@@ -2614,6 +2614,12 @@ namespace decls_block {
                      BCFixed<1>  // implicit flag
                      >;
 
+  using ReentrantDeclAttrLayout =
+       BCRecordLayout<Reentrant_DECL_ATTR,
+                     BCFixed<1>, // the modifier (default = 0, never = 1)
+                     BCFixed<1>  // implicit flag
+                     >;
+
   using MacroRoleDeclAttrLayout = BCRecordLayout<
     MacroRole_DECL_ATTR,
     BCFixed<1>,                // implicit flag

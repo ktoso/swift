@@ -146,6 +146,11 @@ enum : unsigned {
       static_cast<unsigned>(NonexhaustiveMode::Last_NonexhaustiveMode))
 };
 
+enum : unsigned {
+  NumReentrantModifierBits = countBitsUsed(
+      static_cast<unsigned>(ReentrantModifier::Last_ReentrantModifier))
+};
+
 enum : unsigned { NumDeclAttrKindBits = countBitsUsed(NumDeclAttrKinds - 1) };
 
 enum : unsigned { NumTypeAttrKindBits = countBitsUsed(NumTypeAttrKinds - 1) };
@@ -291,6 +296,10 @@ protected:
 
     SWIFT_INLINE_BITFIELD(NonexhaustiveAttr, DeclAttribute, NumNonexhaustiveModeBits,
       mode : NumNonexhaustiveModeBits
+    );
+
+    SWIFT_INLINE_BITFIELD(ReentrantAttr, DeclAttribute, NumReentrantModifierBits,
+      Modifier : NumReentrantModifierBits
     );
   } Bits;
   // clang-format on
@@ -3364,6 +3373,43 @@ public:
 
   bool isEquivalent(const InheritActorContextAttr *other,
                     Decl *attachedTo) const {
+    return getModifier() == other->getModifier();
+  }
+};
+
+/// Represents @_reentrant modifier.
+class ReentrantAttr final : public DeclAttribute {
+public:
+  ReentrantAttr(SourceLoc atLoc, SourceRange range, ReentrantModifier modifier,
+                bool implicit)
+      : DeclAttribute(DeclAttrKind::Reentrant, atLoc, range, implicit) {
+    Bits.ReentrantAttr.Modifier = static_cast<unsigned>(modifier);
+    assert((getModifier() == modifier) && "not enough bits for modifier");
+  }
+
+  ReentrantModifier getModifier() const {
+    return static_cast<ReentrantModifier>(Bits.ReentrantAttr.Modifier);
+  }
+
+  bool isNever() const { return getModifier() == ReentrantModifier::Never; }
+
+  static ReentrantAttr *
+  createImplicit(ASTContext &ctx,
+                 ReentrantModifier modifier = ReentrantModifier::Default) {
+    return new (ctx) ReentrantAttr(/*atLoc*/ {}, /*range*/ {}, modifier,
+                                   /*implicit=*/true);
+  }
+
+  static bool classof(const DeclAttribute *DA) {
+    return DA->getKind() == DeclAttrKind::Reentrant;
+  }
+
+  /// Create a copy of this attribute.
+  ReentrantAttr *clone(ASTContext &ctx) const {
+    return new (ctx) ReentrantAttr(AtLoc, Range, getModifier(), isImplicit());
+  }
+
+  bool isEquivalent(const ReentrantAttr *other, Decl *attachedTo) const {
     return getModifier() == other->getModifier();
   }
 };

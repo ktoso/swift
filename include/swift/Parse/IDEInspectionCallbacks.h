@@ -42,6 +42,7 @@ enum class ParameterizedDeclAttributeKind {
   StorageRestrictions,
   InheritActorContext,
   Nonexhaustive,
+  Reentrant,
 };
 
 /// A bit of a hack. When completing inside the '@storageRestrictions'

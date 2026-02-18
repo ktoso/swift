@@ -1130,6 +1130,13 @@ void swift_get_clock_res(long long *seconds,
                          long long *nanoseconds,
                          swift_clock_id clock_id);
 
+/// ==== Test helpers for @reentrant(never) prototype ====
+/// Test helper: Set the non-reentrant execution flag on an actor.
+/// This is a prototype function to test reentrancy checking before
+/// full compiler integration of @reentrant(never) attribute.
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+void _swift_actor_setExecutingNonReentrant(HeapObject *actor, bool value);
+
 #ifdef __APPLE__
 /// A magic symbol whose address is the mask to apply to a frame pointer to
 /// signal that it is an async frame. Do not try to read the actual value of
