@@ -121,6 +121,8 @@ SWIFT_REQUEST(TypeChecker, CheckDistributedFunctionRequest,
               Cached, NoLocationInfo)
 SWIFT_REQUEST(TypeChecker, IsDistributedActorRequest, bool(NominalTypeDecl *),
               Cached, NoLocationInfo)
+SWIFT_REQUEST(TypeChecker, IsNonReentrantActorRequest, bool(ClassDecl *),
+              Cached, NoLocationInfo)
 SWIFT_REQUEST(TypeChecker, GetDistributedActorImplicitCodableRequest,
               NormalProtocolConformance *(NominalTypeDecl *, KnownProtocolKind),
               Cached, NoLocationInfo)

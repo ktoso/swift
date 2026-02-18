@@ -6847,6 +6847,13 @@ bool ClassDecl::isDefaultActor(ModuleDecl *M,
                            false);
 }
 
+bool ClassDecl::isNonReentrantActor() const {
+  auto mutableThis = const_cast<ClassDecl *>(this);
+  return evaluateOrDefault(
+      getASTContext().evaluator,
+      IsNonReentrantActorRequest{mutableThis}, false);
+}
+
 const ClassDecl *ClassDecl::getRootActorClass() const {
   if (!isActor()) return nullptr;
   auto cur = this;

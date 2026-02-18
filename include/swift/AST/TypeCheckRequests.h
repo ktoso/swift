@@ -1285,6 +1285,25 @@ public:
     bool isCached() const { return true; }
 };
 
+/// Determine whether the given class is a non-reentrant actor,
+/// i.e. has @_reentrant(never) attribute and is a default actor.
+class IsNonReentrantActorRequest :
+    public SimpleRequest<IsNonReentrantActorRequest,
+        bool(ClassDecl *),
+        RequestFlags::Cached> {
+public:
+    using SimpleRequest::SimpleRequest;
+
+private:
+    friend SimpleRequest;
+
+    bool evaluate(Evaluator &evaluator, ClassDecl *classDecl) const;
+
+public:
+    // Caching
+    bool isCached() const { return true; }
+};
+
 /// Determine whether the given class is a distributed actor.
 class CanSynthesizeDistributedActorCodableConformanceRequest :
     public SimpleRequest<CanSynthesizeDistributedActorCodableConformanceRequest,

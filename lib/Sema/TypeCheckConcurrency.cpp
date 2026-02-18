@@ -273,6 +273,24 @@ bool IsDefaultActorRequest::evaluate(
   return true;
 }
 
+bool IsNonReentrantActorRequest::evaluate(Evaluator &evaluator,
+                                          ClassDecl *classDecl) const {
+  // If the class isn't an actor, it's not a non-reentrant actor.
+  if (!classDecl->isActor())
+    return false;
+
+  // Must be a default actor to be non-reentrant.
+  if (!classDecl->isDefaultActor())
+    return false;
+
+  // Check if the class has the @_reentrant(never) attribute.
+  if (auto *reentrantAttr = classDecl->getAttrs().getAttribute<ReentrantAttr>()) {
+    return reentrantAttr->isNever();
+  }
+
+  return false;
+}
+
 VarDecl *GlobalActorInstanceRequest::evaluate(
     Evaluator &evaluator, NominalTypeDecl *nominal) const {
   auto globalActorAttr = nominal->getAttrs().getAttribute<GlobalActorAttr>();

@@ -5313,6 +5313,10 @@ public:
   bool isNonDefaultExplicitDistributedActor() const;
   bool isNonDefaultExplicitDistributedActor(ModuleDecl *M, ResilienceExpansion expansion) const;
 
+  /// Whether the class is a non-reentrant actor, i.e. has @_reentrant(never).
+  /// This is only meaningful for default actors.
+  bool isNonReentrantActor() const;
+
   /// Whether the class was explicitly declared with the `actor` keyword.
   bool isExplicitActor() const { return Bits.ClassDecl.IsActor; }
 
