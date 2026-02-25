@@ -200,18 +200,38 @@ public final class TaskLocal<Value: Sendable>: Sendable, CustomStringConvertible
   ///
   /// If the value is a reference type, it will be retained for the duration of
   /// the operation closure.
-  @inlinable
+  @_alwaysEmitIntoClient
   @discardableResult
   @available(SwiftStdlib 5.1, *)
+  public nonisolated(nonsending) func withValue<R>(_ valueDuringOperation: Value,
+                           operation: nonisolated(nonsending) () async throws -> R,
+                           file: String = #fileID, line: UInt = #line) async rethrows -> R {
+    return try await withValueImpl(
+      valueDuringOperation,
+      operation: operation,
+      file: file, line: line)
+  }
+
+  // ABI compatibility: keep the old symbol with isolation: parameter alive.
+  @available(SwiftStdlib 5.1, *)
+  @abi(
+    func withValue<R>(
+      _ valueDuringOperation: Value,
+      operation: () async throws -> R,
+      isolation: isolated (any Actor)?,
+      file: String,
+      line: UInt
+    ) async rethrows -> R
+  )
+  @discardableResult
   @backDeployed(before: SwiftStdlib 6.0)
-  public func withValue<R>(_ valueDuringOperation: Value,
+  public func _isolatedParameter_withValue<R>(_ valueDuringOperation: Value,
                            operation: () async throws -> R,
                            isolation: isolated (any Actor)? = #isolation,
                            file: String = #fileID, line: UInt = #line) async rethrows -> R {
     return try await withValueImpl(
       valueDuringOperation,
       operation: operation,
-      isolation: isolation,
       file: file, line: line)
   }
 
@@ -251,13 +271,11 @@ public final class TaskLocal<Value: Sendable>: Sendable, CustomStringConvertible
   /// to swift_task_de/alloc for the copy as follows:
   /// - withValue contains the compiler-emitted calls swift_task_de/alloc.
   /// - withValueImpl contains the calls to Builtin.taskLocalValuePush/Pop
-  @inlinable
+  @_alwaysEmitIntoClient
   @discardableResult
   @available(SwiftStdlib 5.1, *)
-  @backDeployed(before: SwiftStdlib 6.0)
-  internal func withValueImpl<R>(_ valueDuringOperation: __owned Value,
-                                 operation: () async throws -> R,
-                                 isolation: isolated (any Actor)?,
+  internal nonisolated(nonsending) func withValueImpl<R>(_ valueDuringOperation: __owned Value,
+                                 operation: nonisolated(nonsending) () async throws -> R,
                                  file: String = #fileID, line: UInt = #line) async rethrows -> R {
 #if $BuiltinConcurrencyStackNesting
     Builtin.taskLocalValuePush(key, consume valueDuringOperation)
