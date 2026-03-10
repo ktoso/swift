@@ -3573,11 +3573,24 @@ public:
     auto signedResumeFn = currentResumeFn;
     // Sign the task resume function with the C function pointer schema.
     if (auto schema = IGF.IGM.getOptions().PointerAuth.FunctionPointers) {
-      // Use the Clang type for TaskContinuationFunction*
-      // to make this work with type diversity.
-      if (schema.hasOtherDiscrimination())
-        schema =
-            IGF.IGM.getOptions().PointerAuth.ClangTypeTaskContinuationFunction;
+      // Use the Clang type for the specific TaskContinuationFunction* variant
+      // to make this work with type diversity. Throwing and non-throwing
+      // runtime functions take different C function pointer types, so they
+      // have different type-based discriminators.
+      if (schema.hasOtherDiscrimination()) {
+        switch (getCallee().getFunctionPointer().getKind().getSpecialKind()) {
+        case FunctionPointerKind::SpecialKind::TaskGroupWaitNext:
+        case FunctionPointerKind::SpecialKind::TaskFutureWaitThrowing:
+        case FunctionPointerKind::SpecialKind::AsyncLetWaitThrowing:
+        case FunctionPointerKind::SpecialKind::AsyncLetGetThrowing:
+          schema = IGF.IGM.getOptions().PointerAuth
+                       .ClangTypeThrowingTaskFutureWaitContinuationFunction;
+          break;
+        default:
+          schema =
+              IGF.IGM.getOptions().PointerAuth.ClangTypeTaskContinuationFunction;
+        }
+      }
       auto authInfo =
           PointerAuthInfo::emit(IGF, schema, nullptr, PointerAuthEntity());
       signedResumeFn = emitPointerAuthSign(IGF, signedResumeFn, authInfo);
