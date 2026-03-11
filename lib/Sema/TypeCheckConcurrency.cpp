@@ -2001,6 +2001,33 @@ static void noteIsolatedActorMember(ValueDecl const *decl,
   }
 }
 
+/// For closures, resolve CallerIsolationInheriting to actual concrete caller context.
+///
+/// For closures, the runtime isolation matches the lexical parent's isolation
+/// (closures are called / inline at their creation site).
+///
+/// For functions with nonisolated(nonsending), the isolation depends on the dynamic caller
+/// and cannot be resolved statically.
+static ActorIsolation resolveCallerIsolationInheriting(
+    const DeclContext *dc,
+    llvm::function_ref<ActorIsolation(AbstractClosureExpr *)> getClosureActorIsolation) {
+  auto *current = dc;
+  while (current) {
+    auto isolation = getActorIsolationOfContext(
+        const_cast<DeclContext *>(current), getClosureActorIsolation);
+    if (!isolation.isCallerIsolationInheriting())
+      return isolation;
+    // Walk through closures — they inherit from their creation site
+    if (isa<AbstractClosureExpr>(current)) {
+      current = current->getParent();
+      continue;
+    }
+    // Function declarations with caller isolation can't be resolved statically
+    return isolation;
+  }
+  return ActorIsolation::forCallerIsolationInheriting();
+}
+
 /// Get the actor isolation of the innermost relevant context.
 static ActorIsolation getInnermostIsolatedContext(
     const DeclContext *dc,
@@ -4082,9 +4109,18 @@ namespace {
           unsatisfiedIsolation =
               ActorIsolation::forNonisolated(/*unsafe=*/false);
         else if (getContextIsolation().isCallerIsolationInheriting() &&
-                 fnTypeIsolation.isNonIsolated())
-          unsatisfiedIsolation =
-              ActorIsolation::forNonisolated(/*unsafe=*/false);
+                 fnTypeIsolation.isNonIsolated()) {
+          // Resolve CallerIsolationInheriting by walking through enclosing
+          // closures to find the actual caller isolation. If it resolves to
+          // nonisolated, calling a nonisolated function is not a crossing.
+          auto resolved = resolveCallerIsolationInheriting(
+              getDeclContext(), getClosureActorIsolation);
+
+          if (resolved.isCallerIsolationInheriting() ||
+              resolved.isActorIsolated())
+            unsatisfiedIsolation =
+                ActorIsolation::forNonisolated(/*unsafe=*/false);
+        }
       }
 
       // If there was no unsatisfied actor isolation, we're done.

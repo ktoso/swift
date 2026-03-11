@@ -147,3 +147,23 @@ public func withLoggingSubsystemAndScope<Result>(
     return try await LoggingScope._scope.withValue(scope, operation: operation)
   }
 }
+
+struct MyTest: Sendable {
+  fileprivate static let _taskLocal: TaskLocal<MyTest?> = nil
+}
+func withCancellationHandling<R>(_ body: () async throws -> R) async rethrows -> R {
+  try await body()
+}
+
+extension MyTest {
+  static func withCurrent<R>(perform body: () async throws -> R) async rethrows -> R {
+    return try await MyTest._taskLocal.withValue(nil) {
+      try await withCancellationHandling(body)
+    }
+  }
+  static func withNonsending<R>(perform body: nonisolated(nonsending) () async throws -> R) async rethrows -> R {
+    return try await MyTest._taskLocal.withValue(nil) {
+      try await withCancellationHandling(body)
+    }
+  }
+}
