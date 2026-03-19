@@ -3998,6 +3998,24 @@ ParserStatus Parser::parseNewDeclAttribute(DeclAttributes &Attributes,
 
     break;
   }
+  case DeclAttrKind::Reentrant: {
+    AttrRange = Loc;
+    std::optional<ReentrantModifier> Modifier(ReentrantModifier::Default);
+    Modifier = parseSingleAttrOption<ReentrantModifier>(
+        *this, Loc, AttrRange, AttrName, DK,
+        {{Context.Id_never, ReentrantModifier::Never}}, *Modifier,
+        ParameterizedDeclAttributeKind::Reentrant);
+    if (!Modifier) {
+      return makeParserSuccess();
+    }
+
+    if (!DiscardAttribute) {
+      Attributes.add(new (Context) ReentrantAttr(
+          AtLoc, AttrRange, *Modifier, /*implicit=*/false));
+    }
+
+    break;
+  }
   case DeclAttrKind::MacroRole: {
     auto syntax = (AttrName == "freestanding" ? MacroSyntax::Freestanding
                                               : MacroSyntax::Attached);

@@ -2652,6 +2652,12 @@ namespace decls_block {
     BCFixed<2>  // mode
   >;
 
+  using ReentrantDeclAttrLayout = BCRecordLayout<
+    Reentrant_DECL_ATTR,
+    BCFixed<1>, // modifier (default = 0, never = 1)
+    BCFixed<1>  // implicit flag
+  >;
+
   // clang-format on
 
 #undef SYNTAX_SUGAR_TYPE_LAYOUT

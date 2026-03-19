@@ -258,6 +258,35 @@ public:
     }
   }
 
+  void visitReentrantAttr(ReentrantAttr *attr) {
+    // @_reentrant on a class: must be an actor
+    if (auto *classDecl = dyn_cast<ClassDecl>(D)) {
+      if (!classDecl->isActor()) {
+        diagnoseAndRemoveAttr(attr, diag::reentrant_attr_only_on_actor);
+        return;
+      }
+    }
+
+    // @_reentrant on a func/accessor: must be inside an actor
+    if (isa<FuncDecl>(D) || isa<AccessorDecl>(D)) {
+      auto *dc = D->getDeclContext();
+      if (auto *nominal = dc->getSelfNominalTypeDecl()) {
+        if (auto *classDecl = dyn_cast<ClassDecl>(nominal)) {
+          if (!classDecl->isActor()) {
+            diagnoseAndRemoveAttr(attr, diag::reentrant_attr_only_on_actor);
+            return;
+          }
+        } else {
+          diagnoseAndRemoveAttr(attr, diag::reentrant_attr_only_on_actor);
+          return;
+        }
+      } else {
+        diagnoseAndRemoveAttr(attr, diag::reentrant_attr_only_on_actor);
+        return;
+      }
+    }
+  }
+
   void visitConcurrentAttr(ConcurrentAttr *attr) {
     checkExecutionBehaviorAttribute(attr);
 

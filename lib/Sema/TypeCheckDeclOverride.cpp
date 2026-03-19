@@ -1765,6 +1765,7 @@ namespace  {
     UNINTERESTING_ATTR(AddressableForDependencies)
     UNINTERESTING_ATTR(UnsafeSelfDependentResult)
     UNINTERESTING_ATTR(Warn)
+    UNINTERESTING_ATTR(Reentrant)
 #undef UNINTERESTING_ATTR
 
     void visitABIAttr(ABIAttr *attr) {

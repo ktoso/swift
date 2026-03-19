@@ -1621,6 +1621,18 @@ bool DeclAttribute::printImpl(ASTPrinter &Printer, const PrintOptions &Options,
     break;
   }
 
+  case DeclAttrKind::Reentrant: {
+    Printer.printAttrName("@_reentrant");
+    switch (cast<ReentrantAttr>(this)->getModifier()) {
+    case ReentrantModifier::Default:
+      break;
+    case ReentrantModifier::Never:
+      Printer << "(never)";
+      break;
+    }
+    break;
+  }
+
   case DeclAttrKind::MacroRole: {
     auto Attr = cast<MacroRoleAttr>(this);
 
@@ -2041,6 +2053,13 @@ StringRef DeclAttribute::getAttrName() const {
       return "_inheritActorContext";
     case InheritActorContextModifier::Always:
       return "_inheritActorContext(always)";
+    }
+  case DeclAttrKind::Reentrant:
+    switch (cast<ReentrantAttr>(this)->getModifier()) {
+    case ReentrantModifier::Default:
+      return "_reentrant";
+    case ReentrantModifier::Never:
+      return "_reentrant(never)";
     }
   case DeclAttrKind::MacroRole:
     switch (cast<MacroRoleAttr>(this)->getMacroSyntax()) {

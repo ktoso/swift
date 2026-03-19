@@ -2904,6 +2904,9 @@ void CompletionLookup::getAttributeDeclParamCompletions(
   case ParameterizedDeclAttributeKind::InheritActorContext:
     addDeclAttrParamKeyword("always", /*Parameters=*/{}, "", false);
     break;
+  case ParameterizedDeclAttributeKind::Reentrant:
+    addDeclAttrParamKeyword("never", /*Parameters=*/{}, "", false);
+    break;
   case ParameterizedDeclAttributeKind::AccessControl:
     addDeclAttrParamKeyword("set", /*Parameters=*/{}, "", false);
     break;

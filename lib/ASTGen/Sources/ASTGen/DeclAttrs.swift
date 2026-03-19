@@ -332,6 +332,8 @@ extension ASTGenVisitor {
         return handle(self.generateReferenceOwnershipAttr(attribute: node, attrName: attrName)?.asDeclAttribute)
       case .InheritActorContext:
         return handle(self.generateInheritActorContextAttr(attribute: node)?.asDeclAttribute)
+      case .Reentrant:
+        return handle(self.generateReentrantAttr(attribute: node)?.asDeclAttribute)
 
       case .Async,
         .Consuming,
@@ -1508,6 +1510,28 @@ extension ASTGenVisitor {
         }
       },
       valueIfOmitted: swift.InheritActorContextModifier.none
+    )
+    guard let modifier else {
+      return nil
+    }
+    return .createParsed(
+      self.ctx,
+      atLoc: self.generateSourceLoc(node.atSign),
+      range: self.generateAttrSourceRange(node),
+      modifier: modifier
+    )
+  }
+
+  func generateReentrantAttr(attribute node: AttributeSyntax) -> BridgedReentrantAttr? {
+    let modifier: swift.ReentrantModifier? = self.generateSingleAttrOption(
+      attribute: node,
+      {
+        switch $0.rawText {
+        case "never": return .never
+        default: return nil
+        }
+      },
+      valueIfOmitted: swift.ReentrantModifier.default
     )
     guard let modifier else {
       return nil

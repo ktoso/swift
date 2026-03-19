@@ -3589,6 +3589,16 @@ class Serializer::DeclSerializer : public DeclVisitor<DeclSerializer> {
       return;
     }
 
+    case DeclAttrKind::Reentrant: {
+      auto *theAttr = cast<ReentrantAttr>(DA);
+      auto abbrCode =
+          S.DeclTypeAbbrCodes[ReentrantDeclAttrLayout::Code];
+      ReentrantDeclAttrLayout::emitRecord(
+          S.Out, S.ScratchRecord, abbrCode,
+          static_cast<uint8_t>(theAttr->getModifier()), theAttr->isImplicit());
+      return;
+    }
+
     case DeclAttrKind::MacroRole: {
       auto *theAttr = cast<MacroRoleAttr>(DA);
       auto abbrCode = S.DeclTypeAbbrCodes[MacroRoleDeclAttrLayout::Code];

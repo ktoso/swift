@@ -12222,6 +12222,12 @@ bool ClassDecl::isNonDefaultExplicitDistributedActor(ModuleDecl *M,
   return !isDefaultActor(M, expansion) && isExplicitDistributedActor();
 }
 
+bool ClassDecl::isNonReentrantActor() const {
+  return evaluateOrDefault(getASTContext().evaluator,
+                           IsNonReentrantActorRequest{const_cast<ClassDecl *>(this)},
+                           false);
+}
+
 
 bool ClassDecl::isNativeNSObjectSubclass() const {
   // @objc actors implicitly inherit from NSObject.

@@ -625,6 +625,9 @@ EXPERIMENTAL_FEATURE(BorrowInout, true)
 /// Allow access to the BorrowingSequence protocols/types outside the stdlib.
 EXPERIMENTAL_FEATURE(BorrowingSequence, true)
 
+/// Enables @_reentrant(never) attribute for controlling actor reentrancy.
+EXPERIMENTAL_FEATURE(ActorReentrancyControl, true)
+
 #undef EXPERIMENTAL_FEATURE_EXCLUDED_FROM_MODULE_INTERFACE
 #undef EXPERIMENTAL_FEATURE
 #undef UPCOMING_FEATURE

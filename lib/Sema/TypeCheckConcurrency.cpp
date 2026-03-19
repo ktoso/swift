@@ -9026,3 +9026,20 @@ bool swift::checkIsolatedConformancesInContext(
   forEachConformance(type, mismatched);
   return mismatched.diagnose(loc);
 }
+
+// ==== -----------------------------------------------------------------------
+// MARK: IsNonReentrantActorRequest
+
+bool IsNonReentrantActorRequest::evaluate(
+    Evaluator &evaluator, ClassDecl *classDecl) const {
+  // Must be an actor to be a non-reentrant actor.
+  if (!classDecl->isActor())
+    return false;
+
+  // Check for @_reentrant(never) on the class itself.
+  if (auto *attr = classDecl->getAttrs().getAttribute<ReentrantAttr>()) {
+    return attr->isNever();
+  }
+
+  return false;
+}

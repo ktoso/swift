@@ -922,7 +922,13 @@ DECL_ATTR(warn, Warn,
   AllowMultipleAttributes | ABIStableToAdd | ABIStableToRemove | APIStableToAdd | APIStableToRemove | ForbiddenInABIAttr,
   174)
 
-LAST_DECL_ATTR(Warn)
+DECL_ATTR(_reentrant, Reentrant,
+  OnFunc | OnAccessor | OnClass,
+  UserInaccessible | ABIBreakingToAdd | ABIBreakingToRemove | APIBreakingToAdd | APIBreakingToRemove | ForbiddenInABIAttr,
+  175)
+DECL_ATTR_FEATURE_REQUIREMENT(Reentrant, ActorReentrancyControl)
+
+LAST_DECL_ATTR(Reentrant)
 
 #undef DECL_ATTR_ALIAS
 #undef CONTEXTUAL_DECL_ATTR_ALIAS

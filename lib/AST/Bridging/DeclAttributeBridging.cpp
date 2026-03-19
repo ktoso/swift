@@ -567,6 +567,13 @@ BridgedInheritActorContextAttr BridgedInheritActorContextAttr_createParsed(
                               /*implicit=*/false);
 }
 
+BridgedReentrantAttr BridgedReentrantAttr_createParsed(
+    BridgedASTContext cContext, SourceLoc atLoc, SourceRange range,
+    swift::ReentrantModifier modifier) {
+  return new (cContext.unbridged())
+      ReentrantAttr(atLoc, range, modifier, /*implicit=*/false);
+}
+
 BridgedObjCAttr BridgedObjCAttr_createParsedUnnamed(BridgedASTContext cContext,
                                                     SourceLoc atLoc,
                                                     SourceLoc attrNameLoc) {

@@ -145,6 +145,16 @@ enum class ENUM_EXTENSIBILITY_ATTR(closed) NonexhaustiveMode : uint8_t {
   Last_NonexhaustiveMode = Warning
 };
 
+/// This enum represents the possible values of the @_reentrant attribute.
+enum class ENUM_EXTENSIBILITY_ATTR(closed) ReentrantModifier : uint8_t {
+  /// Default reentrancy (actor methods are reentrant).
+  Default SWIFT_NAME("default") = 0,
+  /// No reentrancy allowed - suspensions in this context will trap
+  /// if another task attempts to re-enter the actor.
+  Never SWIFT_NAME("never"),
+  Last_ReentrantModifier = Never
+};
+
 enum class ENUM_EXTENSIBILITY_ATTR(closed) DeclAttrKind : unsigned {
 #define DECL_ATTR(_, CLASS, ...) CLASS,
 #define LAST_DECL_ATTR(CLASS) Last_DeclAttr = CLASS,
