@@ -5310,10 +5310,30 @@ getIsolationFromWitnessedRequirements(ValueDecl *value) {
         llvm_unreachable("requirement cannot have erased isolation");
 
       case ActorIsolation::CallerIsolationInheriting: {
-        if (value->isAsync())
+        if (value->isAsync()) {
+          // For @objc protocol requirements whose CallerIsolationInheriting
+          // was implicitly inferred by NonisolatedNonsendingByDefault, do not
+          // let the witness inherit it when the witness is also @objc. The
+          // @objc async thunk relies on the witness having GlobalActor
+          // isolation to emit hop_to_executor; without it the thunk closure
+          // runs on the global cooperative executor and the ObjC completion
+          // handler fires on the wrong queue.
+          if (requirement->isObjC()) {
+            if (auto *nonisolatedAttr =
+                    requirement->getAttrs().getAttribute<NonisolatedAttr>()) {
+              // Explicit nonisolated(nonsending) — respect it.
+              if (nonisolatedAttr->isNonSending() &&
+                  !nonisolatedAttr->isImplicit())
+                break;
+            }
+            // Implicitly inferred, skip so member propagation can
+            // infer GlobalActor from the enclosing type.
+            continue;
+          }
           break;
+        }
 
-        // It's possible to witness requirement with an non-async
+        // It's possible to witness requirement with a non-async
         // declaration, in such cases `nonisolated(nonsending)` does
         // not apply.
         continue;
