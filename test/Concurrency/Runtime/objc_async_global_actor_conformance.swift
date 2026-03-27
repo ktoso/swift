@@ -4,8 +4,6 @@
 // REQUIRES: executable_test
 // REQUIRES: concurrency
 // REQUIRES: concurrency_runtime
-// REQUIRES: libdispatch
-// REQUIRES: objc_interop
 // REQUIRES: swift_feature_NonisolatedNonsendingByDefault
 
 // UNSUPPORTED: back_deployment_runtime
@@ -21,24 +19,32 @@
 import Foundation
 import StdlibUnittest
 
-@objc protocol Worker {
-    func doWork() async
+protocol Worker {
+  func doWork() async
 }
 
 @MainActor
-class MyWorker: NSObject, Worker {
-    func doWork() async {
-        MainActor.assertIsolated("Expected to be running on MainActor")
-    }
+class MyWorker: Worker {
+
+  @MainActor
+  var num: Int = 0
+  func doWork() async {
+    MainActor.assertIsolated("Expected to be running on MainActor")
+    num += 1
+  }
 }
 
 @main struct Main {
-    static func main() async {
-        let worker = MyWorker()
-        await worker.doWork()
+  static func main() async {
+    let worker = MyWorker()
+    print("Call worker from MainActor", terminator: ": ")
+    await worker.doWork()
+    print("OK")
 
-        await Task.detached {
-            await worker.doWork()
-        }.value
-    }
+    await Task.detached {
+      print("Call worker from detached", terminator: ": ")
+      await worker.doWork()
+      print("OK")
+    }.value
+  }
 }
