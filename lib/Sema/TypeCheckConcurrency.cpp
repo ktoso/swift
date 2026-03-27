@@ -5310,29 +5310,8 @@ getIsolationFromWitnessedRequirements(ValueDecl *value) {
         llvm_unreachable("requirement cannot have erased isolation");
 
       case ActorIsolation::CallerIsolationInheriting: {
-        if (value->isAsync()) {
-          // For @objc protocol requirements whose CallerIsolationInheriting
-          // was implicitly inferred by NonisolatedNonsendingByDefault, do not
-          // let the witness inherit it when the witness is also @objc. The
-          // @objc async thunk relies on the witness having GlobalActor
-          // isolation to emit hop_to_executor; without it the thunk closure
-          // runs on the global cooperative executor and the ObjC completion
-          // handler fires on the wrong queue.
-          if (requirement->isObjC()) {
-            if (auto *nonisolatedAttr =
-                    requirement->getAttrs().getAttribute<NonisolatedAttr>()) {
-              // Explicit nonisolated(nonsending) — respect it.
-              if (nonisolatedAttr->isNonSending() &&
-                  !nonisolatedAttr->isImplicit())
-                break;
-            }
-            // Implicitly inferred, skip so member propagation can
-            // infer GlobalActor from the enclosing type.
-            continue;
-          }
+        if (value->isAsync())
           break;
-        }
-
         // It's possible to witness requirement with a non-async
         // declaration, in such cases `nonisolated(nonsending)` does
         // not apply.
@@ -6226,7 +6205,18 @@ computeDefaultInferredActorIsolation(ValueDecl *value) {
 
   // If we have an async function or storage... by default we inherit isolation.
   if (ctx.LangOpts.hasFeature(Feature::NonisolatedNonsendingByDefault)) {
-    if (value->isAsync() && value->getModuleContext() == ctx.MainModule) {
+    // Don't apply CallerIsolationInheriting to @objc protocol requirements.
+    // The @objc async thunk relies on the witness having concrete actor
+    // isolation (e.g. GlobalActor) to emit hop_to_executor; making the
+    // requirement CallerIsolationInheriting would override that.
+    // Note: we avoid `isObjC()` here because it triggers IsObjCRequest,
+    // which can cause circular-reference errors during isolation inference.
+    bool isObjCProtoRequirement = false;
+    if (auto *proto = dyn_cast<ProtocolDecl>(value->getDeclContext()))
+      isObjCProtoRequirement = proto->getAttrs().hasAttribute<ObjCAttr>();
+
+    if (value->isAsync() && value->getModuleContext() == ctx.MainModule &&
+        !isObjCProtoRequirement) {
       return {
           {ActorIsolation::forCallerIsolationInheriting(), {}}, nullptr, {}};
     }
@@ -6452,8 +6442,14 @@ static InferredActorIsolation computeActorIsolation(Evaluator &evaluator,
     // asynchronous `nonisolated` always means `nonisolated(nonsending)`.
     if (ctx.LangOpts.hasFeature(Feature::NonisolatedNonsendingByDefault) &&
         inferred.isNonisolated() && value->isAsync()) {
+
       // Either current module or async variant of an ObjC API.
-      if (value->getModuleContext() == ctx.MainModule ||
+      // Exclude @objc protocol requirements — see comment at Path 1 above.
+      bool isObjCProtoReq = false;
+      if (auto *proto = dyn_cast<ProtocolDecl>(value->getDeclContext()))
+        isObjCProtoReq = proto->getAttrs().hasAttribute<ObjCAttr>();
+
+      if ((value->getModuleContext() == ctx.MainModule && !isObjCProtoReq) ||
           (value->hasClangNode() &&
            !isa<ProtocolDecl>(value->getDeclContext()))) {
         inferred =
