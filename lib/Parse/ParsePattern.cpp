@@ -115,7 +115,8 @@ bool Parser::startsParameterName(bool isClosure) {
         !Tok.isContextualKeyword("borrowing") &&
         (!Context.LangOpts.hasFeature(Feature::SendingArgsAndResults) ||
          !Tok.isContextualKeyword("sending")) &&
-        !Tok.isContextualKeyword("consuming") && !Tok.is(tok::kw_repeat))
+        !Tok.isContextualKeyword("consuming") && !Tok.is(tok::kw_repeat) &&
+        !isDistributedLocalSpecifier())
       return true;
 
     // Parameter specifiers can be an argument label, but they're also
@@ -284,6 +285,22 @@ Parser::parseParameterClause(SourceLoc &leftParenLoc,
           }
 
           param.SendingLoc = consumeToken();
+          continue;
+        }
+
+        if (isDistributedLocalSpecifier()) {
+          auto kwLoc = consumeToken(); // 'distributed'
+          consumeIf(tok::l_paren);     // '('
+          consumeToken();              // 'local'
+          consumeIf(tok::r_paren);     // ')'
+
+          if (param.DistributedLocalLoc.isValid()) {
+            diagnose(kwLoc, diag::distributed_local_repeated)
+                .fixItRemove(kwLoc);
+            continue;
+          }
+
+          param.DistributedLocalLoc = kwLoc;
           continue;
         }
 
@@ -611,6 +628,12 @@ mapParsedParameters(Parser &parser,
       if (paramInfo.SendingLoc.isValid()) {
         type = new (parser.Context) SendingTypeRepr(type, paramInfo.SendingLoc);
         param->setSending();
+      }
+
+      if (paramInfo.DistributedLocalLoc.isValid()) {
+        type = new (parser.Context) DistributedLocalTypeRepr(
+            type, paramInfo.DistributedLocalLoc);
+        param->setDistributedLocal();
       }
 
       param->setTypeRepr(type);

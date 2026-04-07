@@ -8632,7 +8632,9 @@ bool ExprRewriter::isDistributedThunk(ConcreteDeclRef ref, Expr *context) {
   // actor then it cannot be a remote thunk.
   bool isPotentiallyIsolated = isPotentiallyIsolatedActor(
       actor, [&](ParamDecl *P) {
-        return P->isIsolated() || solution.isolatedParams.count(P);
+        return P->isIsolated() || solution.isolatedParams.count(P) ||
+               P->isDistributedLocal() ||
+               solution.distributedLocalParams.count(P);
       });
 
   // Adjust the declaration context to the innermost context that is neither
@@ -9234,6 +9236,25 @@ NullablePtr<Pattern> ExprWalker::rewritePattern(Pattern *pattern,
                                           patternOptions, tryRewritePattern);
 }
 
+/// Check if the given expression is a call to a distributed actor constructor.
+static bool isDistributedActorConstructorCall(Expr *expr) {
+  // Look through implicit conversions
+  while (auto *conv = dyn_cast<ImplicitConversionExpr>(expr))
+    expr = conv->getSubExpr();
+  auto *call = dyn_cast<CallExpr>(expr);
+  if (!call)
+    return false;
+  auto *ctorRef = dyn_cast<ConstructorRefCallExpr>(call->getFn());
+  if (!ctorRef)
+    return false;
+  auto resultType = call->getType();
+  if (!resultType)
+    return false;
+  if (auto *nominal = resultType->getAnyNominal())
+    return nominal->isDistributedActor();
+  return false;
+}
+
 /// Apply the given solution to the initialization target.
 ///
 /// \returns the resulting initialization expression.
@@ -9352,6 +9373,19 @@ applySolutionToInitialization(SyntacticElementTarget target, Expr *initializer,
     }
   }
 
+  // Mark VarDecls initialized from distributed actor constructors as
+  // known-local, so downstream isolation checks can skip implicit throws
+  if (auto *pat = resultTarget.getInitializationPattern()) {
+    if (auto *var = pat->getSingleVar()) {
+      if (!var->getAttrs().hasAttribute<DistributedLocalAttr>()) {
+        auto *initExpr = resultTarget.getAsExpr();
+        if (isDistributedActorConstructorCall(initExpr)) {
+          if (ctx.LangOpts.hasFeature(Feature::DistributedActorLocalKeyword))
+            var->addAttribute(new (ctx) DistributedLocalAttr(/*implicit=*/true));
+        }
+      }
+    }
+  }
 
   return resultTarget;
 }

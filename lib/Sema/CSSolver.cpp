@@ -226,6 +226,9 @@ Solution ConstraintSystem::finalize() {
   for (const auto &param : isolatedParams)
     solution.isolatedParams.insert(param);
 
+  for (const auto &param : distributedLocalParams)
+    solution.distributedLocalParams.insert(param);
+
   for (auto closure : preconcurrencyClosures)
     solution.preconcurrencyClosures.insert(closure);
 
@@ -407,6 +410,11 @@ void ConstraintSystem::replaySolution(const Solution &solution,
   for (auto param : solution.isolatedParams) {
     if (isolatedParams.count(param) == 0)
       recordIsolatedParam(param);
+  }
+
+  for (auto param : solution.distributedLocalParams) {
+    if (distributedLocalParams.count(param) == 0)
+      recordDistributedLocalParam(param);
   }
 
   for (auto &pair : solution.exprPatterns) {

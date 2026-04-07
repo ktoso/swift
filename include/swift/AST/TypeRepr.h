@@ -1157,7 +1157,8 @@ public:
            T->getKind() == TypeReprKind::CompileTimeLiteral ||
            T->getKind() == TypeReprKind::ConstValue ||
            T->getKind() == TypeReprKind::LifetimeDependent ||
-           T->getKind() == TypeReprKind::Sending;
+           T->getKind() == TypeReprKind::Sending ||
+           T->getKind() == TypeReprKind::DistributedLocal;
   }
   static bool classof(const SpecifierTypeRepr *T) { return true; }
   
@@ -1257,6 +1258,21 @@ public:
     return T->getKind() == TypeReprKind::Sending;
   }
   static bool classof(const SendingTypeRepr *T) { return true; }
+};
+
+/// A distributed(local) type specifier.
+/// \code
+///   x : distributed(local) MyDistributedActor
+/// \endcode
+class DistributedLocalTypeRepr : public SpecifierTypeRepr {
+public:
+  DistributedLocalTypeRepr(TypeRepr *Base, SourceLoc Loc)
+      : SpecifierTypeRepr(TypeReprKind::DistributedLocal, Base, Loc) {}
+
+  static bool classof(const TypeRepr *T) {
+    return T->getKind() == TypeReprKind::DistributedLocal;
+  }
+  static bool classof(const DistributedLocalTypeRepr *T) { return true; }
 };
 
 /// A 'nonisolated(nonsending)' function type.
@@ -1731,6 +1747,7 @@ inline bool TypeRepr::isSimple() const {
   case TypeReprKind::LifetimeDependent:
   case TypeReprKind::GenericArgumentExpr:
   case TypeReprKind::CallerIsolated:
+  case TypeReprKind::DistributedLocal:
     return true;
   }
   llvm_unreachable("bad TypeRepr kind");

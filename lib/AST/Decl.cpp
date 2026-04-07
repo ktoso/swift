@@ -8682,8 +8682,14 @@ bool VarDecl::isAsyncLet() const {
   return getAttrs().hasAttribute<AsyncAttr>();
 }
 
-bool VarDecl::isKnownToBeLocal() const {
-  return getAttrs().hasAttribute<KnownToBeLocalAttr>();
+bool VarDecl::isDistributedLocal() const {
+  if (getAttrs().hasAttribute<DistributedLocalAttr>())
+    return true;
+  // ParamDecl stores distributed(local) as a flag rather than an attribute;
+  // call through ParamDecl* to reach ParamDecl::isDistributedLocal()
+  if (auto *param = dyn_cast<ParamDecl>(this))
+    return param->isDistributedLocal();
+  return false;
 }
 
 bool VarDecl::isOrdinaryStoredProperty() const {
@@ -9347,6 +9353,8 @@ void ParamDecl::setTypeRepr(TypeRepr *repr) {
           setConstValue(true);
         else if (isa<SendingTypeRepr>(STR))
           setSending(true);
+        else if (isa<DistributedLocalTypeRepr>(STR))
+          setDistributedLocal(true);
         unwrappedType = STR->getBase();
         continue;
       }
@@ -9518,7 +9526,7 @@ AnyFunctionType::Param ParamDecl::toFunctionParam(Type type) const {
   auto flags = ParameterTypeFlags::fromParameterType(
       type, isVariadic(), isAutoClosure(), isNonEphemeral(), getSpecifier(),
       isIsolated(), /*isNoDerivative*/ false, isCompileTimeLiteral(),
-      isSending(), isAddressable(), isConstVal());
+      isSending(), isAddressable(), isConstVal(), isDistributedLocal());
   return AnyFunctionType::Param(type, label, flags, internalLabel);
 }
 

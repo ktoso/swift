@@ -1741,7 +1741,7 @@ namespace  {
     UNINTERESTING_ATTR(ConstInitialized)
 
     UNINTERESTING_ATTR(BackDeployed)
-    UNINTERESTING_ATTR(KnownToBeLocal)
+    UNINTERESTING_ATTR(DistributedLocal)
 
     UNINTERESTING_ATTR(UnsafeInheritExecutor)
     UNINTERESTING_ATTR(CompilerInitialized)

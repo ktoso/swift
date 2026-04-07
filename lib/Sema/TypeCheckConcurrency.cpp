@@ -1752,7 +1752,9 @@ bool ReferencedActor::isKnownToBeLocal() const {
     if (isPotentiallyIsolated)
       return true;
 
-    return actor && actor->isKnownToBeLocal();
+    return actor && (actor->isDistributedLocal() ||
+                     (isa<ParamDecl>(actor) &&
+                      cast<ParamDecl>(actor)->isDistributedLocal()));
 
   case Isolated:
     return true;

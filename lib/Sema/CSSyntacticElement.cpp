@@ -2445,6 +2445,12 @@ bool ConstraintSystem::applySolution(AnyFunctionRef fn,
         param->setIsolated(true);
     }
 
+    // Find any distributed(local) parameters in this closure and mark them.
+    for (auto param : solution.distributedLocalParams) {
+      if (param->getDeclContext() == closure)
+        param->setDistributedLocal(true);
+    }
+
     if (solution.preconcurrencyClosures.count(closure))
       closure->setIsolatedByPreconcurrency();
 

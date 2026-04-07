@@ -3575,9 +3575,22 @@ public:
     if (auto schema = IGF.IGM.getOptions().PointerAuth.FunctionPointers) {
       // Use the Clang type for TaskContinuationFunction*
       // to make this work with type diversity.
-      if (schema.hasOtherDiscrimination())
-        schema =
-            IGF.IGM.getOptions().PointerAuth.ClangTypeTaskContinuationFunction;
+      if (schema.hasOtherDiscrimination()) {
+        switch(getCallee().getFunctionPointer().getKind().getSpecialKind()) {
+        case FunctionPointerKind::SpecialKind::TaskGroupWaitNext:
+        case FunctionPointerKind::SpecialKind::TaskFutureWaitThrowing:
+        case FunctionPointerKind::SpecialKind::AsyncLetWaitThrowing:
+        case FunctionPointerKind::SpecialKind::AsyncLetGetThrowing:
+          schema = IGF.IGM.getOptions().PointerAuth.ClangTypeThrowingTaskFutureWaitContinuationFunction;
+          break;
+        case FunctionPointerKind::SpecialKind::AsyncLetGet:
+        case FunctionPointerKind::SpecialKind::AsyncLetWait:
+        case FunctionPointerKind::SpecialKind::TaskFutureWait:
+        case FunctionPointerKind::SpecialKind::AsyncLetFinish:
+        default:
+          schema = IGF.IGM.getOptions().PointerAuth.ClangTypeTaskContinuationFunction;
+        }
+      }
       auto authInfo =
           PointerAuthInfo::emit(IGF, schema, nullptr, PointerAuthEntity());
       signedResumeFn = emitPointerAuthSign(IGF, signedResumeFn, authInfo);

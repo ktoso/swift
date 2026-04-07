@@ -713,8 +713,10 @@ bool isLetAccessibleAnywhere(const ModuleDecl *fromModule,
 /// Check whether given variable references to a potentially
 /// isolated actor.
 bool isPotentiallyIsolatedActor(
-    VarDecl *var, llvm::function_ref<bool(ParamDecl *)> isIsolated =
-                      [](ParamDecl *P) { return P->isIsolated(); });
+    VarDecl *var,
+    llvm::function_ref<bool(ParamDecl *)> isIsolated = [](ParamDecl *P) {
+      return P->isIsolated() || P->isDistributedLocal();
+    });
 
 /// If the enclosing function has @_unsafeInheritExecutorAttr, return it.
 AbstractFunctionDecl *enclosingUnsafeInheritsExecutor(const DeclContext *dc);

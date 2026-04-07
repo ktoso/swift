@@ -352,7 +352,7 @@ extension ASTGenVisitor {
         .Override,
         .Indirect,
         .Final,
-        .KnownToBeLocal,
+        .DistributedLocal,
         .CompileTimeLiteral:
 
         // generateSimpleDeclAttr will diagnose and fix-it to change it to modifiers.

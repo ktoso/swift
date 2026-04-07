@@ -489,7 +489,7 @@ public:
   void checkAvailableAttrs(ArrayRef<AvailableAttr *> Attrs);
   void checkBackDeployedAttrs(ArrayRef<BackDeployedAttr *> Attrs);
 
-  void visitKnownToBeLocalAttr(KnownToBeLocalAttr *attr);
+  void visitDistributedLocalAttr(DistributedLocalAttr *attr);
 
   void visitSendableAttr(SendableAttr *attr);
 
@@ -7928,15 +7928,16 @@ void AttributeChecker::visitDistributedActorAttr(DistributedActorAttr *attr) {
   }
 }
 
-void AttributeChecker::visitKnownToBeLocalAttr(KnownToBeLocalAttr *attr) {
+void AttributeChecker::visitDistributedLocalAttr(DistributedLocalAttr *attr) {
   auto &ctx = D->getASTContext();
   auto *module = D->getDeclContext()->getParentModule();
   auto *distributed = ctx.getLoadedModule(ctx.Id_Distributed);
 
-  // FIXME: An explicit `_local` is used in the implementation of
-  // `DistributedActor.whenLocal`, which otherwise violates actor
-  // isolation checking.
-  if (!D->isImplicit() && (module != distributed)) {
+  // Allow `_local` in the Distributed stdlib module (whenLocal implementation)
+  // and when the DistributedActorLocalKeyword feature is enabled (the compiler
+  // adds implicit _local attrs, e.g. for init-returning-local)
+  if (!D->isImplicit() && (module != distributed) &&
+      !ctx.LangOpts.hasFeature(Feature::DistributedActorLocalKeyword)) {
     diagnoseAndRemoveAttr(attr, diag::distributed_local_cannot_be_used);
   }
 }

@@ -2754,6 +2754,13 @@ BridgedCallerIsolatedTypeRepr_createParsed(BridgedASTContext cContext,
                                            swift::SourceLoc specifierLoc);
 
 SWIFT_NAME(
+    "BridgedDistributedLocalTypeRepr.createParsed(_:base:specifierLoc:)")
+BridgedDistributedLocalTypeRepr
+BridgedDistributedLocalTypeRepr_createParsed(BridgedASTContext cContext,
+                                             BridgedTypeRepr base,
+                                             swift::SourceLoc specifierLoc);
+
+SWIFT_NAME(
     "BridgedTupleTypeRepr.createParsed(_:elements:leftParenLoc:rightParenLoc:)")
 BridgedTupleTypeRepr BridgedTupleTypeRepr_createParsed(
     BridgedASTContext cContext, BridgedArrayRef elements,

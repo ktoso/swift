@@ -3422,6 +3422,7 @@ directReferencesForTypeRepr(Evaluator &evaluator, ASTContext &ctx,
   case TypeReprKind::Existential:
   case TypeReprKind::LifetimeDependent:
   case TypeReprKind::Sending:
+  case TypeReprKind::DistributedLocal:
   case TypeReprKind::GenericArgumentExpr:
     return result;
 

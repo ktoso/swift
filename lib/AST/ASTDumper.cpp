@@ -2630,8 +2630,8 @@ namespace {
       printFlag(VD->isLazyStorageProperty(), "lazy_storage_property",
                 DeclModifierColor);
 
-      printFlag(VD->getAttrs().hasAttribute<KnownToBeLocalAttr>(),
-                "known_to_be_local", DeclModifierColor);
+      printFlag(VD->getAttrs().hasAttribute<DistributedLocalAttr>(),
+                "distributed(local)", DeclModifierColor);
       if (auto *nonisolatedAttr =
               VD->getAttrs().getAttribute<NonisolatedAttr>()) {
         if (nonisolatedAttr->isUnsafe()) {
@@ -2714,8 +2714,8 @@ namespace {
                               Label::optional("default_arg_capture_info"));
       }
       
-      printFlag(PD->getAttrs().hasAttribute<KnownToBeLocalAttr>(),
-                "known_to_be_local", DeclModifierColor);
+      printFlag(PD->getAttrs().hasAttribute<DistributedLocalAttr>(),
+                "distributed(local)", DeclModifierColor);
 
       printAttributes(PD);
 
@@ -3202,8 +3202,8 @@ void ValueDecl::dumpRef(raw_ostream &os) const {
     cast<ModuleDecl>(this)->getReverseFullModuleName().printForward(os);
   }
 
-  if (getAttrs().hasAttribute<KnownToBeLocalAttr>()) {
-    os << " known-to-be-local";
+  if (getAttrs().hasAttribute<DistributedLocalAttr>()) {
+    os << " distributed(local)";
   }
 
   // Print location.
@@ -4888,6 +4888,12 @@ public:
     printFoot();
   }
 
+  void visitDistributedLocalTypeRepr(DistributedLocalTypeRepr *T, Label label) {
+    printCommon("distributed(local)", label);
+    printRec(T->getBase(), Label::optional("base"));
+    printFoot();
+  }
+
   void visitCompileTimeLiteralTypeRepr(CompileTimeLiteralTypeRepr *T, Label label) {
     printCommon("_const", label);
     printRec(T->getBase(), Label::optional("base"));
@@ -5101,7 +5107,7 @@ public:
                        inherits_convenience_initializers)
   TRIVIAL_ATTR_PRINTER(Inlinable, inlinable)
   TRIVIAL_ATTR_PRINTER(Isolated, isolated)
-  TRIVIAL_ATTR_PRINTER(KnownToBeLocal, known_to_be_local)
+  TRIVIAL_ATTR_PRINTER(DistributedLocal, distributed(local))
   TRIVIAL_ATTR_PRINTER(LLDBDebuggerFunction, lldb_debugger_function)
   TRIVIAL_ATTR_PRINTER(Lazy, lazy)
   TRIVIAL_ATTR_PRINTER(LegacyConsuming, legacy_consuming)

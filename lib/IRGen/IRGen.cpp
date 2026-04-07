@@ -1091,6 +1091,10 @@ static void setPointerAuthOptions(PointerAuthOptions &opts,
       codeKey, /*address*/ false, Discrimination::Constant,
       SpecialPointerAuthDiscriminators::ClangTypeTaskContinuationFunction);
 
+  opts.ClangTypeThrowingTaskFutureWaitContinuationFunction = PointerAuthSchema(
+      codeKey, /*address*/ false, Discrimination::Constant,
+      SpecialPointerAuthDiscriminators::ClangTypeThrowingTaskFutureWaitContinuationFunction);
+
   opts.GetExtraInhabitantTagFunction = PointerAuthSchema(
       codeKey, /*address*/ false, Discrimination::Constant,
       SpecialPointerAuthDiscriminators::GetExtraInhabitantTagFunction);

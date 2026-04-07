@@ -4928,6 +4928,7 @@ public:
         param->isConstVal(),
         param->isSending(),
         param->isAddressable(),
+        param->isDistributedLocal(),
         getRawStableDefaultArgumentKind(argKind),
         S.addTypeRef(defaultExprType),
         getRawStableActorIsolationKind(isolation.getKind()),
@@ -6063,7 +6064,8 @@ public:
           paramFlags.isAutoClosure(), paramFlags.isNonEphemeral(), rawOwnership,
           paramFlags.isIsolated(), paramFlags.isNoDerivative(),
           paramFlags.isCompileTimeLiteral(), paramFlags.isConstValue(),
-          paramFlags.isSending(), paramFlags.isAddressable());
+          paramFlags.isSending(), paramFlags.isAddressable(),
+          paramFlags.isDistributedLocal());
     }
   }
 

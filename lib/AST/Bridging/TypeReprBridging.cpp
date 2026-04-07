@@ -196,6 +196,12 @@ BridgedCallerIsolatedTypeRepr BridgedCallerIsolatedTypeRepr_createParsed(
       CallerIsolatedTypeRepr(base.unbridged(), specifierLoc);
 }
 
+BridgedDistributedLocalTypeRepr BridgedDistributedLocalTypeRepr_createParsed(
+    BridgedASTContext cContext, BridgedTypeRepr base, SourceLoc specifierLoc) {
+  return new (cContext.unbridged())
+      DistributedLocalTypeRepr(base.unbridged(), specifierLoc);
+}
+
 BridgedVarargTypeRepr BridgedVarargTypeRepr_createParsed(
     BridgedASTContext cContext, BridgedTypeRepr base, SourceLoc ellipsisLoc) {
   ASTContext &context = cContext.unbridged();

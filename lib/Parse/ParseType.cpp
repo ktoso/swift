@@ -63,6 +63,10 @@ Parser::ParsedTypeAttributeList::applyAttributesToType(Parser &p,
     ty = new (p.Context) CallerIsolatedTypeRepr(ty, CallerIsolatedLoc);
   }
 
+  if (DistributedLocalLoc.isValid()) {
+    ty = new (p.Context) DistributedLocalTypeRepr(ty, DistributedLocalLoc);
+  }
+
   if (lifetimeEntry) {
     ty = LifetimeDependentTypeRepr::create(p.Context, ty, lifetimeEntry);
   }
@@ -1833,6 +1837,30 @@ bool Parser::canParseNonisolatedAsTypeModifier() {
   return consumeIf(tok::r_paren);
 }
 
+bool Parser::canParseDistributedLocalAsTypeModifier() {
+  if (!Context.LangOpts.hasFeature(Feature::DistributedActorLocalKeyword))
+    return false;
+  assert(Tok.isContextualKeyword("distributed"));
+
+  BacktrackingScope scope(*this);
+
+  // Consume 'distributed'
+  consumeToken();
+
+  if (Tok.isAtStartOfLine())
+    return false;
+
+  if (!consumeIf(tok::l_paren))
+    return false;
+
+  if (!Tok.isContextualKeyword("local"))
+    return false;
+
+  consumeToken();
+
+  return consumeIf(tok::r_paren);
+}
+
 bool Parser::canParseTypeScalar() {
   // Accept 'inout' at for better recovery.
   consumeIf(tok::kw_inout);
@@ -1847,6 +1875,14 @@ bool Parser::canParseTypeScalar() {
     // consume 'nonisolated'
     consumeToken();
     // skip '(nonsending)'
+    skipSingle();
+  }
+
+  if (Tok.isContextualKeyword("distributed") &&
+      canParseDistributedLocalAsTypeModifier()) {
+    // consume 'distributed'
+    consumeToken();
+    // skip '(local)'
     skipSingle();
   }
 

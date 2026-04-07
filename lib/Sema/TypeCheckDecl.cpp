@@ -2218,6 +2218,10 @@ ParamSpecifierRequest::evaluate(Evaluator &evaluator,
     nestedRepr = callerIsolated->getBase();
   }
 
+  if (auto distributedLocal = dyn_cast<DistributedLocalTypeRepr>(nestedRepr)) {
+    nestedRepr = distributedLocal->getBase();
+  }
+
   if (auto sending = dyn_cast<SendingTypeRepr>(nestedRepr)) {
     // If we do not have an Ownership Repr and do not have a no escape type,
     // return implicit copyable consuming.

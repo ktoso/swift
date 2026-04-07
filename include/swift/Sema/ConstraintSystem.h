@@ -959,6 +959,9 @@ private:
   /// The set of parameters that have been inferred to be 'isolated'.
   llvm::SmallDenseSet<ParamDecl *, 2> isolatedParams;
 
+  /// The set of parameters that have been inferred to be 'distributed(local)'.
+  llvm::SmallDenseSet<ParamDecl *, 2> distributedLocalParams;
+
   /// The set of closures that have been inferred to be "isolated by
   /// preconcurrency".
   llvm::SmallDenseSet<const ClosureExpr *, 2> preconcurrencyClosures;
@@ -2518,6 +2521,13 @@ public:
 
   /// Undo the above change.
   void removeIsolatedParam(ParamDecl *param);
+
+  /// Used by the above to update distributedLocalParams and record a change in
+  /// the trail.
+  void recordDistributedLocalParam(ParamDecl *param);
+
+  /// Undo the above change.
+  void removeDistributedLocalParam(ParamDecl *param);
 
   /// Used by the above to update preconcurrencyClosures and record a change in
   /// the trail.

@@ -6735,7 +6735,7 @@ public:
 
   /// Is this var known to be a "local" distributed actor,
   /// if so the implicit throwing and some isolation checks can be skipped.
-  bool isKnownToBeLocal() const;
+  bool isDistributedLocal() const;
 
   /// Is this a stored property that will _not_ trigger any user-defined code
   /// upon any kind of access?
@@ -7094,6 +7094,9 @@ class ParamDecl : public VarDecl {
 
     /// Whether or not this parameter is 'sending'.
     IsSending = 1 << 4,
+
+    /// Whether or not this parameter is 'distributed(local)'.
+    IsDistributedLocal = 1 << 5,
   };
 
   /// The type repr and 3 bits used for flags.
@@ -7404,6 +7407,18 @@ public:
       addFlag(Flag::IsAddressable);
     else
       removeFlag(Flag::IsAddressable);
+  }
+
+  /// Whether or not this parameter is marked with 'distributed(local)'.
+  bool isDistributedLocal() const {
+    return getOptions().contains(Flag::IsDistributedLocal);
+  }
+
+  void setDistributedLocal(bool value = true) {
+    if (value)
+      addFlag(Flag::IsDistributedLocal);
+    else
+      removeFlag(Flag::IsDistributedLocal);
   }
 
   /// Whether or not this parameter is marked with '_const'.

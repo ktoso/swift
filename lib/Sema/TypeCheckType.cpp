@@ -2461,6 +2461,9 @@ namespace {
                                           TypeResolutionOptions options);
     NeverNullType resolveSendingTypeRepr(SendingTypeRepr *repr,
                                          TypeResolutionOptions options);
+    NeverNullType
+    resolveDistributedLocalTypeRepr(DistributedLocalTypeRepr *repr,
+                                    TypeResolutionOptions options);
     NeverNullType resolveCallerIsolatedTypeRepr(CallerIsolatedTypeRepr *repr,
                                                 TypeResolutionOptions options);
     NeverNullType
@@ -2951,6 +2954,9 @@ NeverNullType TypeResolver::resolveType(TypeRepr *repr,
     return resolveIsolatedTypeRepr(cast<IsolatedTypeRepr>(repr), options);
   case TypeReprKind::Sending:
     return resolveSendingTypeRepr(cast<SendingTypeRepr>(repr), options);
+  case TypeReprKind::DistributedLocal:
+    return resolveDistributedLocalTypeRepr(
+        cast<DistributedLocalTypeRepr>(repr), options);
   case TypeReprKind::CallerIsolated:
     return resolveCallerIsolatedTypeRepr(cast<CallerIsolatedTypeRepr>(repr),
                                          options);
@@ -4081,6 +4087,7 @@ TypeResolver::resolveASTFunctionTypeParams(TupleTypeRepr *inputRepr,
     bool compileTimeLiteral = false;
     bool isSending = false;
     bool isConstVal = false;
+    bool isDistributedLocal = false;
     while (true) {
       if (auto *specifierRepr = dyn_cast<SpecifierTypeRepr>(nestedRepr)) {
         switch (specifierRepr->getKind()) {
@@ -4103,6 +4110,10 @@ TypeResolver::resolveASTFunctionTypeParams(TupleTypeRepr *inputRepr,
           continue;
         case TypeReprKind::ConstValue:
           isConstVal = true;
+          nestedRepr = specifierRepr->getBase();
+          continue;
+        case TypeReprKind::DistributedLocal:
+          isDistributedLocal = true;
           nestedRepr = specifierRepr->getBase();
           continue;
         default:
@@ -4214,7 +4225,7 @@ TypeResolver::resolveASTFunctionTypeParams(TupleTypeRepr *inputRepr,
     auto paramFlags = ParameterTypeFlags::fromParameterType(
         ty, variadic, autoclosure, /*isNonEphemeral*/ false, ownership,
         isolated, noDerivative, compileTimeLiteral, isSending, addressable,
-        isConstVal);
+        isConstVal, isDistributedLocal);
     elements.emplace_back(ty, argumentLabel, paramFlags, parameterName);
   }
 
@@ -5658,6 +5669,53 @@ TypeResolver::resolveSendingTypeRepr(SendingTypeRepr *repr,
 }
 
 NeverNullType
+TypeResolver::resolveDistributedLocalTypeRepr(DistributedLocalTypeRepr *repr,
+                                              TypeResolutionOptions options) {
+  // distributed(local) is only valid in function input and result positions
+  if (!options.is(TypeResolverContext::ClosureExpr) &&
+      !options.is(TypeResolverContext::FunctionResult) &&
+      (!options.is(TypeResolverContext::FunctionInput) ||
+       options.hasBase(TypeResolverContext::EnumElementDecl))) {
+    diagnoseInvalid(repr, repr->getSpecifierLoc(),
+                    diag::distributed_local_only_on_params_and_results);
+    return ErrorType::get(getASTContext());
+  }
+
+  // Resolve the base type
+  auto baseTy = resolveType(repr->getBase(), options);
+  if (baseTy->hasError())
+    return baseTy;
+
+  // Validate that the base type is a distributed actor
+  // Unwrap optional and DynamicSelf
+  Type checkTy = baseTy;
+  if (auto optTy = checkTy->getOptionalObjectType())
+    checkTy = optTy;
+  if (auto dynSelf = checkTy->getAs<DynamicSelfType>())
+    checkTy = dynSelf->getSelfType();
+
+  if (auto nominal = checkTy->getAnyNominal()) {
+    if (nominal->isDistributedActor())
+      return baseTy;
+  }
+
+  // Also accept generic parameters with DistributedActor conformance
+  if (checkTy->isTypeParameter()) {
+    auto genericSig = resolution.getGenericSignature();
+    if (genericSig) {
+      auto *proto =
+          getASTContext().getProtocol(KnownProtocolKind::DistributedActor);
+      if (proto && genericSig->requiresProtocol(checkTy, proto))
+        return baseTy;
+    }
+  }
+
+  diagnoseInvalid(repr, repr->getSpecifierLoc(),
+                  diag::distributed_local_not_distributed_actor);
+  return ErrorType::get(getASTContext());
+}
+
+NeverNullType
 TypeResolver::resolveCallerIsolatedTypeRepr(CallerIsolatedTypeRepr *repr,
                                             TypeResolutionOptions options) {
   Type type;
@@ -6943,6 +7001,7 @@ private:
     case TypeReprKind::LifetimeDependent:
     case TypeReprKind::GenericArgumentExpr:
     case TypeReprKind::CallerIsolated:
+    case TypeReprKind::DistributedLocal:
       return false;
     }
   }

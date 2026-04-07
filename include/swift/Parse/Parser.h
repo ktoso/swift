@@ -1198,6 +1198,8 @@ public:
       return true;
     if (isCallerIsolatedSpecifier())
       return true;
+    if (isDistributedLocalSpecifier())
+      return true;
     if (Tok.isContextualKeyword("sending"))
       return true;
     return false;
@@ -1219,6 +1221,25 @@ public:
     if (!Tok.isContextualKeyword("nonisolated"))
       return false;
     return peekToken().isFollowingLParen();
+  }
+
+  bool isDistributedLocalSpecifier() {
+    if (!Context.LangOpts.hasFeature(Feature::DistributedActorLocalKeyword))
+      return false;
+    if (!Tok.isContextualKeyword("distributed"))
+      return false;
+    if (!peekToken().isFollowingLParen())
+      return false;
+    // Use lookahead to verify the full distributed(local) sequence
+    return lookahead(1, [&](CancellableBacktrackingScope &) {
+      // We're now past 'distributed', at '('
+      if (!consumeIf(tok::l_paren))
+        return false;
+      if (!Tok.isContextualKeyword("local"))
+        return false;
+      consumeToken(); // 'local'
+      return Tok.is(tok::r_paren);
+    });
   }
 
   bool canHaveParameterSpecifierContextualKeyword() {
@@ -1459,6 +1480,7 @@ public:
     SourceLoc ConstLoc;
     SourceLoc SendingLoc;
     SourceLoc CallerIsolatedLoc;
+    SourceLoc DistributedLocalLoc;
     SmallVector<TypeOrCustomAttr> Attributes;
     LifetimeEntry *lifetimeEntry = nullptr;
 
@@ -1582,6 +1604,9 @@ public:
 
     /// The location of the 'sending' keyword if present.
     SourceLoc SendingLoc;
+
+    /// The location of the 'distributed(local)' specifier if present.
+    SourceLoc DistributedLocalLoc;
 
     /// The type following the ':'.
     TypeRepr *Type = nullptr;
@@ -1769,6 +1794,7 @@ public:
   /// Returns true if `nonisolated` contextual keyword could be parsed
   /// as part of the type a the current location.
   bool canParseNonisolatedAsTypeModifier();
+  bool canParseDistributedLocalAsTypeModifier();
 
   /// Returns true if the current token is '->' or effects specifiers followed
   /// by '->'.

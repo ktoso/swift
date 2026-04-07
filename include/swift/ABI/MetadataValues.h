@@ -1770,6 +1770,9 @@ namespace SpecialPointerAuthDiscriminators {
   // C type TaskContinuationFunction* descriminator.
   const uint16_t ClangTypeTaskContinuationFunction = 0x2abe; // = 10942
 
+  // C type ThrowingTaskFutureWaitContinuationFunction* discriminator
+  const uint16_t ClangTypeThrowingTaskFutureWaitContinuationFunction = 0x73d8; // = 29656
+
   /// Dispatch integration.
   const uint16_t DispatchInvokeFunction = 0xf493; // = 62611
 

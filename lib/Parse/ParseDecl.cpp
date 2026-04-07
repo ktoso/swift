@@ -5388,6 +5388,36 @@ ParserStatus Parser::parseDeclModifierList(DeclAttributes &Attributes,
       if (!Kind)
         break;
 
+      // Reject 'distributed(local)' on declarations — it is only valid as a
+      // type specifier on parameters and results
+      if (Kind == DeclAttrKind::DistributedActor &&
+          Context.LangOpts.hasFeature(Feature::DistributedActorLocalKeyword) &&
+          peekToken().isFollowingLParen()) {
+        CancellableBacktrackingScope scope(*this);
+        auto distributedLoc = Tok.getLoc();
+        consumeToken(); // 'distributed'
+        auto lParenLoc = Tok.getLoc();
+        if (consumeIf(tok::l_paren) &&
+            Tok.isContextualKeyword("local")) {
+          consumeToken(); // 'local'
+          if (Tok.is(tok::r_paren)) {
+            auto rParenLoc = Tok.getLoc();
+            // This IS distributed(local) — cancel backtrack and diagnose
+            scope.cancelBacktrack();
+            consumeToken(); // ')'
+            diagnose(lParenLoc, diag::distributed_local_on_decl);
+            diagnose(lParenLoc,
+                     diag::distributed_local_on_decl_remove_local)
+                .fixItRemove(SourceRange(lParenLoc, rParenLoc));
+            diagnose(distributedLoc,
+                     diag::distributed_local_on_decl_remove_distributed)
+                .fixItRemove(SourceRange(distributedLoc, rParenLoc));
+            continue;
+          }
+        }
+        // Not distributed(local), backtrack and fall through
+      }
+
       Tok.setKind(tok::contextual_keyword);
 
       if (Kind == DeclAttrKind::Actor) {
@@ -5561,6 +5591,50 @@ ParserStatus Parser::ParsedTypeAttributeList::slowParse(Parser &P) {
       }
 
       CallerIsolatedLoc = kwLoc;
+      continue;
+    }
+
+    // distributed(local)
+    if (Tok.isContextualKeyword("distributed")) {
+      if (!P.Context.LangOpts.hasFeature(
+              Feature::DistributedActorLocalKeyword)) {
+        break; // let normal distributed parsing handle it
+      }
+
+      // Peek for '(' to distinguish from `distributed actor`
+      if (!P.peekToken().isFollowingLParen())
+        break;
+
+      Tok.setKind(tok::contextual_keyword);
+      auto kwLoc = P.consumeToken();
+
+      if (DistributedLocalLoc.isValid()) {
+        P.diagnose(kwLoc, diag::distributed_local_repeated)
+            .fixItRemove(kwLoc);
+      }
+
+      // '('
+      if (!P.consumeIfAttributeLParen()) {
+        P.diagnose(P.Tok, diag::distributed_local_expected_lparen);
+        status.setIsParseError();
+        continue;
+      }
+
+      if (!P.Tok.isContextualKeyword("local")) {
+        P.diagnose(P.Tok, diag::distributed_local_incorrect_modifier);
+        status.setIsParseError();
+        continue;
+      }
+      (void)P.consumeToken();
+
+      // ')'
+      if (!P.consumeIf(tok::r_paren)) {
+        P.diagnose(P.Tok, diag::distributed_local_expected_rparen);
+        status.setIsParseError();
+        continue;
+      }
+
+      DistributedLocalLoc = kwLoc;
       continue;
     }
 
@@ -6080,6 +6154,21 @@ bool Parser::isStartOfSwiftDecl(bool allowPoundIfAttributes,
     if (consumeIfParenthesizedNonisolated(*this)) {
       return isStartOfSwiftDecl(/*allowPoundIfAttributes=*/false,
                                 /*hadAttrsOrModifiers=*/true);
+    }
+  }
+
+  // If this is 'distributed(local)', skip it and check if what follows
+  // starts a declaration. If so, parseDeclModifierList will diagnose it.
+  if (Tok.isContextualKeyword("distributed") && Tok2.isFollowingLParen() &&
+      Context.LangOpts.hasFeature(Feature::DistributedActorLocalKeyword)) {
+    BacktrackingScope backtrack(*this);
+    consumeToken(); // 'distributed'
+    if (consumeIf(tok::l_paren) && Tok.isContextualKeyword("local")) {
+      consumeToken(); // 'local'
+      if (consumeIf(tok::r_paren)) {
+        return isStartOfSwiftDecl(/*allowPoundIfAttributes=*/false,
+                                  /*hadAttrsOrModifiers=*/true);
+      }
     }
   }
 

@@ -922,6 +922,9 @@ void SpecifierTypeRepr::printImpl(ASTPrinter &Printer,
   case TypeReprKind::ConstValue:
     Printer.printKeyword("@const", Opts, " ");
     break;
+  case TypeReprKind::DistributedLocal:
+    Printer << "distributed(local) ";
+    break;
   }
   printTypeRepr(Base, Printer, Opts, nrOpts);
 }

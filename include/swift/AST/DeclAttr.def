@@ -702,7 +702,7 @@ DECL_ATTR(backDeployed, BackDeployed,
   129)
 DECL_ATTR_ALIAS(_backDeploy, BackDeployed)
 
-CONTEXTUAL_SIMPLE_DECL_ATTR(_local, KnownToBeLocal,
+CONTEXTUAL_SIMPLE_DECL_ATTR(_local, DistributedLocal,
   OnFunc | OnParam | OnVar,
   DeclModifier | UserInaccessible | ABIBreakingToAdd | ABIBreakingToRemove | APIBreakingToAdd | APIBreakingToRemove | UnconstrainedInABIAttr,
   130)

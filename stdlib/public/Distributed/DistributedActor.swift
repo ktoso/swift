@@ -398,8 +398,52 @@ extension DistributedActor {
   }
 }
 
-/// Supports the operation to produce an any Actor instance from a local
-/// distributed actor
+// ==== -----------------------------------------------------------------------
+// MARK: distributed(local) known-local actor handling
+
+#if $DistributedActorLocalKeyword
+@available(SwiftStdlib 5.7, *)
+extension DistributedActor {
+
+  /// Executes the passed 'body' only when the distributed actor is a local
+  /// instance, passing it as `distributed(local) Self` so that distributed
+  /// method calls on it do not implicitly throw.
+  ///
+  /// Unlike the `isolated`-based ``whenLocal(_:)``, the closure receives a
+  /// *known-local* reference rather than an *isolated* reference. This means
+  /// `distributed func` calls can be made without `try`, but non-distributed
+  /// members still require crossing the isolation boundary.
+  ///
+  /// When the actor is remote, the closure won't be executed and this
+  /// function will return `nil`.
+  @_alwaysEmitIntoClient
+  public nonisolated func whenLocal<T: Sendable, E>(
+    _ body: @Sendable (distributed(local) Self) async throws(E) -> T
+  ) async throws(E) -> T? {
+    if __isLocalActor(self) {
+       _local let localSelf = self
+       return try await body(localSelf)
+    } else {
+      return nil
+    }
+  }
+
+  /// Returns `self` as a known-local reference if this actor is local,
+  /// or `nil` if it is a remote reference.
+  ///
+  /// This is a lightweight alternative to ``whenLocal(_:)`` when you just
+  /// need the local reference without a closure.
+  @_alwaysEmitIntoClient
+  public nonisolated var maybeLocal: (distributed(local) Self)? {
+    if __isLocalActor(self) {
+      _local let localSelf = self
+      return localSelf
+    } else {
+      return nil
+    }
+  }
+}
+#endif
 @available(SwiftStdlib 5.7, *)
 extension DistributedActor {
   @_alwaysEmitIntoClient

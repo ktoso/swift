@@ -625,6 +625,9 @@ EXPERIMENTAL_FEATURE(BorrowInout, true)
 /// Allow access to the BorrowingSequence protocols/types outside the stdlib.
 EXPERIMENTAL_FEATURE(BorrowingSequence, true)
 
+/// Enable distributed(local) type specifier for distributed actors
+EXPERIMENTAL_FEATURE(DistributedActorLocalKeyword, false)
+
 #undef EXPERIMENTAL_FEATURE_EXCLUDED_FROM_MODULE_INTERFACE
 #undef EXPERIMENTAL_FEATURE
 #undef UPCOMING_FEATURE

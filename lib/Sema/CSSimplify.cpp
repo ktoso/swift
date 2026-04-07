@@ -12084,6 +12084,19 @@ void ConstraintSystem::removeIsolatedParam(ParamDecl *param) {
   ASSERT(erased);
 }
 
+void ConstraintSystem::recordDistributedLocalParam(ParamDecl *param) {
+  bool inserted = distributedLocalParams.insert(param).second;
+  ASSERT(inserted);
+
+  if (solverState)
+    recordChange(SolverTrail::Change::RecordedDistributedLocalParam(param));
+}
+
+void ConstraintSystem::removeDistributedLocalParam(ParamDecl *param) {
+  bool erased = distributedLocalParams.erase(param);
+  ASSERT(erased);
+}
+
 void ConstraintSystem::recordPreconcurrencyClosure(
     const ClosureExpr *closure) {
   bool inserted = preconcurrencyClosures.insert(closure).second;
@@ -12239,6 +12252,11 @@ bool ConstraintSystem::resolveClosure(TypeVariableType *typeVar,
         // Note when a parameter is inferred to be isolated.
         if (contextualParam->isIsolated() && !flags.isIsolated() && paramDecl)
           recordIsolatedParam(paramDecl);
+
+        // Note when a parameter is inferred to be distributed(local).
+        if (contextualParam->isDistributedLocal() &&
+            !flags.isDistributedLocal() && paramDecl)
+          recordDistributedLocalParam(paramDecl);
 
         // Carry-over the ownership specifier from the contextual parameter.
         auto paramOwnership =

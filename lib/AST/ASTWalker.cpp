@@ -2384,6 +2384,10 @@ bool Traversal::visitCallerIsolatedTypeRepr(CallerIsolatedTypeRepr *T) {
   return doIt(T->getBase());
 }
 
+bool Traversal::visitDistributedLocalTypeRepr(DistributedLocalTypeRepr *T) {
+  return doIt(T->getBase());
+}
+
 bool Traversal::visitCompileTimeLiteralTypeRepr(CompileTimeLiteralTypeRepr *T) {
   return doIt(T->getBase());
 }

@@ -469,6 +469,9 @@ public:
   /// The set of parameters that have been inferred to be 'isolated'.
   llvm::DenseSet<ParamDecl *> isolatedParams;
 
+  /// The set of parameters that have been inferred to be 'distributed(local)'.
+  llvm::DenseSet<ParamDecl *> distributedLocalParams;
+
   /// The set of closures that have been inferred to be "isolated by
   /// preconcurrency".
   llvm::DenseSet<const ClosureExpr *> preconcurrencyClosures;

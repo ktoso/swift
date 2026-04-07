@@ -5929,8 +5929,12 @@ ERROR(distributed_actor_isolated_method,none,
       "only 'distributed' instance methods can be called on a potentially remote distributed actor",
       ())
 ERROR(distributed_local_cannot_be_used,none,
-      "'local' cannot be used in user-defined code currently",
+      "'distributed(local)' cannot be used in user-defined code currently",
       ())
+ERROR(distributed_local_only_on_params_and_results,none,
+      "'distributed(local)' may only be used on parameters and results", ())
+ERROR(distributed_local_not_distributed_actor,none,
+      "'distributed(local)' parameter must be a distributed actor type", ())
 ERROR(distributed_actor_func_param_not_codable,none,
       "parameter %0 of type %1 in %kindonly2 does not conform to "
       "serialization requirement '%3'",

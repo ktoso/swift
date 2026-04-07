@@ -2563,7 +2563,8 @@ class ParameterTypeFlags {
     Sending = 1 << 9,
     Addressable = 1 << 10,
     ConstValue = 1 << 11,
-    NumBits = 12
+    DistributedLocal = 1 << 12,
+    NumBits = 13
   };
   OptionSet<ParameterFlags> value;
   static_assert(NumBits <= 8*sizeof(OptionSet<ParameterFlags>), "overflowed");
@@ -2579,7 +2580,7 @@ public:
   ParameterTypeFlags(bool variadic, bool autoclosure, bool nonEphemeral,
                      ParamSpecifier specifier, bool isolated, bool noDerivative,
                      bool compileTimeLiteral, bool isSending, bool isAddressable,
-                     bool isConstValue)
+                     bool isConstValue, bool isDistributedLocal = false)
       : value((variadic ? Variadic : 0) | (autoclosure ? AutoClosure : 0) |
               (nonEphemeral ? NonEphemeral : 0) |
               uint8_t(specifier) << SpecifierShift | (isolated ? Isolated : 0) |
@@ -2587,14 +2588,16 @@ public:
               (compileTimeLiteral ? CompileTimeLiteral : 0) |
               (isSending ? Sending : 0) |
               (isAddressable ? Addressable : 0) |
-              (isConstValue ? ConstValue : 0)) {}
+              (isConstValue ? ConstValue : 0) |
+              (isDistributedLocal ? DistributedLocal : 0)) {}
 
   /// Create one from what's present in the parameter type
   inline static ParameterTypeFlags
   fromParameterType(Type paramTy, bool isVariadic, bool isAutoClosure,
                     bool isNonEphemeral, ParamSpecifier ownership,
                     bool isolated, bool isNoDerivative, bool compileTimeLiteral,
-                    bool isSending, bool isAddressable, bool isConstVal);
+                    bool isSending, bool isAddressable, bool isConstVal,
+                    bool isDistributedLocal = false);
 
   bool isNone() const { return !value; }
   bool isVariadic() const { return value.contains(Variadic); }
@@ -2609,6 +2612,7 @@ public:
   bool isSending() const { return value.contains(Sending); }
   bool isAddressable() const { return value.contains(Addressable); }
   bool isConstValue() const { return value.contains(ConstValue); }
+  bool isDistributedLocal() const { return value.contains(DistributedLocal); }
 
   /// Get the spelling of the parameter specifier used on the parameter.
   ParamSpecifier getOwnershipSpecifier() const {
@@ -2686,6 +2690,12 @@ public:
     return ParameterTypeFlags(withAddressable
                                   ? value | ParameterTypeFlags::Addressable
                                   : value - ParameterTypeFlags::Addressable);
+  }
+
+  ParameterTypeFlags withDistributedLocal(bool distributedLocal) const {
+    return ParameterTypeFlags(distributedLocal
+                                  ? value | ParameterTypeFlags::DistributedLocal
+                                  : value - ParameterTypeFlags::DistributedLocal);
   }
 
   bool operator ==(const ParameterTypeFlags &other) const {
@@ -3585,6 +3595,9 @@ public:
     bool isNoDerivative() const { return Flags.isNoDerivative(); }
     
     bool isAddressable() const { return Flags.isAddressable(); }
+
+    /// Whether the parameter is 'distributed(local)'.
+    bool isDistributedLocal() const { return Flags.isDistributedLocal(); }
 
     /// Whether the parameter might be a semantic result for autodiff purposes.
     /// This includes inout parameters.
@@ -8573,7 +8586,7 @@ inline ParameterTypeFlags ParameterTypeFlags::fromParameterType(
     Type paramTy, bool isVariadic, bool isAutoClosure, bool isNonEphemeral,
     ParamSpecifier ownership, bool isolated, bool isNoDerivative,
     bool compileTimeLiteral, bool isSending, bool isAddressable,
-    bool isConstVal) {
+    bool isConstVal, bool isDistributedLocal) {
   // FIXME(Remove InOut): The last caller that needs this is argument
   // decomposition.  Start by enabling the assertion there and fixing up those
   // callers, then remove this, then remove
@@ -8585,7 +8598,7 @@ inline ParameterTypeFlags ParameterTypeFlags::fromParameterType(
   }
   return {isVariadic, isAutoClosure,  isNonEphemeral,   ownership,
           isolated,   isNoDerivative, compileTimeLiteral, isSending,
-          isAddressable, isConstVal};
+          isAddressable, isConstVal, isDistributedLocal};
 }
 
 inline const Type *BoundGenericType::getTrailingObjectsPointer() const {

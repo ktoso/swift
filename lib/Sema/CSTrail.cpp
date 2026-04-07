@@ -307,6 +307,14 @@ SolverTrail::Change::RecordedIsolatedParam(ParamDecl *param) {
 }
 
 SolverTrail::Change
+SolverTrail::Change::RecordedDistributedLocalParam(ParamDecl *param) {
+  Change result;
+  result.Kind = ChangeKind::RecordedDistributedLocalParam;
+  result.TheParam = param;
+  return result;
+}
+
+SolverTrail::Change
 SolverTrail::Change::RecordedKeyPath(KeyPathExpr *expr) {
   Change result;
   result.Kind = ChangeKind::RecordedKeyPath;
@@ -568,6 +576,10 @@ void SolverTrail::Change::undo(ConstraintSystem &cs) const {
 
   case ChangeKind::RecordedIsolatedParam:
     cs.removeIsolatedParam(TheParam);
+    break;
+
+  case ChangeKind::RecordedDistributedLocalParam:
+    cs.removeDistributedLocalParam(TheParam);
     break;
 
   case ChangeKind::RecordedPreconcurrencyClosure:
@@ -859,6 +871,12 @@ void SolverTrail::Change::dump(llvm::raw_ostream &out,
 
   case ChangeKind::RecordedIsolatedParam:
     out << "(RecordedIsolatedParam ";
+    TheParam->dumpRef(out);
+    out << ")\n";
+    break;
+
+  case ChangeKind::RecordedDistributedLocalParam:
+    out << "(RecordedDistributedLocalParam ";
     TheParam->dumpRef(out);
     out << ")\n";
     break;

@@ -2223,6 +2223,21 @@ ERROR(nonisolated_nonsending_expected_rparen,PointsToFirstBadToken,
 ERROR(nonisolated_nonsending_repeated,none,
       "parameter may have at most one 'nonisolated(nonsending)' specifier", ())
 
+ERROR(distributed_local_expected_lparen,PointsToFirstBadToken,
+      "expected '(' following 'distributed'", ())
+ERROR(distributed_local_incorrect_modifier,PointsToFirstBadToken,
+      "expected 'local' in modifier", ())
+ERROR(distributed_local_expected_rparen,PointsToFirstBadToken,
+      "expected ')' after 'distributed(local)' modifier", ())
+ERROR(distributed_local_repeated,none,
+      "parameter may have at most one 'distributed(local)' specifier", ())
+ERROR(distributed_local_on_decl,none,
+      "'distributed(local)' cannot be used on declarations", ())
+NOTE(distributed_local_on_decl_remove_local,none,
+     "remove '(local)' to declare a 'distributed actor' which may be remote", ())
+NOTE(distributed_local_on_decl_remove_distributed,none,
+     "remove 'distributed' to declare a local-only 'actor'", ())
+
 //------------------------------------------------------------------------------
 // MARK: using @<attribute> or using <identifier>
 //------------------------------------------------------------------------------

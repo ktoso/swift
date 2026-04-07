@@ -254,6 +254,9 @@ public:
     /// Create a change that recorded an isolated parameter.
     static Change RecordedIsolatedParam(ParamDecl *param);
 
+    /// Create a change that recorded a distributed(local) parameter.
+    static Change RecordedDistributedLocalParam(ParamDecl *param);
+
     /// Create a change that recorded a key path expression.
     static Change RecordedKeyPath(KeyPathExpr *expr);
 

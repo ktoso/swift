@@ -4252,6 +4252,7 @@ public:
     bool isCompileTimeLiteral, isConstValue;
     bool isSending;
     bool isAddressable;
+    bool isDistributedLocal;
     uint8_t rawDefaultArg;
     TypeID defaultExprType;
     uint8_t rawDefaultArgIsolation;
@@ -4265,6 +4266,7 @@ public:
                                          isConstValue,
                                          isSending,
                                          isAddressable,
+                                         isDistributedLocal,
                                          rawDefaultArg,
                                          defaultExprType,
                                          rawDefaultArgIsolation,
@@ -4311,6 +4313,7 @@ public:
     param->setConstValue(isConstValue);
     param->setSending(isSending);
     param->setAddressable(isAddressable);
+    param->setDistributedLocal(isDistributedLocal);
 
     // Decode the default argument kind.
     // FIXME: Default argument expression, if available.
@@ -7465,12 +7468,13 @@ detail::function_deserializer::deserialize(ModuleFile &MF,
     TypeID typeID;
     bool isVariadic, isAutoClosure, isNonEphemeral, isIsolated,
         isCompileTimeLiteral, isConstValue;
-    bool isNoDerivative, isSending, isAddressable;
+    bool isNoDerivative, isSending, isAddressable, isDistributedLocal;
     unsigned rawOwnership;
     decls_block::FunctionParamLayout::readRecord(
         scratch, labelID, internalLabelID, typeID, isVariadic, isAutoClosure,
         isNonEphemeral, rawOwnership, isIsolated, isNoDerivative,
-        isCompileTimeLiteral, isConstValue, isSending, isAddressable);
+        isCompileTimeLiteral, isConstValue, isSending, isAddressable,
+        isDistributedLocal);
 
     auto ownership = getActualParamDeclSpecifier(
       (serialization::ParamDeclSpecifier)rawOwnership);
@@ -7486,7 +7490,8 @@ detail::function_deserializer::deserialize(ModuleFile &MF,
                                            isNonEphemeral, *ownership,
                                            isIsolated, isNoDerivative,
                                            isCompileTimeLiteral, isSending,
-                                           isAddressable, isConstValue),
+                                           isAddressable, isConstValue,
+                                           isDistributedLocal),
                         MF.getIdentifier(internalLabelID));
   }
 
