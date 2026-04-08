@@ -2237,6 +2237,12 @@ NOTE(distributed_local_on_decl_remove_local,none,
      "remove '(local)' to declare a 'distributed actor' which may be remote", ())
 NOTE(distributed_local_on_decl_remove_distributed,none,
      "remove 'distributed' to declare a local-only 'actor'", ())
+NOTE(distributed_local_on_decl_remove_local_for,none,
+     "remove '(local)' to declare a 'distributed %0'", (StringRef))
+NOTE(distributed_local_on_decl_remove_local_non_actor,none,
+     "remove '(local)' to declare a 'distributed actor'", ())
+NOTE(distributed_local_on_decl_remove_distributed_non_actor,none,
+     "remove 'distributed(local)' to declare a local-only 'actor'", ())
 
 //------------------------------------------------------------------------------
 // MARK: using @<attribute> or using <identifier>

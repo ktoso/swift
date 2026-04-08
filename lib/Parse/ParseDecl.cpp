@@ -5406,12 +5406,20 @@ ParserStatus Parser::parseDeclModifierList(DeclAttributes &Attributes,
             scope.cancelBacktrack();
             consumeToken(); // ')'
             diagnose(lParenLoc, diag::distributed_local_on_decl);
-            diagnose(lParenLoc,
-                     diag::distributed_local_on_decl_remove_local)
-                .fixItRemove(SourceRange(lParenLoc, rParenLoc));
-            diagnose(distributedLoc,
-                     diag::distributed_local_on_decl_remove_distributed)
-                .fixItRemove(SourceRange(distributedLoc, rParenLoc));
+            bool isActorDecl = Tok.isContextualKeyword("actor");
+            if (isActorDecl) {
+              diagnose(lParenLoc,
+                       diag::distributed_local_on_decl_remove_local)
+                  .fixItRemove(SourceRange(lParenLoc, rParenLoc));
+              diagnose(distributedLoc,
+                       diag::distributed_local_on_decl_remove_distributed)
+                  .fixItRemove(SourceRange(distributedLoc, rParenLoc));
+            } else {
+              diagnose(lParenLoc,
+                       diag::distributed_local_on_decl_remove_local_for,
+                       Tok.getText())
+                  .fixItRemove(SourceRange(lParenLoc, rParenLoc));
+            }
             continue;
           }
         }

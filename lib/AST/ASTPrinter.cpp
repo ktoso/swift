@@ -4285,6 +4285,10 @@ static void printParameterFlags(ASTPrinter &printer,
       printer.printKeyword("isolated", options, " ");
   }
 
+  if (flags.isDistributedLocal()) {
+    printer << "distributed(local) ";
+  }
+
   if (flags.isCompileTimeLiteral())
     printer.printKeyword("_const", options, " ");
 

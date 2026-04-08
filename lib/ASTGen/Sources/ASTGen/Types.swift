@@ -367,6 +367,7 @@ extension ASTGenVisitor {
     var sendingLoc: SourceLoc = nil
     var lifetimeEntry: BridgedLifetimeEntry? = nil
     var nonisolatedLoc: SourceLoc = nil
+    var distributedLocalLoc: SourceLoc = nil
 
     // TODO: Diagnostics for duplicated specifiers, and ordering.
     for node in node.specifiers {
@@ -405,6 +406,8 @@ extension ASTGenVisitor {
         )
       case .nonisolatedTypeSpecifier(_):
         nonisolatedLoc = loc
+      case .distributedLocalTypeSpecifier(let spec):
+        distributedLocalLoc = self.generateSourceLoc(spec.distributedKeyword)
       }
     }
 
@@ -466,6 +469,14 @@ extension ASTGenVisitor {
         self.ctx,
         base: type,
         specifierLoc: nonisolatedLoc
+      ).asTypeRepr
+    }
+
+    if distributedLocalLoc.isValid {
+      type = BridgedDistributedLocalTypeRepr.createParsed(
+        self.ctx,
+        base: type,
+        specifierLoc: distributedLocalLoc
       ).asTypeRepr
     }
 
