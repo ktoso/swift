@@ -880,7 +880,7 @@ extension UnownedTaskExecutor: Equatable {
 }
 
 @_unavailableInEmbedded
-@available(SwiftStdlib 6.0, *)
+@available(SwiftStdlib 6.4, *)
 extension UnownedTaskExecutor: Hashable {
   @inlinable
   public func hash(into hasher: inout Hasher) {
