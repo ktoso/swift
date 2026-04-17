@@ -455,33 +455,40 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     // The trace call:
     auto traceCallExpr = CallExpr::createImplicit(C, traceRemoteCallRef, traceArgsList);
 
-    // Wrap the trace call in an availability check:
-    // if #available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *) { ... }
-    // We use the target platform's domain and set the query manually since
+    // Wrap the trace call in an availability check matching the runtime
+    // availability of the distributed tracing entry points. If we're
+    // compiling for a target where the entry points are always available,
+    // skip the check entirely.
+    //
+    // We have to set the availability query manually here because
     // TypeCheckAvailability won't fill it in for synthesized code with
     // invalid source locations.
-    auto targetDomain = C.getTargetAvailabilityDomain();
-    auto platformSpec = AvailabilitySpec::createForDomain(
-        C, targetDomain, sloc, llvm::VersionTuple(9999), sloc);
-    auto wildcardSpec = AvailabilitySpec::createWildcard(C, sloc);
+    auto tracingAvailability = C.getTracingDistributedAvailability();
+    if (tracingAvailability.isAlwaysAvailable()) {
+      remoteBranchStmts.push_back(traceCallExpr);
+    } else {
+      auto targetDomain = C.getTargetAvailabilityDomain();
+      auto platformSpec = AvailabilitySpec::createForDomain(
+          C, targetDomain, sloc,
+          tracingAvailability.getRawMinimumVersion(), sloc);
+      auto wildcardSpec = AvailabilitySpec::createWildcard(C, sloc);
 
-    auto availableInfo = PoundAvailableInfo::create(
-        C, sloc, sloc, {platformSpec, wildcardSpec}, sloc,
-        /*isUnavailability=*/false);
+      auto availableInfo = PoundAvailableInfo::create(
+          C, sloc, sloc, {platformSpec, wildcardSpec}, sloc,
+          /*isUnavailability=*/false);
 
-    // Set the availability query manually since we have invalid SourceLocs.
-    auto versionRange = VersionRange::allGTE(llvm::VersionTuple(9999));
-    availableInfo->setAvailabilityQuery(AvailabilityQuery::dynamic(
-        targetDomain, AvailabilityRange(versionRange), std::nullopt));
+      availableInfo->setAvailabilityQuery(AvailabilityQuery::dynamic(
+          targetDomain, tracingAvailability, std::nullopt));
 
-    auto traceBraceStmt = BraceStmt::create(C, sloc, {traceCallExpr}, sloc, implicit);
+      auto traceBraceStmt = BraceStmt::create(C, sloc, {traceCallExpr}, sloc, implicit);
 
-    StmtConditionElement conds[1] = { availableInfo };
-    auto availabilityIfStmt = new (C) IfStmt(
-        LabeledStmtInfo(), sloc, C.AllocateCopy(conds), traceBraceStmt,
-        /*elseloc=*/sloc, /*else=*/nullptr, /*implicit=*/true);
+      StmtConditionElement conds[1] = { availableInfo };
+      auto availabilityIfStmt = new (C) IfStmt(
+          LabeledStmtInfo(), sloc, C.AllocateCopy(conds), traceBraceStmt,
+          /*elseloc=*/sloc, /*else=*/nullptr, /*implicit=*/true);
 
-    remoteBranchStmts.push_back(availabilityIfStmt);
+      remoteBranchStmts.push_back(availabilityIfStmt);
+    }
   }
 
   // === Make the 'remoteCall(Void)(...)'
