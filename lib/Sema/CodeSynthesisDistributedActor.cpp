@@ -259,10 +259,14 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
             RCA->getDistributedRemoteCallArgumentInitFunction();
 
         // If the parameter is `some P` / `any P` (or `Optional` thereof) where
-        // P is a `@Resolvable` distributed-actor protocol, encode the actor's
-        // `id` (an `ActorID`, always `Codable`) instead of the actor itself.
-        // Sema (`checkDistributedFunction`) has already verified that P's
-        // `ActorSystem` matches the enclosing actor's `ActorSystem`.
+        // P is a `@Resolvable` distributed-actor protocol, encode the parameter
+        // as the macro-generated `$P` stub. Sema (`checkDistributedFunction`)
+        // has already verified that P's `ActorSystem` matches the enclosing
+        // actor's `ActorSystem`. The stub's auto-synthesized Codable
+        // conformance encodes the actor's `id` on the wire; on the receiver,
+        // `$P.init(from:)` calls `$P.resolve(id:using:)` to materialize the
+        // stub. The resulting `$P` instance conforms to `P`, satisfying the
+        // user-facing `some P` / `any P` parameter.
         Type rcaPayloadType =
             thunk->mapTypeIntoEnvironment(param->getInterfaceType());
         Expr *rcaArgumentExpr = new (C) DeclRefExpr(
@@ -270,15 +274,38 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
             AccessSemantics::Ordinary, rcaPayloadType);
         if (auto resolvableMatch =
                 findResolvableExistentialOrOpaqueProtocol(rcaPayloadType)) {
-          if (auto *enclosingNominal =
-                  thunk->getDeclContext()->getSelfNominalTypeDecl()) {
-            auto actorIDInterfaceTy =
-                getDistributedActorIDType(enclosingNominal);
-            if (actorIDInterfaceTy && !actorIDInterfaceTy->hasError()) {
+          if (auto *stub = getDistributedActorStub(resolvableMatch.proto)) {
+            auto stubInterfaceTy = stub->getDeclaredInterfaceType();
+            if (stubInterfaceTy && !stubInterfaceTy->hasError()) {
               rcaPayloadType =
-                  thunk->mapTypeIntoEnvironment(actorIDInterfaceTy);
-              rcaArgumentExpr = UnresolvedDotExpr::createImplicit(
+                  thunk->mapTypeIntoEnvironment(stubInterfaceTy);
+
+              // Build: paramRef.id
+              auto *paramIdExpr = UnresolvedDotExpr::createImplicit(
                   C, rcaArgumentExpr, C.Id_id);
+
+              // Build: $P (as a metatype expression).
+              auto *stubTypeExpr = TypeExpr::createImplicit(stubInterfaceTy, C);
+
+              // Build: $P.resolve
+              DeclName resolveName(C, C.getIdentifier("resolve"),
+                                   {C.Id_id, C.getIdentifier("using")});
+              auto *resolveAccess = UnresolvedDotExpr::createImplicit(
+                  C, stubTypeExpr, resolveName);
+
+              // Build: system (the local 'let system = self.actorSystem')
+              auto *systemRef = new (C) DeclRefExpr(
+                  ConcreteDeclRef(systemVar), dloc, implicit);
+
+              // Build: $P.resolve(id: paramRef.id, using: system)
+              auto *resolveArgList = ArgumentList::forImplicitCallTo(
+                  DeclNameRef(resolveName), {paramIdExpr, systemRef}, C);
+              auto *resolveCall =
+                  CallExpr::createImplicit(C, resolveAccess, resolveArgList);
+
+              // Wrap in `try` -- resolve is throws.
+              rcaArgumentExpr =
+                  TryExpr::createImplicit(C, sloc, resolveCall);
             }
           }
         }
