@@ -29,13 +29,30 @@ distributed actor RealGreeter: Greeter {
 
 distributed actor Worker {
   distributed func sendAnyGreeter(_ g: any Greeter) async throws -> String {
-    try await g.sayHi()
+    print("sendAnyGreeter type: \(type(of: g))")
+    return try await g.sayHi()
   }
 
   distributed func sendSomeGreeter(_ g: some Greeter) async throws -> String {
-    try await g.sayHi()
+    print("sendSomeGreeter type: \(type(of: g))")
+    return try await g.sayHi()
+  }
+
+  distributed func sendGenericGreeter<G: Greeter>(_ g: G) async throws -> String {
+    print("sendGenericGreeter type: \(type(of: g))")
+    return try await g.sayHi()
   }
 }
+
+// This test exercises the local-branch dispatch where the thunk's
+// `__isRemoteActor(self)` check returns false and the user function is called
+// directly without encoding. `type(of: g)` reflects the original local
+// actor (`RealGreeter`), not `$Greeter`, because no resolve happens.
+//
+// The remote-branch wire round-trip (where the receiver-side decoder would
+// observe `$Greeter`) currently crashes because the runtime metadata for the
+// param is still the user-declared `any/some Greeter` rather than `$Greeter`.
+// That requires Phase 4 IRGen plumbing -- TODO before this can ship.
 
 @main
 struct Main {
@@ -49,12 +66,21 @@ struct Main {
     let r1 = try await worker.sendAnyGreeter(real)
     print("result: \(r1)")
     // CHECK: --- any ---
+    // CHECK: sendAnyGreeter type: RealGreeter
     // CHECK: result: Hi from
 
     print("--- some ---")
     let r2 = try await worker.sendSomeGreeter(real)
     print("result: \(r2)")
     // CHECK: --- some ---
+    // CHECK: sendSomeGreeter type: RealGreeter
+    // CHECK: result: Hi from
+
+    print("--- generic ---")
+    let r3 = try await worker.sendGenericGreeter(real)
+    print("result: \(r3)")
+    // CHECK: --- generic ---
+    // CHECK: sendGenericGreeter type: RealGreeter
     // CHECK: result: Hi from
   }
 }

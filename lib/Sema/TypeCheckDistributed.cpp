@@ -577,6 +577,29 @@ bool CheckDistributedFunctionRequest::evaluate(
               diag::distributed_actor_func_param_resolvable_protocol_no_concrete_actor_system,
               param->getArgumentName(), param->getInterfaceType(), func,
               resolvableProto->getName());
+
+          // Fix-it: insert ` where Self.ActorSystem == <EnclosingSystem>`
+          // before the protocol body's opening brace. We use the enclosing
+          // actor's `ActorSystem` if it is known and concrete; otherwise we
+          // emit just the placeholder for the user to fill in.
+          auto fixItLoc = resolvableProto->getBraces().Start;
+          if (fixItLoc.isValid()) {
+            llvm::SmallString<64> fixIt;
+            fixIt += " where Self.ActorSystem == ";
+            if (enclosingSystemTy && !enclosingSystemTy->hasError() &&
+                !enclosingSystemTy->is<GenericTypeParamType>() &&
+                !enclosingSystemTy->is<ArchetypeType>()) {
+              fixIt += enclosingSystemTy->getString();
+            } else {
+              fixIt += "<#ActorSystem#>";
+            }
+            fixIt += " ";
+            resolvableProto
+                ->diagnose(
+                    diag::distributed_actor_func_param_resolvable_protocol_no_concrete_actor_system_fixit,
+                    resolvableProto->getName())
+                .fixItInsert(fixItLoc, fixIt);
+          }
           return true;
         }
         if (enclosingSystemTy &&

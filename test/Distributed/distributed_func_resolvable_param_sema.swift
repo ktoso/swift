@@ -45,7 +45,7 @@ distributed actor BadComposition {
 // ==== Negative: @Resolvable protocol without concrete ActorSystem ------------
 
 @Resolvable
-protocol GenericProto: DistributedActor, Codable {
+protocol GenericProto: DistributedActor, Codable { // expected-note{{add 'where Self.ActorSystem == ...' to 'GenericProto'}}
   distributed func ping()
 }
 

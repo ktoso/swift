@@ -212,8 +212,21 @@ Type swift::getDistributedActorIDType(NominalTypeDecl *actor) {
 }
 
 Identifier swift::getDistributedActorStubName(ProtocolDecl *proto) {
+  if (!proto)
+    return Identifier();
+
+  auto &ctx = proto->getASTContext();
+
+  // Only well-defined for protocols that refine `DistributedActor`. The
+  // `@Resolvable` macro -- which is the only mechanism that emits `$P` --
+  // requires this. Returning an empty identifier here lets callers like
+  // `ASTMangler` use this helper without a redundant pre-check.
+  auto *distributedActorProto = ctx.getDistributedActorDecl();
+  if (!distributedActorProto || !proto->inheritsFrom(distributedActorProto))
+    return Identifier();
+
   llvm::SmallString<32> buf;
-  return proto->getASTContext().getIdentifier(
+  return ctx.getIdentifier(
       llvm::Twine("$", proto->getNameStr()).toStringRef(buf));
 }
 
