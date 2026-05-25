@@ -69,12 +69,13 @@ Type getDistributedActorSystemType(NominalTypeDecl *actor);
 /// Determine the `ID` type for the given actor.
 Type getDistributedActorIDType(NominalTypeDecl *actor);
 
-/// If \p proto is a distributed-actor protocol that has been attached with
-/// the `@Resolvable` macro, return the generated stub `$P` (a concrete
-/// distributed actor that conforms to \p proto and to `_DistributedActorStub`).
-/// Returns null if no such peer exists, or \p proto is not a distributed-actor
-/// protocol.
+/// If `P` is a distributed-actor protocol that has been attached with the
+/// `@Resolvable` macro, return the generated stub `$P`.
 NominalTypeDecl *getDistributedActorStub(ProtocolDecl *proto);
+
+/// Synthesize the identifier `$<name>` of the `@Resolvable`-generated stub
+/// peer of the given distributed-actor protocol.
+Identifier getDistributedActorStubName(ProtocolDecl *proto);
 
 /// Result of inspecting a `distributed func` parameter or result type for
 /// `@Resolvable` distributed-actor existential / opaque conformance.

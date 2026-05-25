@@ -211,6 +211,12 @@ Type swift::getDistributedActorIDType(NominalTypeDecl *actor) {
   return getAssociatedTypeOfDistributedSystemOfActor(actor, C.Id_ActorID);
 }
 
+Identifier swift::getDistributedActorStubName(ProtocolDecl *proto) {
+  llvm::SmallString<32> buf;
+  return proto->getASTContext().getIdentifier(
+      llvm::Twine("$", proto->getNameStr()).toStringRef(buf));
+}
+
 NominalTypeDecl *swift::getDistributedActorStub(ProtocolDecl *proto) {
   if (!proto)
     return nullptr;
@@ -218,22 +224,20 @@ NominalTypeDecl *swift::getDistributedActorStub(ProtocolDecl *proto) {
   auto &ctx = proto->getASTContext();
 
   // Only relevant for protocols that refine `DistributedActor`.
-  auto *distributedActorProto =
-      ctx.getProtocol(KnownProtocolKind::DistributedActor);
-  if (!distributedActorProto || !proto->inheritsFrom(distributedActorProto))
+  auto *distributedActorProto = ctx.getDistributedActorDecl();
+  if (!distributedActorProto)
+    return nullptr;
+  if (!proto->inheritsFrom(distributedActorProto))
     return nullptr;
 
-  auto *stubProto = ctx.getProtocol(KnownProtocolKind::DistributedActorStub);
+  auto *stubProto = ctx.get_DistributedActorStubDecl();
   if (!stubProto)
     return nullptr;
 
-  // The `@Resolvable` macro generates a peer `distributed actor $<P>` whose
-  // peer scope matches the protocol's parent decl context. Look it up by
-  // synthesizing the prefixed name.
-  llvm::SmallString<32> stubNameBuf;
-  stubNameBuf += "$";
-  stubNameBuf += proto->getName().str();
-  auto stubId = ctx.getIdentifier(stubNameBuf);
+  // The `@Resolvable` macro generates a peer `distributed actor $P`
+  // in the same context as the protocol. Look it up by synthesizing the prefixed name.
+  // Users cannot declare $-prefixed names, so we are confident this is the synthesized type.
+  auto stubId = getDistributedActorStubName(proto);
 
   SmallVector<ValueDecl *, 4> results;
   auto *parentDC = proto->getDeclContext();
