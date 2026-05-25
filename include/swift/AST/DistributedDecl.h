@@ -94,9 +94,9 @@ struct ResolvableProtocolMatch {
 /// conformance to a protocol that has an associated `@Resolvable`-generated
 /// stub `$P` (per `getDistributedActorStub`).
 ///
-/// Handles `any P`, `some P`, generic archetypes constrained to `P`, and one
-/// level of `Optional<...>`. Containers and other compositions are not
-/// unwrapped -- they will fall through to the normal codable check.
+/// Handles `any P`, `some P`, and generic archetypes constrained to `P`.
+/// Containers (`Optional`, arrays, etc.) are not unwrapped -- they will fall
+/// through to the normal codable check.
 ResolvableProtocolMatch findResolvableExistentialOrOpaqueProtocol(Type T);
 
 /// Determine the concrete `ActorSystem` to which protocol \p proto's

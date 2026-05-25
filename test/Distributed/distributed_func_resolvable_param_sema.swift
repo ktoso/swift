@@ -1,6 +1,7 @@
 // RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend-emit-module -emit-module-path %t/FakeDistributedActorSystems.swiftmodule -module-name FakeDistributedActorSystems -target %target-swift-5.7-abi-triple %S/Inputs/FakeDistributedActorSystems.swift
-// RUN: %target-swift-frontend -typecheck -verify -verify-ignore-unrelated -verify-ignore-unknown -target %target-swift-5.7-abi-triple -I %t 2>&1 %s
+// RUN: %target-swift-frontend -typecheck -verify -verify-ignore-unrelated -verify-ignore-unknown -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -I %t 2>&1 %s
+// REQUIRES: swift_swift_parser, asserts
 // REQUIRES: concurrency
 // REQUIRES: distributed
 
@@ -27,9 +28,6 @@ distributed actor Worker {
   // OK: `some Greeter` and `any Greeter` parameters round-trip via $Greeter.
   distributed func sendSomeGreeter(_ g: some Greeter) {}
   distributed func sendAnyGreeter(_ g: any Greeter) {}
-
-  // OK: optional resolvable param.
-  distributed func sendOptional(_ g: (any Greeter)?) {}
 
   // OK: a non-resolvable Codable param alongside a resolvable one.
   distributed func mixed(_ g: any Greeter, count: Int) {}

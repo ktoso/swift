@@ -270,10 +270,6 @@ swift::findResolvableExistentialOrOpaqueProtocol(Type T) {
   if (!T)
     return match;
 
-  // Unwrap one level of Optional so `some DAP?` works.
-  if (auto inner = T->getOptionalObjectType())
-    T = inner;
-
   auto recordMatch = [&](ProtocolDecl *p) {
     if (auto *stub = getDistributedActorStub(p)) {
       (void)stub;
