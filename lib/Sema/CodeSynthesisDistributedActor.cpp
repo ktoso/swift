@@ -257,8 +257,34 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 
         auto remoteCallArgumentInitDecl =
             RCA->getDistributedRemoteCallArgumentInitFunction();
-        auto boundRCAType = BoundGenericType::get(
-            RCA, Type(), {thunk->mapTypeIntoEnvironment(param->getInterfaceType())});
+
+        // If the parameter is `some P` / `any P` (or `Optional` thereof) where
+        // P is a `@Resolvable` distributed-actor protocol, encode the actor's
+        // `id` (an `ActorID`, always `Codable`) instead of the actor itself.
+        // Sema (`checkDistributedFunction`) has already verified that P's
+        // `ActorSystem` matches the enclosing actor's `ActorSystem`.
+        Type rcaPayloadType =
+            thunk->mapTypeIntoEnvironment(param->getInterfaceType());
+        Expr *rcaArgumentExpr = new (C) DeclRefExpr(
+            ConcreteDeclRef(param), dloc, implicit,
+            AccessSemantics::Ordinary, rcaPayloadType);
+        if (auto resolvableMatch =
+                findResolvableExistentialOrOpaqueProtocol(rcaPayloadType)) {
+          if (auto *enclosingNominal =
+                  thunk->getDeclContext()->getSelfNominalTypeDecl()) {
+            auto actorIDInterfaceTy =
+                getDistributedActorIDType(enclosingNominal);
+            if (actorIDInterfaceTy && !actorIDInterfaceTy->hasError()) {
+              rcaPayloadType =
+                  thunk->mapTypeIntoEnvironment(actorIDInterfaceTy);
+              rcaArgumentExpr = UnresolvedDotExpr::createImplicit(
+                  C, rcaArgumentExpr, C.Id_id);
+            }
+          }
+        }
+
+        auto boundRCAType =
+            BoundGenericType::get(RCA, Type(), {rcaPayloadType});
         auto remoteCallArgumentInitDeclRef =
             TypeExpr::createImplicit(boundRCAType, C);
 
@@ -270,10 +296,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
              // name:
              new (C) StringLiteralExpr(parameterName, SourceRange(), implicit),
              // _ argument:
-             new (C) DeclRefExpr(
-                 ConcreteDeclRef(param), dloc, implicit,
-                 AccessSemantics::Ordinary,
-                 thunk->mapTypeIntoEnvironment(param->getInterfaceType()))
+             rcaArgumentExpr
             },
             C);
 
