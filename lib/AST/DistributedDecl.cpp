@@ -285,8 +285,9 @@ swift::findResolvableExistentialOrOpaqueProtocol(Type T) {
     }
   };
 
-  if (auto existential = T->getAs<ExistentialType>()) {
-    auto layout = existential->getExistentialLayout();
+  if (T->isAnyExistentialType() || T->isConstraintType()) {
+    // Covers `any P`, `any P & Q`, bare `P`, and protocol compositions.
+    auto layout = T->getExistentialLayout();
     for (auto *proto : layout.getProtocols())
       recordMatch(proto);
   } else if (auto archetype = T->getAs<ArchetypeType>()) {
