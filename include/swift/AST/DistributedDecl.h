@@ -30,6 +30,7 @@ class Decl;
 class DeclContext;
 class FuncDecl;
 class NominalTypeDecl;
+class ProtocolDecl;
 
 Type getAssociatedTypeOfDistributedSystemOfActor(DeclContext *actorOrExtension,
                                                  Identifier member);
@@ -67,6 +68,13 @@ Type getDistributedActorSystemType(NominalTypeDecl *actor);
 
 /// Determine the `ID` type for the given actor.
 Type getDistributedActorIDType(NominalTypeDecl *actor);
+
+/// If \p proto is a distributed-actor protocol that has been attached with
+/// the `@Resolvable` macro, return the generated stub `$P` (a concrete
+/// distributed actor that conforms to \p proto and to `_DistributedActorStub`).
+/// Returns null if no such peer exists, or \p proto is not a distributed-actor
+/// protocol.
+NominalTypeDecl *getDistributedActorStub(ProtocolDecl *proto);
 
 /// Get specific 'SerializationRequirement' as defined in 'nominal'
 /// type, which must conform to the passed 'protocol' which is expected

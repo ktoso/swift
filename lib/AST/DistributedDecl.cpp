@@ -211,6 +211,59 @@ Type swift::getDistributedActorIDType(NominalTypeDecl *actor) {
   return getAssociatedTypeOfDistributedSystemOfActor(actor, C.Id_ActorID);
 }
 
+NominalTypeDecl *swift::getDistributedActorStub(ProtocolDecl *proto) {
+  if (!proto)
+    return nullptr;
+
+  auto &ctx = proto->getASTContext();
+
+  // Only relevant for protocols that refine `DistributedActor`.
+  auto *distributedActorProto =
+      ctx.getProtocol(KnownProtocolKind::DistributedActor);
+  if (!distributedActorProto || !proto->inheritsFrom(distributedActorProto))
+    return nullptr;
+
+  auto *stubProto = ctx.getProtocol(KnownProtocolKind::DistributedActorStub);
+  if (!stubProto)
+    return nullptr;
+
+  // The `@Resolvable` macro generates a peer `distributed actor $<P>` whose
+  // peer scope matches the protocol's parent decl context. Look it up by
+  // synthesizing the prefixed name.
+  llvm::SmallString<32> stubNameBuf;
+  stubNameBuf += "$";
+  stubNameBuf += proto->getName().str();
+  auto stubId = ctx.getIdentifier(stubNameBuf);
+
+  SmallVector<ValueDecl *, 4> results;
+  auto *parentDC = proto->getDeclContext();
+  if (auto *parentNominal = parentDC->getSelfNominalTypeDecl()) {
+    parentNominal->lookupQualified(parentNominal, DeclNameRef(stubId),
+                                   proto->getLoc(), NL_QualifiedDefault,
+                                   results);
+  } else {
+    // Top-level: the macro-expanded peer is added to the same source file /
+    // module as the protocol.
+    proto->getModuleContext()->lookupValue(stubId, NLKind::QualifiedLookup,
+                                           results);
+  }
+
+  for (auto *result : results) {
+    auto *classDecl = dyn_cast<ClassDecl>(result);
+    if (!classDecl || !classDecl->isDistributedActor())
+      continue;
+
+    auto stubConformance =
+        lookupConformance(classDecl->getDeclaredInterfaceType(), stubProto);
+    if (stubConformance.isInvalid())
+      continue;
+
+    return classDecl;
+  }
+
+  return nullptr;
+}
+
 static Type getTypeWitnessByName(NominalTypeDecl *type, ProtocolDecl *protocol,
                                  Identifier member) {
   if (!protocol)
