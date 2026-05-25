@@ -76,6 +76,34 @@ Type getDistributedActorIDType(NominalTypeDecl *actor);
 /// protocol.
 NominalTypeDecl *getDistributedActorStub(ProtocolDecl *proto);
 
+/// Result of inspecting a `distributed func` parameter or result type for
+/// `@Resolvable` distributed-actor existential / opaque conformance.
+struct ResolvableProtocolMatch {
+  /// The matched protocol P (whose `@Resolvable` macro generated the `$P`
+  /// stub). Null if no match.
+  ProtocolDecl *proto = nullptr;
+  /// True if the type contains more than one `@Resolvable` protocol --
+  /// callers should diagnose ambiguity.
+  bool isAmbiguous = false;
+
+  explicit operator bool() const { return proto != nullptr; }
+};
+
+/// Walk the given type \p T (a `distributed func` parameter or result type
+/// after `mapTypeIntoEnvironment`) looking for an existential or opaque
+/// conformance to a protocol that has an associated `@Resolvable`-generated
+/// stub `$P` (per `getDistributedActorStub`).
+///
+/// Handles `any P`, `some P`, generic archetypes constrained to `P`, and one
+/// level of `Optional<...>`. Containers and other compositions are not
+/// unwrapped -- they will fall through to the normal codable check.
+ResolvableProtocolMatch findResolvableExistentialOrOpaqueProtocol(Type T);
+
+/// Determine the concrete `ActorSystem` to which protocol \p proto's
+/// `Self.ActorSystem` is constrained, if any. Returns null if \p proto does
+/// not have a `where Self.ActorSystem == ConcreteSystem` requirement.
+Type getResolvableProtocolConcreteActorSystemType(ProtocolDecl *proto);
+
 /// Get specific 'SerializationRequirement' as defined in 'nominal'
 /// type, which must conform to the passed 'protocol' which is expected
 /// to require the 'SerializationRequirement'.

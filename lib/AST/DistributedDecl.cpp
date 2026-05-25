@@ -264,6 +264,51 @@ NominalTypeDecl *swift::getDistributedActorStub(ProtocolDecl *proto) {
   return nullptr;
 }
 
+ResolvableProtocolMatch
+swift::findResolvableExistentialOrOpaqueProtocol(Type T) {
+  ResolvableProtocolMatch match;
+  if (!T)
+    return match;
+
+  // Unwrap one level of Optional so `some DAP?` works.
+  if (auto inner = T->getOptionalObjectType())
+    T = inner;
+
+  auto recordMatch = [&](ProtocolDecl *p) {
+    if (auto *stub = getDistributedActorStub(p)) {
+      (void)stub;
+      if (match.proto && match.proto != p) {
+        match.isAmbiguous = true;
+      } else {
+        match.proto = p;
+      }
+    }
+  };
+
+  if (auto existential = T->getAs<ExistentialType>()) {
+    auto layout = existential->getExistentialLayout();
+    for (auto *proto : layout.getProtocols())
+      recordMatch(proto);
+  } else if (auto archetype = T->getAs<ArchetypeType>()) {
+    // Covers `some P` (after lowering to a primary archetype), generic param
+    // archetypes constrained to P, and opaque archetypes.
+    for (auto *proto : archetype->getConformsTo())
+      recordMatch(proto);
+  }
+
+  if (match.isAmbiguous)
+    match.proto = nullptr;
+  return match;
+}
+
+Type swift::getResolvableProtocolConcreteActorSystemType(ProtocolDecl *proto) {
+  auto sysTy = getConcreteReplacementForProtocolActorSystemType(proto);
+  if (!sysTy || sysTy->is<GenericTypeParamType>() ||
+      sysTy->is<ArchetypeType>() || sysTy->hasError())
+    return Type();
+  return sysTy;
+}
+
 static Type getTypeWitnessByName(NominalTypeDecl *type, ProtocolDecl *protocol,
                                  Identifier member) {
   if (!protocol)
