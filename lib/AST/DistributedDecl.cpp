@@ -237,20 +237,13 @@ NominalTypeDecl *swift::getDistributedActorStub(ProtocolDecl *proto) {
   // The `@Resolvable` macro generates a peer `distributed actor $P`
   // in the same context as the protocol. Look it up by synthesizing the prefixed name.
   // Users cannot declare $-prefixed names, so we are confident this is the synthesized type.
+  // Protocols are always file-scope in Swift, so the macro-expanded peer is
+  // a top-level decl in the protocol's module.
   auto stubId = getDistributedActorStubName(proto);
 
   SmallVector<ValueDecl *, 4> results;
-  auto *parentDC = proto->getDeclContext();
-  if (auto *parentNominal = parentDC->getSelfNominalTypeDecl()) {
-    parentNominal->lookupQualified(parentNominal, DeclNameRef(stubId),
-                                   proto->getLoc(), NL_QualifiedDefault,
-                                   results);
-  } else {
-    // Top-level: the macro-expanded peer is added to the same source file /
-    // module as the protocol.
-    proto->getModuleContext()->lookupValue(stubId, NLKind::QualifiedLookup,
-                                           results);
-  }
+  proto->getModuleContext()->lookupValue(stubId, NLKind::QualifiedLookup,
+                                         results);
 
   for (auto *result : results) {
     auto *classDecl = dyn_cast<ClassDecl>(result);
