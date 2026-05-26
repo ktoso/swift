@@ -170,9 +170,6 @@ public:
   }
 
   /// The user-declared `distributed func` this accessor was generated for.
-  /// Used to introspect parameter types (e.g. for resolvable `@Resolvable`
-  /// existential / opaque params whose wire-level type is `$P` rather than
-  /// the declared `any/some P`).
   AbstractFunctionDecl *getAbstractFunctionDecl() const {
     if (auto *thunk = Target.dyn_cast<SILFunction *>())
       return thunk->getDeclRef().getAbstractFunctionDecl();
@@ -460,7 +457,7 @@ void DistributedAccessor::decodeArguments(const ArgumentDecoderInfo &decoder,
 
     llvm::Value *argumentTy = IGF.Builder.CreateLoad(typeLoc, "arg_type");
 
-    // === Resolvable @Resolvable param override ===
+    // === @Resolvable protocol param override
     // If the user-declared parameter type is `some P` / `any P` for a
     // `@Resolvable` distributed-actor protocol, the wire-level type is the
     // macro-generated stub `$P` rather than the declared type. Override the
@@ -575,7 +572,7 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
     IGF.Builder.CreateStore(nullError, calleeErrorSlot);
   }
 
-  // === Resolvable existential boxing ===
+  // === Resolvable existential boxing
   // If the parameter is a `@Resolvable` resolvable existential (`any P`), the
   // wire payload was decoded as a `$P` class reference but the user function
   // expects the parameter as `any P` (an existential). Wrap the decoded class

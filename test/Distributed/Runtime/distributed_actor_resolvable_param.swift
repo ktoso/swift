@@ -16,9 +16,9 @@
 // `distributed func` that takes a `some/any P` parameter where `P` is a
 // `@Resolvable` distributed-actor protocol.
 //
-// We use a single actor (`Hoster`) that conforms to `Greeter` and also has a
+// We use a single actor (`GreeterImpl`) that conforms to `Greeter` and also has a
 // `sendAnyGreeter(_:)` method. We resolve a `$Greeter` stub for the same
-// actor, and a remote `Hoster` proxy. Calling the proxy's `sendAnyGreeter`
+// actor, and a remote `GreeterImpl` proxy. Calling the proxy's `sendAnyGreeter`
 // forces the remote-branch encoding (Phase 3 caller side) and the receiver's
 // accessor must materialize a `$Greeter` from the wire payload (Phase 4).
 //
@@ -37,7 +37,7 @@ where ActorSystem == FakeRoundtripActorSystem {
   distributed func sendAnyGreeter(_ g: any Greeter) async throws -> String
 }
 
-distributed actor Hoster: Greeter {
+distributed actor GreeterImpl: Greeter {
   distributed func sayHi() -> String { "Hi from \(self.id)" }
 
   distributed func sendAnyGreeter(_ g: any Greeter) async throws -> String {
@@ -50,9 +50,9 @@ distributed actor Hoster: Greeter {
 struct Main {
   static func main() async throws {
     let system = FakeRoundtripActorSystem()
-    let local = Hoster(actorSystem: system)
-    // Force the remote branch.
-    let proxy = try Hoster.resolve(id: local.id, using: system)
+    let local = GreeterImpl(actorSystem: system)
+    // Resolve a remote reference.
+    let proxy = try GreeterImpl.resolve(id: local.id, using: system)
 
     print("--- any ---")
     let r1 = try await proxy.sendAnyGreeter(local)
