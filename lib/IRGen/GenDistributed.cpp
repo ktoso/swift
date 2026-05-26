@@ -24,6 +24,7 @@
 #include "GenCall.h"
 #include "GenClass.h"
 #include "GenDecl.h"
+#include "GenExistential.h"
 #include "GenMeta.h"
 #include "GenOpaque.h"
 #include "GenPointerAuth.h"
@@ -36,10 +37,13 @@
 #include "LoadableTypeInfo.h"
 #include "ScalarPairTypeInfo.h"
 #include "swift/ABI/MetadataValues.h"
+#include "swift/AST/ConformanceLookup.h"
 #include "swift/AST/DistributedDecl.h"
+#include "swift/AST/ExistentialLayout.h"
 #include "swift/AST/ExtInfo.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/GenericSignature.h"
+#include "swift/AST/ParameterList.h"
 #include "swift/AST/ProtocolConformanceRef.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/IRGen/Linking.h"
@@ -165,6 +169,16 @@ public:
     return cast<AbstractFunctionDecl *>(Target);
   }
 
+  /// The user-declared `distributed func` this accessor was generated for.
+  /// Used to introspect parameter types (e.g. for resolvable `@Resolvable`
+  /// existential / opaque params whose wire-level type is `$P` rather than
+  /// the declared `any/some P`).
+  AbstractFunctionDecl *getAbstractFunctionDecl() const {
+    if (auto *thunk = Target.dyn_cast<SILFunction *>())
+      return thunk->getDeclRef().getAbstractFunctionDecl();
+    return cast<AbstractFunctionDecl *>(Target);
+  }
+
   CanSILFunctionType getType() const { return Type; }
 
   bool isGeneric() const {
@@ -218,8 +232,16 @@ private:
   /// Load an argument value from the given decoder \c decoder
   /// to the given explosion \c arguments. Information describing
   /// the type of argument comes from runtime metadata.
+  ///
+  /// If \p resolvableStub is non-null, the parameter is a `some P` / `any P`
+  /// for a `@Resolvable` distributed-actor protocol whose wire type is the
+  /// macro-generated stub (\p resolvableStub). The decode reads the wire
+  /// payload as the stub class; if the user-facing parameter type is an
+  /// existential (`any P`), the decoded class reference is wrapped into an
+  /// existential container before being added to \p arguments.
   void decodeArgument(unsigned argumentIdx, const ArgumentDecoderInfo &decoder,
                       llvm::Value *argumentType, const SILParameterInfo &param,
+                      NominalTypeDecl *resolvableStub,
                       Explosion &arguments);
 
   void lookupWitnessTables(llvm::Value *value,
@@ -436,10 +458,36 @@ void DistributedAccessor::decodeArguments(const ArgumentDecoderInfo &decoder,
         argumentTypes, Offset(offset), IGM.TypeMetadataPtrTy,
         Alignment(alignment.value()), "arg_type_loc");
 
-    auto *argumentTy = IGF.Builder.CreateLoad(typeLoc, "arg_type");
+    llvm::Value *argumentTy = IGF.Builder.CreateLoad(typeLoc, "arg_type");
+
+    // === Resolvable @Resolvable param override ===
+    // If the user-declared parameter type is `some P` / `any P` for a
+    // `@Resolvable` distributed-actor protocol, the wire-level type is the
+    // macro-generated stub `$P` rather than the declared type. Override the
+    // runtime-loaded metadata so `decodeNextArgument<$P>()` deserializes a
+    // `$P` instance via its auto-synthesized `Codable` conformance (which
+    // internally calls `$P.resolve(id:using:)`).
+    NominalTypeDecl *resolvableStub = nullptr;
+    if (auto *funcDecl = Target.getAbstractFunctionDecl()) {
+      auto *userParams = funcDecl->getParameters();
+      if (i < userParams->size()) {
+        Type userParamTy = userParams->get(i)->getInterfaceType();
+        if (auto *env = funcDecl->getGenericEnvironment())
+          userParamTy = env->mapTypeIntoEnvironment(userParamTy);
+        auto match = findResolvableExistentialOrOpaqueProtocol(userParamTy);
+        if (match.proto) {
+          if (auto *stub = getDistributedActorStub(match.proto)) {
+            resolvableStub = stub;
+            auto stubTy =
+                stub->getDeclaredInterfaceType()->getCanonicalType();
+            argumentTy = IGF.emitTypeMetadataRef(stubTy);
+          }
+        }
+      }
+    }
 
     // Decode and load argument value using loaded type metadata.
-    decodeArgument(i, decoder, argumentTy, param, arguments);
+    decodeArgument(i, decoder, argumentTy, param, resolvableStub, arguments);
   }
 }
 
@@ -447,6 +495,7 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
                                          const ArgumentDecoderInfo &decoder,
                                          llvm::Value *argumentType,
                                          const SILParameterInfo &param,
+                                         NominalTypeDecl *resolvableStub,
                                          Explosion &arguments) {
   auto &paramInfo = IGM.getTypeInfo(param.getSILStorageInterfaceType());
   // TODO: `emitLoad*` would actually load value witness table every
@@ -524,6 +573,72 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
     IGF.Builder.emitBlock(contBB);
     // Reset value of the slot back to `null`
     IGF.Builder.CreateStore(nullError, calleeErrorSlot);
+  }
+
+  // === Resolvable existential boxing ===
+  // If the parameter is a `@Resolvable` resolvable existential (`any P`), the
+  // wire payload was decoded as a `$P` class reference but the user function
+  // expects the parameter as `any P` (an existential). Wrap the decoded class
+  // reference into the existential and pass it according to the parameter's
+  // convention.
+  auto userParamSILTy = param.getSILStorageInterfaceType();
+  if (resolvableStub && userParamSILTy.isAnyExistentialType()) {
+    auto stubCanTy =
+        resolvableStub->getDeclaredInterfaceType()->getCanonicalType();
+    auto stubSILTy = SILType::getPrimitiveObjectType(stubCanTy);
+
+    // Load the $P reference from the decode buffer.
+    auto refPtrTy =
+        llvm::PointerType::get(IGM.getLLVMContext(), /*AddrSpace=*/0);
+    auto refSlotPtr = IGF.Builder.CreateBitCast(resultAddr, refPtrTy);
+    Address refSlot(refSlotPtr, IGM.getStorageType(stubSILTy),
+                    IGM.getPointerAlignment());
+    llvm::Value *stubRef = IGF.Builder.CreateLoad(refSlot, "stub_ref");
+
+    // Look up conformances of $P to each protocol carried by the existential.
+    SmallVector<ProtocolConformanceRef, 2> conformances;
+    auto layout = userParamSILTy.getASTType()->getExistentialLayout();
+    for (auto *proto : layout.getProtocols()) {
+      conformances.push_back(lookupConformance(stubCanTy, proto));
+    }
+
+    // Build the existential explosion (instance + witness table pointers).
+    Explosion existExplosion;
+    emitClassExistentialContainer(IGF, existExplosion,
+                                  userParamSILTy.getObjectType(), stubRef,
+                                  stubCanTy, stubSILTy, conformances);
+
+    auto convention = param.getConvention();
+    switch (convention) {
+    case ParameterConvention::Direct_Guaranteed:
+    case ParameterConvention::Direct_Unowned:
+    case ParameterConvention::Direct_Owned: {
+      // Pass the exploded existential components (class ref + witness tables)
+      // directly.
+      existExplosion.transferInto(arguments, existExplosion.size());
+      return;
+    }
+    case ParameterConvention::Indirect_In_CXX:
+    case ParameterConvention::Indirect_In:
+    case ParameterConvention::Indirect_In_Guaranteed: {
+      // Materialize the existential in a stack buffer and pass its address.
+      auto &existTI = IGM.getTypeInfo(userParamSILTy.getObjectType());
+      auto existAlloca = existTI.allocateStack(
+          IGF, userParamSILTy.getObjectType(), "any_resolvable_param");
+      cast<LoadableTypeInfo>(existTI).initialize(IGF, existExplosion,
+                                                 existAlloca.getAddress(),
+                                                 /*isOutlined=*/false);
+      AllocatedArguments.push_back(existAlloca);
+      arguments.add(existAlloca.getAddress().getAddress());
+      return;
+    }
+    case ParameterConvention::Indirect_Inout:
+    case ParameterConvention::Indirect_InoutAliasable:
+    case ParameterConvention::Pack_Guaranteed:
+    case ParameterConvention::Pack_Owned:
+    case ParameterConvention::Pack_Inout:
+      llvm_unreachable("unsupported convention for resolvable existential");
+    }
   }
 
   switch (param.getConvention()) {
