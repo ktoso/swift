@@ -404,6 +404,19 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     // Result.self
     // Watch out and always map into thunk context
     auto resultType = thunk->mapTypeIntoEnvironment(func->getResultInterfaceType());
+
+    // --- Automatic @Resolvable protocol return type proxying
+    // If `-> some P` / `-> any P` where P is a @Resolvable protocol,
+    // record the return type as `$P` so the actor system serializes the actor ID.
+    if (auto resolvableMatch =
+            findDistributedResolvableExistentialOrOpaqueProtocol(resultType)) {
+      if (auto *stub = getDistributedActorStub(resolvableMatch.proto)) {
+        auto stubInterfaceTy = stub->getDeclaredInterfaceType();
+        if (stubInterfaceTy && !stubInterfaceTy->hasError())
+          resultType = thunk->mapTypeIntoEnvironment(stubInterfaceTy);
+      }
+    }
+
     auto *metaTypeRef = TypeExpr::createImplicit(resultType, C);
     auto *resultTypeExpr =
         new (C) DotSelfExpr(metaTypeRef, sloc, sloc, resultType);
@@ -541,6 +554,19 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
       // Result.self
       auto resultType =
           func->mapTypeIntoEnvironment(func->getResultInterfaceType());
+
+      // --- Automatic @Resolvable protocol return type proxying
+      // If `-> some P` / `-> any P` where P is a @Resolvable protocol,
+      // pass `returning: ($P).self` so the actor system decodes the actor ID.
+      if (auto resolvableMatch =
+              findDistributedResolvableExistentialOrOpaqueProtocol(resultType)) {
+        if (auto *stub = getDistributedActorStub(resolvableMatch.proto)) {
+          auto stubInterfaceTy = stub->getDeclaredInterfaceType();
+          if (stubInterfaceTy && !stubInterfaceTy->hasError())
+            resultType = func->mapTypeIntoEnvironment(stubInterfaceTy);
+        }
+      }
+
       auto *metaTypeRef = TypeExpr::createImplicit(resultType, C);
       auto *resultTypeExpr =
           new (C) DotSelfExpr(metaTypeRef, sloc, sloc, resultType);
