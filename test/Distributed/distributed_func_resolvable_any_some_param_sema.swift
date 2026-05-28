@@ -34,6 +34,19 @@ distributed actor Worker {
 
   // OK: multiple resolvable parameters are allowed
   distributed func mixed(_ g: any Greeter, _ t: any PowerSwitch) {}
+
+  // OK: Optional-wrapped resolvable parameters and results.
+  distributed func sendMaybeAny(_ g: (any Greeter)?) {}
+  distributed func sendMaybeSome(_ g: (some Greeter)?) {}
+  distributed func returnMaybeAny() -> (any Greeter)? { nil }
+
+  // Nested Optional-wrapped resolvables are not currently supported: the
+  // detection helper caps at depth 1, so these fall through to the existing
+  // Codable check and surface the standard "not Codable" error.
+  // expected-error@+1{{parameter '_' of type '(any Greeter)??' in distributed instance method does not conform to serialization requirement 'Codable'}}
+  distributed func sendNestedMaybe(_ g: ((any Greeter)?)?) {}
+  // expected-error@+1{{result type '(any Greeter)??' of distributed instance method 'returnNestedMaybe' does not conform to serialization requirement 'Codable'}}
+  distributed func returnNestedMaybe() -> ((any Greeter)?)? { nil }
 }
 
 // ==== Bad: composition of two @Resolvable protocols is ambiguous -------
@@ -63,7 +76,7 @@ distributed actor GenericSystemUser {
 // ==== Bad: @Resolvable protocol using different concrete ActorSystem 
 
 @Resolvable
-// expected-note@+1{{'@Resolvable protocol' 'DifferentSystemActor' uses actor system 'LocalTestingDistributedActorSystem'}}
+// expected-note@+1 2{{'@Resolvable protocol' 'DifferentSystemActor' uses actor system 'LocalTestingDistributedActorSystem'}}
 protocol DifferentSystemActor: DistributedActor, Codable where ActorSystem == LocalTestingDistributedActorSystem {
   distributed func toggle()
 }
@@ -73,4 +86,8 @@ distributed actor MismatchedSystemUser {
 
   // expected-error@+1{{parameter '_' of type 'any DifferentSystemActor' in distributed instance method must match the enclosing actor's ActorSystem ('MismatchedSystemUser.ActorSystem' (aka 'FakeActorSystem'))}}
   distributed func sendGeneric(_ g: any DifferentSystemActor) {}
+
+  // The Optional wrapper still surfaces the same actor-system mismatch on the leaf.
+  // expected-error@+1{{parameter '_' of type '(any DifferentSystemActor)?' in distributed instance method must match the enclosing actor's ActorSystem ('MismatchedSystemUser.ActorSystem' (aka 'FakeActorSystem'))}}
+  distributed func sendMaybeGeneric(_ g: (any DifferentSystemActor)?) {}
 }

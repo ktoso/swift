@@ -28,6 +28,8 @@ where ActorSystem == FakeRoundtripActorSystem {
   distributed func sendAnyGreeter(_ g: any Greeter) async throws -> String
   distributed func sendSomeGreeter(_ g: some Greeter) async throws -> String
   distributed func echoActor(_ g: any Greeter) async throws -> any Greeter
+  distributed func sendMaybeGreeter(_ g: (any Greeter)?) async throws -> String
+  distributed func echoMaybeActor(_ g: (any Greeter)?) async throws -> (any Greeter)?
   distributed var currentSelf: any Greeter { get }
 }
 
@@ -46,6 +48,19 @@ distributed actor GreeterImpl: Greeter {
 
   distributed func echoActor(_ g: any Greeter) async throws -> any Greeter {
     print("echoActor type: \(type(of: g))")
+    return g
+  }
+
+  distributed func sendMaybeGreeter(_ g: (any Greeter)?) async throws -> String {
+    print("sendMaybeGreeter type: \(type(of: g))")
+    if let g {
+      return "some: \(try await g.sayHi())"
+    }
+    return "none"
+  }
+
+  distributed func echoMaybeActor(_ g: (any Greeter)?) async throws -> (any Greeter)? {
+    print("echoMaybeActor type: \(type(of: g))")
     return g
   }
 
@@ -116,6 +131,47 @@ func test_currentSelf() async throws {
   // CHECK: result: Hi from
 }
 
+func test_maybeGreeter() async throws {
+  let system = FakeRoundtripActorSystem()
+  let local = GreeterImpl(actorSystem: system)
+  let proxy = try GreeterImpl.resolve(id: local.id, using: system)
+
+  print("(any Greeter)? param -- nil")
+  // CHECK-LABEL: (any Greeter)? param -- nil
+  let nilResult = try await proxy.sendMaybeGreeter(nil)
+  print("nilResult: \(nilResult)")
+  // CHECK: nilResult: none
+
+  print("(any Greeter)? param -- some")
+  // CHECK-LABEL: (any Greeter)? param -- some
+  let someResult = try await proxy.sendMaybeGreeter(local)
+  print("someResult: \(someResult)")
+  // CHECK: someResult: some: Hi from
+}
+
+func test_echoMaybeActor() async throws {
+  let system = FakeRoundtripActorSystem()
+  let local = GreeterImpl(actorSystem: system)
+  let proxy = try GreeterImpl.resolve(id: local.id, using: system)
+
+  print("(any Greeter)? echo -- nil")
+  // CHECK-LABEL: (any Greeter)? echo -- nil
+  let echoedNil = try await proxy.echoMaybeActor(nil)
+  print("echoedNil isNil: \(echoedNil == nil)")
+  // CHECK: echoedNil isNil: true
+
+  print("(any Greeter)? echo -- some")
+  // CHECK-LABEL: (any Greeter)? echo -- some
+  let echoedSome = try await proxy.echoMaybeActor(local)
+  print("echoedSome isNil: \(echoedSome == nil)")
+  // CHECK: echoedSome isNil: false
+  if let g = echoedSome {
+    let result = try await g.sayHi()
+    print("echoedSome result: \(result)")
+    // CHECK: echoedSome result: Hi from
+  }
+}
+
 // ==== -----------------------------------------------------------------------
 // MARK: Main
 
@@ -125,5 +181,7 @@ func test_currentSelf() async throws {
     try await test_someGreeter()
     try await test_echoActor()
     try await test_currentSelf()
+    try await test_maybeGreeter()
+    try await test_echoMaybeActor()
   }
 }

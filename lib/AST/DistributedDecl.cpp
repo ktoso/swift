@@ -274,6 +274,20 @@ swift::findDistributedResolvableExistentialOrOpaqueProtocol(Type T) {
   if (!T)
     return match;
 
+  // Peel any number of `Optional` layers off the front, e.g.
+  // `(any P)?` -> `any P` (depth 1), `((any P)?)?` -> `any P` (depth 2).
+  //
+  // FIXME: IRGen currently only supports depth 0 and depth 1 for the
+  // receiver-side boxing/unboxing because the spare-bit layout of a nested
+  // `Optional<Optional<class>>` is platform-specific. Once IRGen handles the
+  // walker for any depth, drop the cap.
+  while (auto inner = T->getOptionalObjectType()) {
+    if (match.optionalDepth >= 1)
+      return ResolvableProtocolMatch{};
+    T = inner;
+    ++match.optionalDepth;
+  }
+
   auto recordMatch = [&](ProtocolDecl *p) {
     if (getDistributedActorStub(p)) {
       if (match.proto && match.proto != p) {
@@ -298,6 +312,13 @@ swift::findDistributedResolvableExistentialOrOpaqueProtocol(Type T) {
   if (match.isAmbiguous)
     match.proto = nullptr;
   return match;
+}
+
+Type ResolvableProtocolMatch::rebuildWireType(Type stubLeafTy) const {
+  Type wireTy = stubLeafTy;
+  for (unsigned i = 0; i < optionalDepth; ++i)
+    wireTy = wireTy->wrapInOptionalType();
+  return wireTy;
 }
 
 Type swift::getResolvableProtocolConcreteActorSystemType(ProtocolDecl *proto) {

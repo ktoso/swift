@@ -231,11 +231,13 @@ private:
   /// the type of argument comes from runtime metadata.
   ///
   /// If \p resolvableStub is non-null, the parameter is a `some P` / `any P`
-  /// for a `@Resolvable protocol`, and we must substitute the parameter with
-  /// its correct proxy type `$P`.
+  /// (possibly wrapped in \p resolvableOptionalDepth layers of `Optional`) for
+  /// a `@Resolvable protocol`, and we must substitute the parameter with its
+  /// correct proxy type `$P` at the leaf.
   void decodeArgument(unsigned argumentIdx, const ArgumentDecoderInfo &decoder,
                       llvm::Value *argumentType, const SILParameterInfo &param,
                       NominalTypeDecl *resolvableStub,
+                      unsigned resolvableOptionalDepth,
                       Explosion &arguments);
 
   void lookupWitnessTables(llvm::Value *value,
@@ -455,13 +457,17 @@ void DistributedAccessor::decodeArguments(const ArgumentDecoderInfo &decoder,
     llvm::Value *argumentTy = IGF.Builder.CreateLoad(typeLoc, "arg_type");
 
     // === @Resolvable protocol param override
-    // If the user-declared parameter type is `some P` / `any P` for a
-    // `@Resolvable protocol`, the wire-level type is the remote proxy stub `$P`.
+    // If the user-declared parameter type is `some P` / `any P` (possibly
+    // wrapped in N levels of `Optional`) for a `@Resolvable protocol`, the
+    // wire-level type is the remote proxy stub `$P` at the leaf, with the
+    // same N levels of `Optional` re-wrapped around it.
     //
-    // Override the runtime-loaded metadata so `decodeNextArgument<$P>()`
-    // deserializes a `$P` which will correctly `$P.resolve(id:using:)`
-    // the serialized actor identity.
+    // Override the runtime-loaded metadata so `decodeNextArgument<...>()`
+    // deserializes the wire shape; the boxing code in `decodeArgument` then
+    // walks any Optional layers and re-boxes the leaf `$P` into the
+    // existential `any P`.
     NominalTypeDecl *replacedParamTy = nullptr;
+    unsigned replacedOptionalDepth = 0;
     if (auto *funcDecl = Target.getAbstractFunctionDecl()) {
       auto *params = funcDecl->getParameters();
       if (i < params->size()) {
@@ -472,16 +478,101 @@ void DistributedAccessor::decodeArguments(const ArgumentDecoderInfo &decoder,
         if (auto match = findDistributedResolvableExistentialOrOpaqueProtocol(paramTy)) {
           if (auto *stub = getDistributedActorStub(match.proto)) {
             replacedParamTy = stub;
-            auto stubTy = stub->getDeclaredInterfaceType()->getCanonicalType();
-            argumentTy = IGF.emitTypeMetadataRef(stubTy);
+            replacedOptionalDepth = match.optionalDepth;
+            auto wireTy =
+                match.rebuildWireType(stub->getDeclaredInterfaceType())
+                    ->getCanonicalType();
+            argumentTy = IGF.emitTypeMetadataRef(wireTy);
           }
         }
       }
     }
 
     // Decode and load argument value using loaded type metadata.
-    decodeArgument(i, decoder, argumentTy, param, replacedParamTy, arguments);
+    decodeArgument(i, decoder, argumentTy, param, replacedParamTy,
+                   replacedOptionalDepth, arguments);
   }
+}
+
+/// Convert a decoded wire-form value into the corresponding user-form
+/// `any P` existential at \p userAddr, boxing the leaf class ref(s).
+///
+/// At depth 0, \p wireAddr holds a `$P` class ref; we build the class
+/// existential explosion and store it.
+///
+/// At depth 1, \p wireAddr holds an `Optional<$P>` value whose layout is
+/// "the class ref, with null encoding `.none`". We load the class ref,
+/// build the existential explosion (witness tables come from the conformance
+/// and are valid regardless of nullness), and store it. The Optional<any P>
+/// .none case is naturally encoded as "class ref slot is null", which is
+/// exactly what we wrote — so no branching is needed.
+static void
+emitResolvableExistentialBox(IRGenFunction &IGF, Address wireAddr,
+                             SILType wireSILType, SILType wireLeafSILType,
+                             Address userAddr, SILType userSILType,
+                             SILType userLeafSILType,
+                             ArrayRef<ProtocolConformanceRef> conformances) {
+  IRGenModule &IGM = IGF.IGM;
+
+  auto stubCanTy = wireLeafSILType.getASTType();
+  Address wireRefSlot(wireAddr.getAddress(),
+                      IGM.getStorageType(wireLeafSILType),
+                      IGM.getPointerAlignment());
+  llvm::Value *stubRef = IGF.Builder.CreateLoad(wireRefSlot, "stub_ref");
+
+  Explosion existExplosion;
+  emitClassExistentialContainer(IGF, existExplosion, userLeafSILType, stubRef,
+                                stubCanTy, wireLeafSILType, conformances);
+
+  auto &userTI = IGM.getTypeInfo(userSILType);
+  if (userSILType == userLeafSILType) {
+    // Depth 0: write the existential directly to the user buffer.
+    cast<LoadableTypeInfo>(userTI).initialize(IGF, existExplosion, userAddr,
+                                              /*isOutlined=*/false);
+    return;
+  }
+
+  // Depth 1: write the existential into the payload of the user-form
+  // `Optional<any P>`. The payload is at offset 0 and `.none` is encoded by
+  // a null class ref, which is what `stubRef` will be when the wire is
+  // `.none` — so no tag manipulation is needed.
+  auto &userLeafTI = IGM.getTypeInfo(userLeafSILType);
+  Address userPayloadAddr(userAddr.getAddress(),
+                          IGM.getStorageType(userLeafSILType),
+                          userLeafTI.getBestKnownAlignment());
+  cast<LoadableTypeInfo>(userLeafTI).initialize(IGF, existExplosion,
+                                                userPayloadAddr,
+                                                /*isOutlined=*/false);
+}
+
+/// Convert a user-form `any P`-shaped value at \p userAddr into the
+/// wire-form `$P` value at \p wireAddr by extracting the leaf class ref.
+///
+/// At depth 0, \p userAddr holds an `any P` existential; we load its class
+/// ref (first word) and store it as `$P`.
+///
+/// At depth 1, \p userAddr holds an `Optional<any P>` whose `.none` is
+/// encoded as a null class ref in the existential payload's class slot.
+/// Loading and storing the first word handles both `.none` and `.some`
+/// correctly.
+static void
+emitResolvableExistentialExtract(IRGenFunction &IGF, Address userAddr,
+                                 SILType userSILType,
+                                 SILType userLeafSILType, Address wireAddr,
+                                 SILType wireSILType,
+                                 SILType wireLeafSILType) {
+  IRGenModule &IGM = IGF.IGM;
+
+  Address userRefSlot(userAddr.getAddress(),
+                      IGM.getStorageType(wireLeafSILType),
+                      IGM.getPointerAlignment());
+  llvm::Value *classRef =
+      IGF.Builder.CreateLoad(userRefSlot, "result_actor_ref");
+
+  Address wireRefSlot(wireAddr.getAddress(),
+                      IGM.getStorageType(wireLeafSILType),
+                      IGM.getPointerAlignment());
+  IGF.Builder.CreateStore(classRef, wireRefSlot);
 }
 
 void DistributedAccessor::decodeArgument(unsigned argumentIdx,
@@ -489,6 +580,7 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
                                          llvm::Value *argumentType,
                                          const SILParameterInfo &param,
                                          NominalTypeDecl *resolvableStub,
+                                         unsigned resolvableOptionalDepth,
                                          Explosion &arguments) {
   auto &paramInfo = IGM.getTypeInfo(param.getSILStorageInterfaceType());
   // TODO: `emitLoad*` would actually load value witness table every
@@ -569,58 +661,79 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
   }
 
   // === Resolvable existential boxing
-  // If the parameter is a `@Resolvable` resolvable existential (`any P`), the
-  // wire payload was decoded as a `$P` actor but the user function
-  // expects the parameter as an existential `any P`. Wrap the decoded actor
-  // reference into the existential and pass it according to the parameter's
-  // convention.
+  // If the parameter is a `@Resolvable` resolvable existential (possibly
+  // wrapped in N levels of `Optional`), the wire payload was decoded as
+  // `Optional<...<$P>>` but the user function expects
+  // `Optional<...<any P>>`. Walk the Optional layers and re-box the leaf
+  // `$P` into the existential `any P`.
+  //
+  // For `some P` (an opaque archetype), no boxing is needed: the wire form
+  // and user form are layout-compatible at this thunk because we substitute
+  // T = $P, so the standard indirect/direct path below is sufficient.
   auto userParamSILTy = param.getSILStorageInterfaceType();
-  if (resolvableStub && userParamSILTy.isAnyExistentialType()) {
+  if (resolvableStub) {
+    // Peel `resolvableOptionalDepth` Optional layers from the user form to
+    // find the leaf.
+    SILType userLeafSILTy = userParamSILTy.getObjectType();
+    for (unsigned i = 0; i < resolvableOptionalDepth; ++i) {
+      userLeafSILTy = userLeafSILTy.getOptionalObjectType();
+      assert(userLeafSILTy &&
+             "resolvableOptionalDepth out of sync with user param type");
+    }
+
+    if (userLeafSILTy.isAnyExistentialType()) {
     auto stubCanTy =
         resolvableStub->getDeclaredInterfaceType()->getCanonicalType();
-    auto stubSILTy = SILType::getPrimitiveObjectType(stubCanTy);
+    SILType wireLeafSILTy = SILType::getPrimitiveObjectType(stubCanTy);
+    SILType wireSILTy = wireLeafSILTy;
+    for (unsigned i = 0; i < resolvableOptionalDepth; ++i)
+      wireSILTy = wireSILTy.wrapInOptionalType();
 
-    // Load the $P reference from the decode buffer.
-    auto refPtrTy =
-        llvm::PointerType::get(IGM.getLLVMContext(), /*AddrSpace=*/0);
-    auto refSlotPtr = IGF.Builder.CreateBitCast(resultAddr, refPtrTy);
-    Address refSlot(refSlotPtr, IGM.getStorageType(stubSILTy),
-                    IGM.getPointerAlignment());
-    llvm::Value *stubRef = IGF.Builder.CreateLoad(refSlot, "stub_ref");
-
-    // Look up conformances of $P to each protocol carried by the existential.
+    // Look up conformances of `$P` to each protocol carried by the leaf
+    // existential.
     SmallVector<ProtocolConformanceRef, 2> conformances;
-    auto layout = userParamSILTy.getASTType()->getExistentialLayout();
+    auto layout = userLeafSILTy.getASTType()->getExistentialLayout();
     for (auto *proto : layout.getProtocols()) {
       conformances.push_back(lookupConformance(stubCanTy, proto));
     }
 
-    // Build the existential explosion (instance + witness table pointers).
-    Explosion existExplosion;
-    emitClassExistentialContainer(IGF, existExplosion,
-                                  userParamSILTy.getObjectType(), stubRef,
-                                  stubCanTy, stubSILTy, conformances);
+    // Wrap the wire-form decode buffer as an Address of the wire SIL type.
+    Address wireAddr(resultAddr, IGM.getStorageType(wireSILTy),
+                     IGM.getTypeInfo(wireSILTy).getBestKnownAlignment());
+
+    // Allocate a stack buffer for the user form and fill it. Use a dynamic
+    // alloca so it shares the deallocation path with the rest of
+    // `AllocatedArguments`.
+    auto userObjTy = userParamSILTy.getObjectType();
+    auto &userTI = IGM.getTypeInfo(userObjTy);
+    auto &userTIFixed = cast<FixedTypeInfo>(userTI);
+    auto userSizeVal = IGM.getSize(userTIFixed.getFixedSize());
+    auto userAlloca = IGF.emitDynamicAlloca(
+        IGM.Int8Ty, userSizeVal, userTIFixed.getBestKnownAlignment());
+    AllocatedArguments.push_back(userAlloca);
+
+    Address userAddr(userAlloca.getAddress().getAddress(),
+                     IGM.getStorageType(userObjTy),
+                     userTIFixed.getBestKnownAlignment());
+
+    emitResolvableExistentialBox(IGF, wireAddr, wireSILTy, wireLeafSILTy,
+                                 userAddr, userObjTy, userLeafSILTy,
+                                 conformances);
 
     switch (param.getConvention()) {
     case ParameterConvention::Direct_Guaranteed:
     case ParameterConvention::Direct_Unowned:
     case ParameterConvention::Direct_Owned: {
-      // Pass the exploded existential components (class ref + witness tables) directly.
-      existExplosion.transferInto(arguments, existExplosion.size());
+      // Load the user-form value and pass it as an explosion.
+      Explosion userExplosion;
+      cast<LoadableTypeInfo>(userTI).loadAsTake(IGF, userAddr, userExplosion);
+      userExplosion.transferInto(arguments, userExplosion.size());
       return;
     }
     case ParameterConvention::Indirect_In_CXX:
     case ParameterConvention::Indirect_In:
     case ParameterConvention::Indirect_In_Guaranteed: {
-      // Materialize the existential in a stack buffer and pass its address.
-      auto &existTI = IGM.getTypeInfo(userParamSILTy.getObjectType());
-      auto existAlloca = existTI.allocateStack(
-          IGF, userParamSILTy.getObjectType(), "any_resolvable_param");
-      cast<LoadableTypeInfo>(existTI).initialize(IGF, existExplosion,
-                                                 existAlloca.getAddress(),
-                                                 /*isOutlined=*/false);
-      AllocatedArguments.push_back(existAlloca);
-      arguments.add(existAlloca.getAddress().getAddress());
+      arguments.add(userAlloca.getAddress().getAddress());
       return;
     }
     case ParameterConvention::Indirect_Inout:
@@ -630,6 +743,7 @@ void DistributedAccessor::decodeArgument(unsigned argumentIdx,
     case ParameterConvention::Pack_Inout:
       llvm_unreachable("unsupported convention for resolvable existential");
     }
+    }  // end if (userLeafSILTy.isAnyExistentialType())
   }
 
   switch (param.getConvention()) {
@@ -826,12 +940,15 @@ void DistributedAccessor::emit() {
   const auto &directResultTI = IGM.getTypeInfo(directResultTy);
 
   // === `@Resolvable protocol` result
-  // The caller's result buffer is sized for `$P` (one class ref word), but the
-  // target returns `any P` (existential: class ref + witness tables). Allocate
-  // a temp existential-sized buffer, emit the result there, then copy just the
-  // class ref into the real result buffer.
+  // The caller's result buffer is sized for the wire form
+  // (`Optional<...<$P>>`), but the target returns the user form
+  // (`Optional<...<any P>>`) which has wider class-existential payloads.
+  // Allocate a temp buffer sized for the user form, emit the result there,
+  // then walk any Optional layers and copy just the class ref(s) into the
+  // wire-form result buffer.
   bool isResolvableExistResult = false;
   NominalTypeDecl *resolvableResultStub = nullptr;
+  unsigned resolvableResultOptionalDepth = 0;
   llvm::Value *resolvableExistTempBuf = nullptr;
 
   if (auto *funcDecl = Target.getAbstractFunctionDecl()) {
@@ -845,6 +962,7 @@ void DistributedAccessor::emit() {
         if (auto *stub = getDistributedActorStub(match.proto)) {
           isResolvableExistResult = true;
           resolvableResultStub = stub;
+          resolvableResultOptionalDepth = match.optionalDepth;
           auto existAlign = directResultTI.getBestKnownAlignment();
           auto &existTIFixed = cast<FixedTypeInfo>(directResultTI);
           auto existSizeVal = IGM.getSize(existTIFixed.getFixedSize());
@@ -983,27 +1101,31 @@ void DistributedAccessor::emit() {
                              /*isOutlined=*/false);
     }
 
-    // == `@Resolvable protocol` result: copy class ref from existential temp buf to result buf
+    // == `@Resolvable protocol` result: extract the leaf class ref out of
+    // the user-form existential into the wire-form result buf. The
+    // Optional<...> wrapping (if any) is encoded by the leaf class ref's
+    // null-ness, so a single load+store at offset 0 covers depth 0 and 1.
     if (isResolvableExistResult && resolvableExistTempBuf) {
       auto stubCanTy =
           resolvableResultStub->getDeclaredInterfaceType()->getCanonicalType();
-      auto stubSILTy = SILType::getPrimitiveObjectType(stubCanTy);
+      SILType wireLeafSILTy = SILType::getPrimitiveObjectType(stubCanTy);
+      SILType wireSILTy = wireLeafSILTy;
+      for (unsigned i = 0; i < resolvableResultOptionalDepth; ++i)
+        wireSILTy = wireSILTy.wrapInOptionalType();
 
-      auto refPtrTy = llvm::PointerType::get(IGM.getLLVMContext(), /*AddrSpace=*/0);
+      SILType userSILTy = directResultTy;
+      SILType userLeafSILTy = userSILTy;
+      for (unsigned i = 0; i < resolvableResultOptionalDepth; ++i)
+        userLeafSILTy = userLeafSILTy.getOptionalObjectType();
 
-      auto existPtrBitcast =
-          IGF.Builder.CreateBitCast(resolvableExistTempBuf, refPtrTy);
-      llvm::Value *classRef = IGF.Builder.CreateLoad(
-          Address(existPtrBitcast, IGM.getStorageType(stubSILTy),
-                  IGM.getPointerAlignment()),
-          "result_actor_ref");
+      Address userAddr(resolvableExistTempBuf, IGM.getStorageType(userSILTy),
+                       directResultTI.getBestKnownAlignment());
+      Address wireAddr(typedResultBuffer, IGM.getStorageType(wireSILTy),
+                       IGM.getTypeInfo(wireSILTy).getBestKnownAlignment());
 
-      auto resultPtrBitcast =
-          IGF.Builder.CreateBitCast(typedResultBuffer, refPtrTy);
-      IGF.Builder.CreateStore(
-          classRef,
-          Address(resultPtrBitcast, IGM.getStorageType(stubSILTy),
-                  IGM.getPointerAlignment()));
+      emitResolvableExistentialExtract(IGF, userAddr, userSILTy,
+                                       userLeafSILTy, wireAddr, wireSILTy,
+                                       wireLeafSILTy);
     }
 
     // Both accessor and distributed method are always `async throws`

@@ -62,6 +62,106 @@ mangleDistributedThunkForAccessorRecordName(
   return mangled;
 }
 
+/// Build the expression that turns the user-supplied `any/some P` parameter
+/// (possibly wrapped in N levels of `Optional`) into the matching wire-form
+/// value, which is `$P` (possibly wrapped in the same N levels of `Optional`).
+///
+/// Depth 0: builds `try $P.resolve(id: paramRef.id, using: system)`.
+/// Depth N: builds `try paramRef.map { (arg: T_{N-1}) -> ... in <recurse with arg, depth N-1> }`.
+/// Each level uses `Optional.map` (which is `rethrows`) so a `nil` at this
+/// layer remains `nil` at the same layer of the wire form.
+static Expr *
+buildResolveExpressionForParam(ASTContext &C, Expr *paramRef,
+                               Type paramRefInterfaceType,
+                               Type paramRefContextType, Type stubInterfaceTy,
+                               VarDecl *systemVar, unsigned optionalDepth,
+                               DeclContext *parent) {
+  if (optionalDepth == 0) {
+    // paramRef.id
+    auto *paramIdExpr =
+        UnresolvedDotExpr::createImplicit(C, paramRef, C.Id_id);
+
+    // $P (as a metatype expression).
+    auto *stubTypeExpr = TypeExpr::createImplicit(stubInterfaceTy, C);
+
+    // $P.resolve(id:using:)
+    DeclName resolveName(C, C.getIdentifier("resolve"),
+                         {C.Id_id, C.getIdentifier("using")});
+    auto *resolveExpr =
+        UnresolvedDotExpr::createImplicit(C, stubTypeExpr, resolveName);
+
+    // system
+    auto *systemRef = new (C) DeclRefExpr(
+        ConcreteDeclRef(systemVar), DeclNameLoc(), /*Implicit=*/true);
+
+    // $P.resolve(id: paramRef.id, using: system)
+    auto *resolveArgList = ArgumentList::forImplicitCallTo(
+        DeclNameRef(resolveName), {paramIdExpr, systemRef}, C);
+    auto *resolveCall =
+        CallExpr::createImplicit(C, resolveExpr, resolveArgList);
+
+    // try <resolve>
+    return TryExpr::createImplicit(C, SourceLoc(), resolveCall);
+  }
+
+  // Peel one Optional layer and synthesize
+  // `try paramRef.map { (arg: innerType) -> ... in <recurse with arg> }`.
+  Type innerInterfaceType = paramRefInterfaceType->getOptionalObjectType();
+  Type innerContextType = paramRefContextType->getOptionalObjectType();
+  assert(innerInterfaceType && innerContextType &&
+         "expected Optional in wrapped form");
+
+  // Closure parameter `arg: innerType`. Parent set after the closure is built.
+  auto *closureParam = new (C) ParamDecl(
+      SourceLoc(), /*argumentNameLoc=*/SourceLoc(),
+      /*argumentName=*/Identifier(),
+      /*parameterNameLoc=*/SourceLoc(), C.getIdentifier("arg"), parent);
+  closureParam->setImplicit();
+  closureParam->setSpecifier(ParamDecl::Specifier::Default);
+  closureParam->setInterfaceType(innerInterfaceType);
+
+  auto *closureParamList = ParameterList::create(C, {closureParam});
+
+  auto *closure = new (C) ClosureExpr(
+      DeclAttributes(), /*bracketRange=*/SourceRange(),
+      /*capturedSelfDecl=*/nullptr, closureParamList,
+      /*asyncLoc=*/SourceLoc(), /*throwsLoc=*/SourceLoc(),
+      /*thrownType=*/nullptr, /*arrowLoc=*/SourceLoc(), /*inLoc=*/SourceLoc(),
+      /*explicitResultType=*/nullptr, parent);
+  closure->setImplicit(true);
+  closureParam->setDeclContext(closure);
+
+  // Reference to the closure parameter from inside the body, typed in the
+  // closure's environment.
+  auto *closureParamRef = new (C) DeclRefExpr(
+      ConcreteDeclRef(closureParam), DeclNameLoc(), /*Implicit=*/true,
+      AccessSemantics::Ordinary, innerContextType);
+
+  Expr *closureBodyExpr = buildResolveExpressionForParam(
+      C, closureParamRef, innerInterfaceType, innerContextType,
+      stubInterfaceTy, systemVar, optionalDepth - 1, closure);
+
+  auto *bodyReturn =
+      ReturnStmt::createImplicit(C, SourceLoc(), closureBodyExpr);
+  auto *closureBody =
+      BraceStmt::create(C, SourceLoc(), {bodyReturn}, SourceLoc(),
+                        /*Implicit=*/true);
+  closure->setBody(closureBody);
+
+  // paramRef.map
+  DeclName mapName(C.getIdentifier("map"));
+  auto *mapExpr =
+      UnresolvedDotExpr::createImplicit(C, paramRef, mapName);
+
+  // paramRef.map(closure)
+  auto *mapArgList = ArgumentList::forImplicitUnlabeled(C, {closure});
+  auto *mapCall = CallExpr::createImplicit(C, mapExpr, mapArgList);
+
+  // try paramRef.map(closure) — Optional.map is `rethrows`, the closure body
+  // is `try`, so the whole expression throws.
+  return TryExpr::createImplicit(C, SourceLoc(), mapCall);
+}
+
 static std::pair<BraceStmt *, bool>
 deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   auto implicit = true;
@@ -276,47 +376,31 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         // This way the remote side will decode it as `$P` proxy, which conforms to `P`,
         // so the `some/any P` parameter is correctly filled in by a `$P` instance on
         // the recipient without ever knowing the concrete type of the sender.
+        //
+        // For Optional-wrapped resolvables the same substitution applies, but we
+        // peel each Optional layer and re-wrap the result so a `nil` at any layer
+        // remains `nil` on the wire.
         if (auto resolvableMatch =
                 findDistributedResolvableExistentialOrOpaqueProtocol(paramTy)) {
           if (auto *stub = getDistributedActorStub(resolvableMatch.proto)) {
             auto stubInterfaceTy = stub->getDeclaredInterfaceType();
             if (stubInterfaceTy && !stubInterfaceTy->hasError()) {
-              // Important! We replace the type of the parameter with `$P`
-              paramTy = thunk->mapTypeIntoEnvironment(stubInterfaceTy);
+              // Track the user-declared parameter type for unwrapping the
+              // Optional layers; replace `paramTy` with the wire shape used
+              // by the surrounding RemoteCallArgument<...> initializer.
+              Type userParamInterfaceTy = param->getInterfaceType();
+              Type userParamContextTy = paramTy;
+              auto wireInterfaceTy =
+                  resolvableMatch.rebuildWireType(stubInterfaceTy);
+              paramTy = thunk->mapTypeIntoEnvironment(wireInterfaceTy);
 
-              // --- We then have to make the parameter be actually a `$P`
               // TODO: It would be simpler if we did just create a new `$P`,
               //  but we'd need to allow `self.id = id` inside distributed actors;
               //  Once we allow that, we can just create an instance without this fake resolve.
-              {
-                // paramRef.id
-                auto *paramIdExpr = UnresolvedDotExpr::createImplicit(
-                    C, argumentDeclRefExpr, C.Id_id);
-
-                // $P (as a metatype expression).
-                auto *stubTypeExpr = TypeExpr::createImplicit(stubInterfaceTy, C);
-
-                // $P.resolve(...)
-                DeclName resolveName(C, C.getIdentifier("resolve"),
-                                     {C.Id_id, C.getIdentifier("using")});
-                auto *resolveExpr = UnresolvedDotExpr::createImplicit(
-                    C, stubTypeExpr, resolveName);
-
-                // Get the `system` from the actor that the call is being made on.
-                auto *systemRef = new (C) DeclRefExpr(
-                    ConcreteDeclRef(systemVar), dloc, implicit);
-
-                // $P.resolve(id: paramRef.id, using: system)
-                // We have enforced in sema that the system must be compatible.
-                auto *resolveArgList = ArgumentList::forImplicitCallTo(
-                    DeclNameRef(resolveName), {paramIdExpr, systemRef}, C);
-                auto *resolveCall =
-                    CallExpr::createImplicit(C, resolveExpr, resolveArgList);
-
-                // try <resolve>
-                argumentDeclRefExpr =
-                    TryExpr::createImplicit(C, sloc, resolveCall);
-              }
+              argumentDeclRefExpr = buildResolveExpressionForParam(
+                  C, argumentDeclRefExpr, userParamInterfaceTy,
+                  userParamContextTy, stubInterfaceTy, systemVar,
+                  resolvableMatch.optionalDepth, thunk);
             }
           }
         }
@@ -405,13 +489,17 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     // Watch out and always map into thunk context
     auto resultType = thunk->mapTypeIntoEnvironment(func->getResultInterfaceType());
 
-    // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`
+    // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`,
+    //     preserving any leading `Optional` layers in the wire shape.
     if (auto resolvableMatch =
             findDistributedResolvableExistentialOrOpaqueProtocol(resultType)) {
       if (auto *stub = getDistributedActorStub(resolvableMatch.proto)) {
         auto stubInterfaceTy = stub->getDeclaredInterfaceType();
-        if (stubInterfaceTy && !stubInterfaceTy->hasError())
-          resultType = thunk->mapTypeIntoEnvironment(stubInterfaceTy);
+        if (stubInterfaceTy && !stubInterfaceTy->hasError()) {
+          auto wireInterfaceTy =
+              resolvableMatch.rebuildWireType(stubInterfaceTy);
+          resultType = thunk->mapTypeIntoEnvironment(wireInterfaceTy);
+        }
       }
     }
 
@@ -553,13 +641,17 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
       auto resultType =
           func->mapTypeIntoEnvironment(func->getResultInterfaceType());
 
-      // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`
+      // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`,
+      //     preserving any leading `Optional` layers in the wire shape.
       if (auto resolvableMatch =
               findDistributedResolvableExistentialOrOpaqueProtocol(resultType)) {
         if (auto *stub = getDistributedActorStub(resolvableMatch.proto)) {
           auto stubInterfaceTy = stub->getDeclaredInterfaceType();
-          if (stubInterfaceTy && !stubInterfaceTy->hasError())
-            resultType = func->mapTypeIntoEnvironment(stubInterfaceTy);
+          if (stubInterfaceTy && !stubInterfaceTy->hasError()) {
+            auto wireInterfaceTy =
+                resolvableMatch.rebuildWireType(stubInterfaceTy);
+            resultType = func->mapTypeIntoEnvironment(wireInterfaceTy);
+          }
         }
       }
 

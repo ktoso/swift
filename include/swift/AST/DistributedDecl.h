@@ -84,12 +84,23 @@ struct ResolvableProtocolMatch {
   /// True if the type contains more than one `@Resolvable` protocol --
   /// callers should diagnose ambiguity.
   bool isAmbiguous = false;
+  /// Number of `Optional` layers peeled to reach the resolvable leaf.
+  /// 0 = bare `any/some P`; 1 = `(any P)?`; 2 = `((any P)?)?`; etc.
+  unsigned optionalDepth = 0;
 
   explicit operator bool() const { return proto != nullptr; }
+
+  /// Re-wrap \p stubLeafTy in \c optionalDepth layers of `Optional`,
+  /// reproducing the user-declared shape with the resolvable leaf replaced
+  /// by the wire-form stub type.
+  Type rebuildWireType(Type stubLeafTy) const;
 };
 
 /// Walk the given type \p T looking for an existential or opaque
 /// conformance to a @Resolvable protocol.
+///
+/// Peels any number of `Optional` layers around the existential/opaque type,
+/// recording the depth in \c ResolvableProtocolMatch::optionalDepth.
 ResolvableProtocolMatch findDistributedResolvableExistentialOrOpaqueProtocol(Type T);
 
 /// Get the concrete `ActorSystem` to which protocol \p proto's
