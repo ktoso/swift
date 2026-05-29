@@ -936,6 +936,13 @@ class StackAllocationPromoter {
   /// StackAllocationPromoter::endLexicalLifetime.
   BlockToInstMap deinitializationPoints;
 
+  /// Owned values stored into the alloca that are superseded by a later store
+  /// in the same block.  Such a value is not recorded in initializationPoints
+  /// (only the last store per block is), and it is only borrowed by its uses
+  /// and never consumed, so it is orphaned: its lifetime must be completed
+  /// explicitly in run().  completeOSSALifetime no-ops already-consumed values.
+  SmallVector<SILValue, 4> orphanedOwnedValues;
+
 public:
   /// C'tor.
   StackAllocationPromoter(
@@ -1139,6 +1146,14 @@ SILInstruction *StackAllocationPromoter::promoteAllocationInBlock(
                    << "*** Removing redundant store: " << lastStoreInst);
         ++NumInstRemoved;
         prepareForDeletion(lastStoreInst, instructionsToDelete);
+        // The value stored by lastStoreInst is superseded by this store.  If it
+        // is owned, it is now orphaned (only borrowed, never consumed) and is
+        // not recorded in initializationPoints, so collect it to complete its
+        // lifetime in run().
+        if (runningVals && runningVals->value.isOwned()) {
+          orphanedOwnedValues.push_back(
+              runningVals->value.replacement(asi, lastStoreInst));
+        }
       }
 
       auto oldRunningVals = runningVals;
@@ -1828,6 +1843,12 @@ void StackAllocationPromoter::run(BasicBlockSetVector &livePhiBlocks) {
         valuesToComplete.push_back(lexical);
       }
     }
+    // Orphaned owned values (whose store was superseded by a later store in
+    // the same block) are not in initializationPoints; complete them too.
+    // completeOSSALifetime dedups and no-ops values that are already complete.
+    for (auto value : orphanedOwnedValues) {
+      valuesToComplete.push_back(value);
+    }
   }
 
   // ... and erase the allocation.
@@ -1964,6 +1985,13 @@ void MemoryToRegisters::removeSingleBlockAllocation(AllocStackInst *asi) {
   // uninitialized variables in Swift.
   std::optional<StorageStateTracking<LiveValues>> runningVals;
 
+  // Owned values stored into the alloca that are superseded by a later store in
+  // this block.  Such a value is orphaned: it is only borrowed by its uses and
+  // never consumed (no destroy_addr / consuming load [take] follows), so its
+  // lifetime must be completed explicitly below.  completeOSSALifetime no-ops
+  // values that are already consumed.
+  SmallVector<SILValue, 4> orphanedOwnedValues;
+
   // For all instructions in the block.
   for (auto bbi = parentBlock->begin(), bbe = parentBlock->end(); bbi != bbe;) {
     SILInstruction *inst = &*bbi;
@@ -2019,6 +2047,12 @@ void MemoryToRegisters::removeSingleBlockAllocation(AllocStackInst *asi) {
         }
       }
       auto oldRunningVals = runningVals;
+      // If a previous owned value was stored and is now superseded by this
+      // store, it is orphaned and its lifetime must be completed below.
+      if (oldRunningVals && oldRunningVals->value.isOwned()) {
+        orphanedOwnedValues.push_back(
+            oldRunningVals->value.replacement(asi, si));
+      }
       runningVals = {LiveValues::toReplace(asi, /*replacement=*/si->getSrc()),
                      /*isStorageValid=*/true};
       if (lexicalLifetimeEnsured(asi, si)) {
@@ -2112,29 +2146,39 @@ void MemoryToRegisters::removeSingleBlockAllocation(AllocStackInst *asi) {
   }
 
   auto *function = asi->getFunction();
-  if (!function->hasOwnership() || !runningVals ||
-      !runningVals->isStorageValid ||
+  if (!function->hasOwnership() ||
       asi->getElementType().isTrivial(function)) {
     return;
   }
-  // There is still valid storage after visiting all instructions in this
-  // block which are the only instructions involving this alloc_stack.
-  // That can happen if:
-  // (1) this block is a dead-end. TODO: OSSACompleteLifetime: Complete such
-  //                                     lifetimes.
-  // (2) a trivial case of a non-trivial enum was stored to the address
 
+  // The value that is still stored at the end of the block (if any) also needs
+  // its lifetime completed.  Earlier orphaned owned values were already
+  // collected in orphanedOwnedValues.
+  if (runningVals && runningVals->isStorageValid) {
+    if (auto replacement = runningVals->value.replacement(asi, nullptr))
+      orphanedOwnedValues.push_back(replacement);
+  }
+
+  if (orphanedOwnedValues.empty())
+    return;
+
+  // Stack locations may have incomplete lifetimes:
+  // (1) a `destroy_addr` might be missing on a dead-end block, or
+  // (2) an owned value can be orphaned when a later store in the same block
+  //     supersedes it without consuming it.
+  // Complete each owned lifetime.  Already-consumed values (e.g. one whose
+  // `destroy_addr` was replaced by a `destroy_value`) complete to a no-op
+  // because their consuming use already defines the liveness boundary.
   auto *deadEndBlocks = deadEndBlocksAnalysis->get(function);
 
-  // We may have incomplete lifetimes for enum locations on trivial paths.
-  // After promoting them, complete lifetime here.
   OSSACompleteLifetime completion(function, *deadEndBlocks,
                                   OSSACompleteLifetime::IgnoreTrivialVariable,
                                   /*forceLivenessVerification=*/false,
                                   /*nonDestroyingEnd=*/true);
-  completion.completeOSSALifetime(
-      runningVals->value.replacement(asi, nullptr),
-      OSSACompleteLifetime::Boundary::Liveness);
+  for (auto value : orphanedOwnedValues) {
+    completion.completeOSSALifetime(value,
+                                    OSSACompleteLifetime::Boundary::Liveness);
+  }
 }
 
 void MemoryToRegisters::collectStoredValues(AllocStackInst *asi,
