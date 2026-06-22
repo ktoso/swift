@@ -443,8 +443,26 @@ void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
   SILFunction *dispatchTo = nullptr;
   if (auto *thunk = target.dyn_cast<SILFunction *>()) {
     if (auto *afd = thunk->getDeclRef().getAbstractFunctionDecl()) {
-      if (auto *adapter = findResolvableProxyAdapterThunkDecl(afd))
+      if (auto *adapter = findResolvableProxyAdapterThunkDecl(afd)) {
         dispatchTo = getSILModule().lookUpFunction(SILDeclRef(adapter));
+        // [DEBUG-PROBE rdar://distributed-any-some-windows]
+        // If this lookup returns null on Windows, the accessor speaks
+        // `any P` (5 words / Indirect_In_Guaranteed) while
+        // decodeArguments has already substituted argument metadata to
+        // `$P` (1 word) -> size/ABI mismatch -> out-of-bounds write ->
+        // STATUS_HEAP_CORRUPTION at runtime.
+        if (!dispatchTo) {
+          llvm::errs() << "[DEBUG-PROBE GenDistributed.cpp:447] "
+                          "lookUpFunction(SILDeclRef(adapter)) "
+                          "returned NULL for ";
+          afd->dumpRef(llvm::errs());
+          llvm::errs() << "\n  adapter: ";
+          adapter->dumpRef(llvm::errs());
+          llvm::errs() << "\n";
+        }
+        assert(dispatchTo &&
+               "@Resolvable adapter thunk SIL function missing at IRGen");
+      }
     }
   }
 
