@@ -2841,7 +2841,14 @@ function Get-CompilersDefines([Hashtable] $Platform,
     CLANG_TABLEGEN = (Join-Path -Path $BuildTools -ChildPath "clang-tblgen.exe");
     CLANG_TIDY_CONFUSABLE_CHARS_GEN = (Join-Path -Path $BuildTools -ChildPath "clang-tidy-confusable-chars-gen.exe");
     CMAKE_STATIC_LIBRARY_PREFIX_Swift = "lib";
-    CMAKE_Swift_FLAGS = if ($LTO -ne "none") { @("-use-ld=lld") } else { @() };
+    CMAKE_Swift_FLAGS = if ($LTO -ne "none") {
+        @("-use-ld=lld")
+      } elseif (($Platform -eq $KnownPlatforms["WindowsARM64"])) {
+        # FIXME: https://github.com/swiftlang/swift/issues/90100
+        @("-use-ld=lld-link")
+      } else {
+        @()
+      };
     LibXml2_DIR = "$BinaryCache\$($Platform.Triple)\usr\lib\cmake\libxml2-2.11.5";
     LLDB_LIBXML2_VERSION = "2.11.5";
     LLDB_PYTHON_EXE_RELATIVE_PATH = "python.exe";
