@@ -32,3 +32,4 @@ install(TARGETS swiftGlibc
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 emit_swift_interface(swiftGlibc)
 install_swift_interface(swiftGlibc)
+embed_manifest(swiftGlibc)
