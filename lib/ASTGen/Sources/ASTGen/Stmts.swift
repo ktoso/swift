@@ -564,6 +564,12 @@ extension ASTGenVisitor {
         return .ifConfigDecl(ifConfigDecl)
       case .switchCase(let switchCase):
         return .underlying(switchCase)
+      case .macroExpansionDecl(_):
+        // Snapshot toolchain swift-syntax has this case; main's ASTGen
+        // doesn't yet. Crash if it shows up during stage-0 build of the
+        // compiler itself (it shouldn't — this path runs only when
+        // swift-frontend processes user code with a macro-in-switch).
+        fatalError("unexpected .macroExpansionDecl in switch case list")
       }
     } body: { caseNode in
       allBridgedCases.append(self.generate(switchCase: caseNode))
