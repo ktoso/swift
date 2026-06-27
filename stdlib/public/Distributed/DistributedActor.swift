@@ -194,11 +194,37 @@ import _Concurrency
 /// actor system for the decoding initializer when decoding a distributed actor.
 ///
 /// - SeeAlso: ``DistributedActorSystem``
+#if $Embedded
+
+// Under Embedded Swift, `DistributedActorSystem` cannot be conformed to
+// because it requires generic methods over a (typically non-class)
+// `SerializationRequirement`. We therefore loosen the `ActorSystem`
+// constraint to accept the alternate `EmbeddedDistributedActorSystem`
+// protocol family, and drop the `SerializationRequirement` associated
+// type (the embedded family doesn't have one).
+@available(SwiftStdlib 5.7, *)
+public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
+  where ID == ActorSystem.ActorID {
+
+  /// The type of transport used to communicate with actors of this type.
+  associatedtype ActorSystem: EmbeddedDistributedActorSystem
+
+  nonisolated override var id: ID { get }
+  nonisolated var actorSystem: ActorSystem { get }
+
+  @available(SwiftStdlib 5.9, *)
+  nonisolated var unownedExecutor: UnownedSerialExecutor { get }
+
+  static func resolve(id: ID, using system: ActorSystem) throws -> Self
+}
+
+#else
+
 @available(SwiftStdlib 5.7, *)
 public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
   where ID == ActorSystem.ActorID,
         SerializationRequirement == ActorSystem.SerializationRequirement {
-  
+
   /// The type of transport used to communicate with actors of this type.
   associatedtype ActorSystem: DistributedActorSystem
 
@@ -278,6 +304,8 @@ public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
   static func resolve(id: ID, using system: ActorSystem) throws -> Self
 
 }
+
+#endif // $Embedded
 
 // ==== Hashable conformance ---------------------------------------------------
 

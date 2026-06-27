@@ -69,6 +69,15 @@ Type getDistributedActorSystemType(NominalTypeDecl *actor);
 /// Determine the `ID` type for the given actor.
 Type getDistributedActorIDType(NominalTypeDecl *actor);
 
+/// True if the given distributed actor's `ActorSystem` conforms to the
+/// `EmbeddedDistributedActorSystem` protocol family (the Embedded Swift
+/// variant) rather than the standard `DistributedActorSystem`.
+///
+/// When true, the compiler synthesizes a different distributed thunk that
+/// uses non-generic per-type encode/decode overloads on the user's
+/// concrete encoder/decoder/handler types.
+bool isEmbeddedDistributedActorSystem(NominalTypeDecl *actor);
+
 /// If `P` is a `@Resolvable protocol`, return the stub type `$P`.
 NominalTypeDecl *getDistributedResolvableProtocolStubDecl(ProtocolDecl *proto);
 

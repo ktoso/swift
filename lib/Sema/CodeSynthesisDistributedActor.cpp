@@ -111,6 +111,17 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
          funcDC->getSelfNominalTypeDecl()->isDistributedActor() &&
          "Distributed function must be part of distributed actor");
 
+  // True when the enclosing distributed actor's `ActorSystem` conforms to
+  // `EmbeddedDistributedActorSystem`. In that mode we emit a different
+  // thunk shape that uses non-generic per-type encode/decode overloads on
+  // the user's concrete encoder/decoder/handler types, skips
+  // `recordErrorType`, omits the `throwing:` and `returning:` labels on
+  // `remoteCall`, and (for non-Void returns) decodes the result via
+  // `decoder.decodeNextArgument(R.self)` on the decoder returned by
+  // `remoteCall`.
+  const bool isEmbeddedSystem =
+      isEmbeddedDistributedActorSystem(funcDC->getSelfNominalTypeDecl());
+
   auto selfDecl = thunk->getImplicitSelfDecl();
   selfDecl->addAttribute(new (C) KnownToBeLocalAttr(implicit));
 
@@ -257,8 +268,16 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 
   // -- recordArgument(s)
   {
-    auto recordArgumentName = DeclName(C, C.Id_recordArgument,
-                                       /*labels=*/{Identifier()});
+    // Standard distributed actors use a single-positional-argument
+    // `recordArgument(_:)` taking a `RemoteCallArgument<Value>` struct.
+    // Embedded actors instead use a per-type `recordArgument(_:label:)`
+    // overload on the user's concrete encoder; the value is passed
+    // directly and the label is a `String` keyword argument.
+    auto recordArgumentName = isEmbeddedSystem
+        ? DeclName(C, C.Id_recordArgument,
+                   /*labels=*/{Identifier(), C.getIdentifier("label")})
+        : DeclName(C, C.Id_recordArgument,
+                   /*labels=*/{Identifier()});
     if (auto params = thunk->getParameters()) {
       if (params->begin())
       for (auto param : *params) {
@@ -355,15 +374,44 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         auto callArgPB = PatternBindingDecl::createImplicit(
             C, StaticSpellingKind::None, callArgPattern, initCallArgCallExpr, thunk);
 
-        remoteBranchStmts.push_back(callArgPB);
-        remoteBranchStmts.push_back(callArgVar);
+        if (!isEmbeddedSystem) {
+          remoteBranchStmts.push_back(callArgPB);
+          remoteBranchStmts.push_back(callArgVar);
+        }
 
-        /// --- Pass the argumentRepr to the recordArgument function
-        auto recordArgArgsList = ArgumentList::forImplicitCallTo(
-            DeclNameRef(recordArgumentName),
-            {new (C) DeclRefExpr(ConcreteDeclRef(callArgVar), dloc, implicit,
-                                 AccessSemantics::Ordinary)},
-            C);
+        /// --- Pass the argument to the recordArgument function
+        // Standard mode: pass the `RemoteCallArgument<Value>` we just built.
+        // Embedded mode: pass the raw argument value and a String label so
+        // overload resolution picks the user's
+        // `recordArgument(_: T, label: String)` extension method.
+        ArgumentList *recordArgArgsList;
+        if (isEmbeddedSystem) {
+          // Use the argument label literal we computed above; embedded API
+          // requires a `String` so an empty argument label becomes "_".
+          Expr *labelExpr;
+          if (argumentName.empty()) {
+            labelExpr =
+                new (C) StringLiteralExpr("_", SourceRange(), implicit);
+          } else {
+            labelExpr = new (C) StringLiteralExpr(argumentName, SourceRange(),
+                                                  implicit);
+          }
+          recordArgArgsList = ArgumentList::createImplicit(
+              C, {
+                     Argument(sloc, Identifier(),
+                              new (C) DeclRefExpr(ConcreteDeclRef(param), dloc,
+                                                  implicit,
+                                                  AccessSemantics::Ordinary,
+                                                  paramTy)),
+                     Argument(sloc, C.getIdentifier("label"), labelExpr),
+                 });
+        } else {
+          recordArgArgsList = ArgumentList::forImplicitCallTo(
+              DeclNameRef(recordArgumentName),
+              {new (C) DeclRefExpr(ConcreteDeclRef(callArgVar), dloc, implicit,
+                                   AccessSemantics::Ordinary)},
+              C);
+        }
 
         auto tryRecordArgExpr = TryExpr::createImplicit(
             C, sloc,
@@ -382,7 +430,10 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   }
 
   // -- recordErrorType
-  if (func->hasThrows()) {
+  // Skipped under Embedded: the EmbeddedDistributedTargetInvocationEncoder
+  // does not have a `recordErrorType` requirement (errors travel as
+  // `any Error` and need no separate metatype recording).
+  if (func->hasThrows() && !isEmbeddedSystem) {
     auto recordErrorTypeName = DeclName(C, C.Id_recordErrorType,
                                         /*labels=*/{Identifier()});
     // Error.self
@@ -501,7 +552,20 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   // === Make the 'remoteCall(Void)(...)'
   {
     DeclName remoteCallName;
-    if (isVoidReturn) {
+    if (isEmbeddedSystem) {
+      // `func remoteCall<Act>(on:target:invocation:)` — no `throwing:`,
+      // no `returning:`. Errors travel as `any Error`. Return type is
+      // either `Void` (for `remoteCallVoid`) or the system's
+      // `InvocationDecoder` from which the caller decodes the result.
+      if (isVoidReturn) {
+        remoteCallName =
+            DeclName(C, C.Id_remoteCallVoid,
+                     {C.Id_on, C.Id_target, C.Id_invocation});
+      } else {
+        remoteCallName = DeclName(C, C.Id_remoteCall,
+                                  {C.Id_on, C.Id_target, C.Id_invocation});
+      }
+    } else if (isVoidReturn) {
       remoteCallName =
           DeclName(C, C.Id_remoteCallVoid,
                    {C.Id_on, C.Id_target, C.Id_invocation, C.Id_throwing});
@@ -532,25 +596,32 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         Type(), implicit));
 
     // -- throwing: Err.Type
-    if (func->hasThrows()) {
-      // Error.self
-      auto errorDecl = C.getErrorDecl();
-      auto *errorTypeExpr = new (C) DotSelfExpr(
-          UnresolvedDeclRefExpr::createImplicit(C, errorDecl->getName()), sloc,
-          sloc, errorDecl->getDeclaredInterfaceType());
+    // Skipped under Embedded - errors travel as `any Error` and the
+    // embedded protocol's `remoteCall` has no `throwing:` parameter.
+    if (!isEmbeddedSystem) {
+      if (func->hasThrows()) {
+        // Error.self
+        auto errorDecl = C.getErrorDecl();
+        auto *errorTypeExpr = new (C) DotSelfExpr(
+            UnresolvedDeclRefExpr::createImplicit(C, errorDecl->getName()), sloc,
+            sloc, errorDecl->getDeclaredInterfaceType());
 
-      args.push_back(errorTypeExpr);
-    } else {
-      // Never.self
-      auto neverDecl = C.getNeverDecl();
-      auto *neverTypeExpr = new (C) DotSelfExpr(
-          UnresolvedDeclRefExpr::createImplicit(C, neverDecl->getName()), sloc,
-          sloc, neverDecl->getDeclaredInterfaceType());
-      args.push_back(neverTypeExpr);
+        args.push_back(errorTypeExpr);
+      } else {
+        // Never.self
+        auto neverDecl = C.getNeverDecl();
+        auto *neverTypeExpr = new (C) DotSelfExpr(
+            UnresolvedDeclRefExpr::createImplicit(C, neverDecl->getName()), sloc,
+            sloc, neverDecl->getDeclaredInterfaceType());
+        args.push_back(neverTypeExpr);
+      }
     }
 
     // -- returning: Res.Type
-    if (!isVoidReturn) {
+    // Skipped under Embedded - the embedded protocol's `remoteCall` does
+    // not take a `returning:` parameter; it returns the decoder, from
+    // which the thunk decodes the result.
+    if (!isVoidReturn && !isEmbeddedSystem) {
       // Result.self
       auto resultType =
           func->mapTypeIntoEnvironment(func->getResultInterfaceType());
@@ -566,7 +637,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
       args.push_back(resultTypeExpr);
     }
 
-    assert(args.size() == (isVoidReturn ? 4 : 5));
+    assert(args.size() == (isEmbeddedSystem ? 3 : (isVoidReturn ? 4 : 5)));
     auto remoteCallArgs = ArgumentList::forImplicitCallTo(
         systemRemoteCallRef->getName(), args, C);
 
@@ -574,8 +645,51 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         CallExpr::createImplicit(C, systemRemoteCallRef, remoteCallArgs);
     remoteCallExpr = AwaitExpr::createImplicit(C, sloc, remoteCallExpr);
     remoteCallExpr = TryExpr::createImplicit(C, sloc, remoteCallExpr);
-    auto returnRemoteCall = ReturnStmt::createImplicit(C, sloc, remoteCallExpr);
-    remoteBranchStmts.push_back(returnRemoteCall);
+
+    if (isEmbeddedSystem && !isVoidReturn) {
+      // Embedded mode: `remoteCall` returns the system's `InvocationDecoder`
+      // populated with the response. Decode the actual result via:
+      //   return try decoder.decodeNextArgument(R.self)
+      // The overload is resolved against the user's concrete decoder type;
+      // we don't synthesize a generic call site.
+      auto decoderVar = new (C) VarDecl(
+          /*isStatic=*/false, VarDecl::Introducer::Var, sloc,
+          C.getIdentifier("__decoder"), thunk);
+      decoderVar->setImplicit();
+      decoderVar->setSynthesized();
+      auto decoderPattern = NamedPattern::createImplicit(C, decoderVar);
+      auto decoderPB = PatternBindingDecl::createImplicit(
+          C, swift::StaticSpellingKind::None, decoderPattern,
+          /*expr=*/remoteCallExpr, thunk);
+      remoteBranchStmts.push_back(decoderPB);
+      remoteBranchStmts.push_back(decoderVar);
+
+      // decoder.decodeNextArgument(R.self)
+      auto resultType =
+          func->mapTypeIntoEnvironment(func->getResultInterfaceType());
+      auto *metaTypeRef = TypeExpr::createImplicit(resultType, C);
+      auto *resultTypeExpr =
+          new (C) DotSelfExpr(metaTypeRef, sloc, sloc, resultType);
+
+      DeclName decodeNextArgName(C, C.Id_decodeNextArgument,
+                                 /*labels=*/{Identifier()});
+      auto decodeArgsList = ArgumentList::forImplicitCallTo(
+          DeclNameRef(decodeNextArgName), {resultTypeExpr}, C);
+      auto decoderRef = new (C) DeclRefExpr(ConcreteDeclRef(decoderVar), dloc,
+                                            implicit, AccessSemantics::Ordinary);
+      Expr *decodeCall = CallExpr::createImplicit(
+          C,
+          UnresolvedDotExpr::createImplicit(C, decoderRef, decodeNextArgName),
+          decodeArgsList);
+      decodeCall = TryExpr::createImplicit(C, sloc, decodeCall);
+
+      auto returnDecoded = ReturnStmt::createImplicit(C, sloc, decodeCall);
+      remoteBranchStmts.push_back(returnDecoded);
+    } else {
+      auto returnRemoteCall =
+          ReturnStmt::createImplicit(C, sloc, remoteCallExpr);
+      remoteBranchStmts.push_back(returnRemoteCall);
+    }
   }
 
   // ---------------------------------------------------------------------------
