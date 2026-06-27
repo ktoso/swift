@@ -1144,6 +1144,16 @@ GetDistributedActorConcreteArgumentDecodingMethodRequest::evaluate(
     Evaluator &evaluator, NominalTypeDecl *decl) const {
   auto &ctx = decl->getASTContext();
 
+  // Under Embedded Swift, distributed actors use the
+  // `EmbeddedDistributedActorSystem` family which has no
+  // `SerializationRequirement` associated type. The user provides
+  // per-type non-generic `decodeNextArgument(_: T.Type) -> T` overloads
+  // on their concrete decoder; there is no single
+  // `decodeNextArgument<Arg: ...>()` method to identify, and IRGen never
+  // takes its address. Return null to short-circuit the search.
+  if (ctx.LangOpts.hasFeature(Feature::Embedded))
+    return nullptr;
+
   if (auto actor = dyn_cast<ClassDecl>(decl)) {
     auto *decoder = getDistributedActorInvocationDecoder(actor);
     // If distributed actor is generic over actor system, there is not

@@ -4880,6 +4880,13 @@ void IRGenModule::emitAccessibleFunctions() {
   if (AccessibleFunctions.empty())
     return;
 
+  // Under Embedded Swift, the runtime has no
+  // `swift_findAccessibleFunction` and no demangler to query this
+  // section. Skip emission entirely - distributed dispatch will go
+  // through a per-actor accessor table emitted separately.
+  if (Context.LangOpts.hasFeature(Feature::Embedded))
+    return;
+
   StringRef fnsSectionName;
   switch (TargetInfo.OutputObjectFormat) {
   case llvm::Triple::DXContainer:
