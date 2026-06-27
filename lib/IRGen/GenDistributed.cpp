@@ -427,6 +427,17 @@ IRGenModule::getAddrOfDistributedTargetAccessor(LinkEntity accessor,
 }
 
 void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
+  // Under Embedded Swift, distributed dispatch does not go through the
+  // standard receiver-side accessor (which would call into the user's
+  // generic `decodeNextArgument<Arg>()` via a dispatch thunk). Embedded
+  // actor systems handle receiver-side dispatch themselves via a
+  // per-actor accessor table (still TODO). Skip emission entirely;
+  // emitting the accessor would pull in references to the standard
+  // dispatch thunk of `DistributedTargetInvocationDecoder.decodeNextArgument`,
+  // which the embedded Distributed module deliberately does not provide.
+  if (Context.LangOpts.hasFeature(Feature::Embedded))
+    return;
+
   LinkEntity accessorRef = getAccessorLinking(target);
   auto *f = getAddrOfDistributedTargetAccessor(accessorRef,
                                                ForDefinition);
