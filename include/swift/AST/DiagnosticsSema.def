@@ -6235,6 +6235,35 @@ ERROR(distributed_actor_func_param_not_codable,none,
       "parameter %0 of type %1 in %kindonly2 does not conform to "
       "serialization requirement '%3'",
       (Identifier, Type, const AbstractFunctionDecl *, StringRef))
+
+// Embedded Swift: per-type overload coverage for the
+// EmbeddedDistributedTargetInvocation{Encoder,Decoder,ResultHandler}
+// protocol family. Under Embedded, the user provides non-generic
+// overloads on their concrete encoder/decoder/handler types for each
+// type used in a distributed func; the compiler verifies coverage at
+// type-check time and emits these diagnostics for missing overloads.
+ERROR(distributed_embedded_missing_record_argument,none,
+      "embedded distributed actor system encoder %0 is missing an "
+      "overload of 'recordArgument' for parameter %1 of type %2 in "
+      "%kindonly3",
+      (Type, Identifier, Type, const AbstractFunctionDecl *))
+ERROR(distributed_embedded_missing_decode_next_argument,none,
+      "embedded distributed actor system decoder %0 is missing an "
+      "overload of 'decodeNextArgument' for parameter %1 of type %2 in "
+      "%kindonly3",
+      (Type, Identifier, Type, const AbstractFunctionDecl *))
+ERROR(distributed_embedded_missing_record_return_type,none,
+      "embedded distributed actor system encoder %0 is missing an "
+      "overload of 'recordReturnType' for the return type %1 of "
+      "%kindonly2",
+      (Type, Type, const AbstractFunctionDecl *))
+ERROR(distributed_embedded_missing_on_return,none,
+      "embedded distributed actor system result handler %0 is missing "
+      "an overload of 'onReturn' for the return type %1 of %kindonly2",
+      (Type, Type, const AbstractFunctionDecl *))
+NOTE(distributed_embedded_missing_overload_note,none,
+     "add this overload to %0 (or to an extension of it):  %1",
+     (Type, StringRef))
 ERROR(distributed_actor_func_param_resolvable_actor_system_mismatch,none,
       "parameter %0 of type %1 in %kindonly2 must match the enclosing actor's "
       "ActorSystem (%5)",

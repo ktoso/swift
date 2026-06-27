@@ -789,6 +789,180 @@ static void emitResolvableProtocolMissingActorSystemFixit(
       .fixItInsert(fixItLoc, fixIt);
 }
 
+/// Look up a single-parameter method with the given name on \p type,
+/// matching either `func name(_: paramTy)` (when `isMetatype` is false)
+/// or `func name(_: paramTy.Type)` (when `isMetatype` is true). Optionally
+/// requires an additional `label: String` keyword argument. Returns true
+/// if at least one matching candidate exists.
+static bool hasEmbeddedDistributedOverload(
+    DeclContext *useDC, Type type, Identifier methodName, Type paramTy,
+    bool isMetatype, bool requireLabelStringArg) {
+  if (!type || type->hasError())
+    return true; // can't check; don't add a confusing diagnostic on top
+
+  auto &ctx = useDC->getASTContext();
+  auto members = TypeChecker::lookupMember(useDC, type,
+                                           DeclNameRef(methodName));
+  for (auto &found : members) {
+    auto *fd = dyn_cast<FuncDecl>(found.getValueDecl());
+    if (!fd)
+      continue;
+    auto *params = fd->getParameters();
+    auto expectedSize = requireLabelStringArg ? 2u : 1u;
+    if (params->size() != expectedSize)
+      continue;
+
+    // First parameter: the value (or the metatype).
+    auto *firstParam = params->get(0);
+    Type firstTy = firstParam->getInterfaceType();
+    if (auto inout = firstTy->getAs<InOutType>())
+      firstTy = inout->getObjectType();
+    Type expected = paramTy;
+    if (isMetatype)
+      expected = MetatypeType::get(paramTy);
+    if (!firstTy->isEqual(expected))
+      continue;
+
+    // Optional second parameter: `label: String`.
+    if (requireLabelStringArg) {
+      auto *labelParam = params->get(1);
+      if (labelParam->getArgumentName() != ctx.getIdentifier("label"))
+        continue;
+      if (!labelParam->getInterfaceType()->isEqual(ctx.getStringType()))
+        continue;
+    }
+
+    return true;
+  }
+  return false;
+}
+
+/// For a `distributed func` whose enclosing actor uses an
+/// `EmbeddedDistributedActorSystem`, verify that the system's concrete
+/// encoder / decoder / handler types provide non-generic per-type
+/// overloads for every type used in the function's signature.
+///
+/// Emits diagnostics for missing overloads and returns true if any were
+/// missing.
+static bool checkEmbeddedDistributedFunctionCoverage(
+    AbstractFunctionDecl *func) {
+  auto &ctx = func->getASTContext();
+
+  auto *actorOrExt = func->getDeclContext();
+  Type systemTy = getConcreteReplacementForProtocolActorSystemType(func);
+  if (!systemTy || systemTy->hasError())
+    return false;
+
+  auto *systemNominal = systemTy->getAnyNominal();
+  if (!systemNominal)
+    return false;
+
+  // Look up the InvocationEncoder/Decoder/ResultHandler type witnesses on
+  // the user's concrete actor system.
+  auto *embeddedDAS =
+      ctx.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
+  if (!embeddedDAS)
+    return false;
+
+  auto sysConf = lookupConformance(
+      systemNominal->getDeclaredInterfaceType(), embeddedDAS);
+  if (sysConf.isInvalid())
+    return false;
+
+  Type encoderTy =
+      sysConf.getTypeWitnessByName(ctx.getIdentifier("InvocationEncoder"));
+  Type decoderTy =
+      sysConf.getTypeWitnessByName(ctx.getIdentifier("InvocationDecoder"));
+  Type handlerTy =
+      sysConf.getTypeWitnessByName(ctx.getIdentifier("ResultHandler"));
+
+  bool anyMissing = false;
+
+  // For each (non-`@Resolvable`) parameter, require:
+  //   encoder.recordArgument(_: T, label: String)
+  //   decoder.decodeNextArgument(_: T.Type) -> T
+  for (auto *param : *func->getParameters()) {
+    Type paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
+    Type printableParamTy = param->getInterfaceType();
+
+    if (encoderTy &&
+        !hasEmbeddedDistributedOverload(
+            actorOrExt, encoderTy, ctx.Id_recordArgument, paramTy,
+            /*isMetatype=*/false, /*requireLabelStringArg=*/true)) {
+      func->diagnose(
+          diag::distributed_embedded_missing_record_argument, encoderTy,
+          param->getArgumentName(), printableParamTy, func);
+      llvm::SmallString<128> sigBuf;
+      llvm::raw_svector_ostream sig(sigBuf);
+      sig << "func recordArgument(_ value: " << printableParamTy
+          << ", label: String) throws";
+      func->diagnose(diag::distributed_embedded_missing_overload_note,
+                     encoderTy, StringRef(sigBuf));
+      anyMissing = true;
+    }
+
+    if (decoderTy &&
+        !hasEmbeddedDistributedOverload(
+            actorOrExt, decoderTy, ctx.Id_decodeNextArgument, paramTy,
+            /*isMetatype=*/true, /*requireLabelStringArg=*/false)) {
+      func->diagnose(
+          diag::distributed_embedded_missing_decode_next_argument, decoderTy,
+          param->getArgumentName(), printableParamTy, func);
+      llvm::SmallString<128> sigBuf;
+      llvm::raw_svector_ostream sig(sigBuf);
+      sig << "func decodeNextArgument(_ type: " << printableParamTy
+          << ".Type) throws -> " << printableParamTy;
+      func->diagnose(diag::distributed_embedded_missing_overload_note,
+                     decoderTy, StringRef(sigBuf));
+      anyMissing = true;
+    }
+  }
+
+  // If the function returns a non-Void value, also require:
+  //   encoder.recordReturnType(_: R.Type)
+  //   handler.onReturn(_: R) async throws
+  if (auto *funcDecl = dyn_cast<FuncDecl>(func)) {
+    Type returnInterfaceTy = funcDecl->getResultInterfaceType();
+    if (!returnInterfaceTy->isVoid()) {
+      Type returnTy = funcDecl->mapTypeIntoEnvironment(returnInterfaceTy);
+
+      if (encoderTy &&
+          !hasEmbeddedDistributedOverload(
+              actorOrExt, encoderTy, ctx.Id_recordReturnType, returnTy,
+              /*isMetatype=*/true, /*requireLabelStringArg=*/false)) {
+        func->diagnose(
+            diag::distributed_embedded_missing_record_return_type, encoderTy,
+            returnInterfaceTy, func);
+        llvm::SmallString<128> sigBuf;
+        llvm::raw_svector_ostream sig(sigBuf);
+        sig << "func recordReturnType(_ type: " << returnInterfaceTy
+            << ".Type) throws";
+        func->diagnose(diag::distributed_embedded_missing_overload_note,
+                       encoderTy, StringRef(sigBuf));
+        anyMissing = true;
+      }
+
+      if (handlerTy &&
+          !hasEmbeddedDistributedOverload(
+              actorOrExt, handlerTy, ctx.Id_onReturn, returnTy,
+              /*isMetatype=*/false, /*requireLabelStringArg=*/false)) {
+        func->diagnose(
+            diag::distributed_embedded_missing_on_return, handlerTy,
+            returnInterfaceTy, func);
+        llvm::SmallString<128> sigBuf;
+        llvm::raw_svector_ostream sig(sigBuf);
+        sig << "func onReturn(_ value: " << returnInterfaceTy
+            << ") async throws";
+        func->diagnose(diag::distributed_embedded_missing_overload_note,
+                       handlerTy, StringRef(sigBuf));
+        anyMissing = true;
+      }
+    }
+  }
+
+  return anyMissing;
+}
+
 bool CheckDistributedFunctionRequest::evaluate(
     Evaluator &evaluator, AbstractFunctionDecl *func) const {
   if (auto *accessor = dyn_cast<AccessorDecl>(func)) {
@@ -933,6 +1107,14 @@ bool CheckDistributedFunctionRequest::evaluate(
   if (checkDistributedTargetResultType(func, serializationReqType,
                                        /*diagnose=*/true)) {
     return true;
+  }
+
+  // Embedded Swift: verify the actor system's concrete encoder/decoder/
+  // handler types have the per-type overloads the synthesized thunk and
+  // accessor will reference.
+  if (C.LangOpts.hasFeature(Feature::Embedded)) {
+    if (checkEmbeddedDistributedFunctionCoverage(func))
+      return true;
   }
 
   return false;
