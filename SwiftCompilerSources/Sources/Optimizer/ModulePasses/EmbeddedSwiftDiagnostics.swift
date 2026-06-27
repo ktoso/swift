@@ -301,7 +301,17 @@ private struct FunctionChecker {
     if !apply.callee.type.hasValidSignatureForEmbedded,
        // Some runtime functions have generic parameters in SIL, which are not used in IRGen.
        // Therefore exclude runtime functions at all.
-       !apply.callsEmbeddedRuntimeFunction
+       !apply.callsEmbeddedRuntimeFunction,
+       // Protocol witness thunks for the distributed ad-hoc protocol
+       // requirements (e.g. `DistributedActorSystem.remoteCall`,
+       // `DistributedTargetInvocationEncoder.recordArgument`) have generic
+       // parameters constrained only to the `SerializationRequirement`, which
+       // is not class-bound. These thunks are dead code in Embedded Swift:
+       // distributed dispatch always goes through a concrete actor system,
+       // never through an `any DistributedActorSystem` existential. The
+       // diagnostic would otherwise fire for the generic forward inside the
+       // thunk even though no specialization is ever needed at runtime.
+       !apply.parentFunction.isDistributedAdHocSerializationRequirementWitness
     {
       switch apply.callee {
       case let cmi as ClassMethodInst:

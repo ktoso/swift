@@ -301,6 +301,7 @@ extension DistributedActor {
 
 // ==== Codable conformance ----------------------------------------------------
 
+#if !$Embedded
 extension CodingUserInfoKey {
 
   /// Key which is required to be set on a `Decoder`'s `userInfo` while attempting
@@ -348,6 +349,7 @@ extension DistributedActor /*: implicitly Encodable */ where Self.ID: Encodable 
     try container.encode(self.id)
   }
 }
+#endif // !$Embedded
 
 // ==== Local actor special handling -------------------------------------------
 

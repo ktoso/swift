@@ -450,6 +450,7 @@ extension DistributedActorSystem {
   ///           does not resolve to a valid distributed function accessor, i.e. the
   ///           call identifier is incorrect, corrupted, or simply not present in this process.
   @available(SwiftStdlib 5.7, *)
+  @_unavailableInEmbedded
   public func executeDistributedTarget<Act>(
     on actor: Act,
     target: RemoteCallTarget,
@@ -739,11 +740,16 @@ public struct RemoteCallTarget: CustomStringConvertible, Hashable {
   /// Attempts to pretty format the underlying target identifier.
   /// If unable to, returns the raw underlying identifier.
   public var description: String {
+    #if !$Embedded
     if let name = _getFunctionFullNameFromMangledName(mangledName: _identifier) {
       return name
     } else {
       return "\(_identifier)"
     }
+    #else
+    // Embedded Swift has no runtime demangler; return the raw mangled name.
+    return _identifier
+    #endif
   }
 }
 

@@ -956,6 +956,44 @@ bool BridgedFunction::isGeneric() const {
   return getFunction()->isGeneric();
 }
 
+bool BridgedFunction::isDistributedAdHocSerializationRequirementWitness() const {
+  // Walk up the decl context chain. The SIL function might be a local
+  // function inside one of the ad-hoc witness impls (e.g. the synthesized
+  // `doInvoke<R>` nested in `invokeHandlerOnReturn`).
+  auto *DC = getFunction()->getDeclContext();
+  while (DC) {
+    if (auto *funcDecl = llvm::dyn_cast<swift::AbstractFunctionDecl>(DC)) {
+      if (funcDecl->isDistributedWitnessWithAdHocSerializationRequirement())
+        return true;
+      // The compiler-synthesized `invokeHandlerOnReturn` impl on each
+      // `DistributedActorSystem` conformance also forwards into a generic
+      // call (`handler.onReturn<Success>`) where `Success` is constrained to
+      // the (potentially non-class) `SerializationRequirement`. Treat it the
+      // same as the explicit ad-hoc witnesses: it's dead code under Embedded
+      // (only `executeDistributedTarget` calls it, and that path itself goes
+      // through demangling and is not used by the embedded distributed
+      // runtime).
+      auto &ctx = funcDecl->getASTContext();
+      if (funcDecl->getBaseName() == ctx.Id_invokeHandlerOnReturn) {
+        auto *parentDC = funcDecl->getDeclContext();
+        if (parentDC && parentDC->isTypeContext()) {
+          if (auto *systemProto = ctx.getDistributedActorSystemDecl()) {
+            auto *selfNominal = parentDC->getSelfNominalTypeDecl();
+            if (selfNominal &&
+                !swift::lookupConformance(
+                     selfNominal->getDeclaredInterfaceType(), systemProto)
+                     .isInvalid()) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    DC = DC->getParent();
+  }
+  return false;
+}
+
 bool BridgedFunction::hasSemanticsAttr(BridgedStringRef attrName) const {
   return getFunction()->hasSemanticsAttr(attrName.unbridged());
 }

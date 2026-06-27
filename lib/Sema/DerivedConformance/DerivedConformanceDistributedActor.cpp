@@ -286,6 +286,19 @@ deriveBodyDistributed_invokeHandlerOnReturn(AbstractFunctionDecl *afd,
   const SourceLoc sloc = SourceLoc();
   const DeclNameLoc dloc = DeclNameLoc();
 
+  // In Embedded Swift mode, the body of this function would synthesize a
+  // nested generic helper (`doInvokeOnReturn<R: SerializationRequirement>`)
+  // and an `_openExistential` call. Both would create generic functions
+  // whose parameters cannot be class-bound, which Embedded IRGen rejects.
+  // The only caller of `invokeHandlerOnReturn` is the Swift wrapper
+  // `executeDistributedTarget`, which itself is unused in Embedded mode (it
+  // depends on runtime demangling that is unavailable in Embedded). So
+  // under Embedded we emit an empty body: the function is dead code.
+  if (C.LangOpts.hasFeature(Feature::Embedded)) {
+    auto emptyBody = BraceStmt::create(C, sloc, {}, sloc, implicit);
+    return {emptyBody, /*isTypeChecked=*/false};
+  }
+
   NominalTypeDecl *nominal = dyn_cast<NominalTypeDecl>(DC);
   assert(nominal);
 
