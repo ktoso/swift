@@ -342,6 +342,17 @@ static Type getTypeWitnessByName(NominalTypeDecl *type, ProtocolDecl *protocol,
 Type swift::getDistributedActorSerializationType(
     DeclContext *actorOrExtension) {
   auto &ctx = actorOrExtension->getASTContext();
+
+  // Under Embedded Swift, the EmbeddedDistributedActorSystem protocol family
+  // has no `SerializationRequirement` associated type. Returning `Any` here
+  // disables the standard "parameter conforms to SerializationRequirement"
+  // diagnostic (which is replaced under Embedded by a WMO-end check that
+  // verifies the user's encoder/decoder/handler have the right per-type
+  // overloads).
+  if (ctx.LangOpts.hasFeature(Feature::Embedded)) {
+    return ctx.TheAnyType;
+  }
+
   auto resultTy = getAssociatedTypeOfDistributedSystemOfActor(
       actorOrExtension,
       ctx.Id_SerializationRequirement);
@@ -466,6 +477,16 @@ Type swift::getAssociatedTypeOfDistributedSystemOfActor(
     ctx.Diags.diagnose(getLoc(), diag::broken_stdlib_type,
                        "DistributedActorSystem");
     return ErrorType::get(ctx);
+  }
+
+  // Under Embedded Swift, `DistributedActor` constrains `ActorSystem` to
+  // `EmbeddedDistributedActorSystem` instead. Pick that protocol for the
+  // associated-type lookups (e.g. `ID == ActorSystem.ActorID`).
+  if (ctx.LangOpts.hasFeature(Feature::Embedded)) {
+    if (auto *embeddedProto =
+            ctx.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem)) {
+      actorSystemProtocol = embeddedProto;
+    }
   }
 
   AssociatedTypeDecl *memberTypeDecl =

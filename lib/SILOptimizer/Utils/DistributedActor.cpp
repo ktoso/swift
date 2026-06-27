@@ -34,7 +34,10 @@ std::optional<SILValue> emitDistributedActorSystemWitnessCall(
   auto &M = B.getModule();
   auto &C = F.getASTContext();
 
-  // Dig out the conformance to DistributedActorSystem.
+  // Dig out the conformance to DistributedActorSystem, or, under Embedded
+  // Swift, to the alternate EmbeddedDistributedActorSystem family. The
+  // method lookup also needs to come from the same protocol that owns the
+  // conformance, so the witness method's declaring protocol matches.
   ProtocolDecl *DAS = C.getDistributedActorSystemDecl();
   assert(DAS);
   auto systemASTType = base->getType().getASTType();
@@ -50,6 +53,17 @@ std::optional<SILValue> emitDistributedActorSystemWitnessCall(
   }
 
   systemConfRef = lookupConformance(systemASTType, DAS);
+  if (systemConfRef.isInvalid() &&
+      C.LangOpts.hasFeature(Feature::Embedded)) {
+    if (auto *embeddedDAS =
+            C.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem)) {
+      auto embeddedConfRef = lookupConformance(systemASTType, embeddedDAS);
+      if (!embeddedConfRef.isInvalid()) {
+        systemConfRef = embeddedConfRef;
+        DAS = embeddedDAS;
+      }
+    }
+  }
   assert(!systemConfRef.isInvalid() &&
          "Missing conformance to `DistributedActorSystem`");
 
