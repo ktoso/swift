@@ -2416,6 +2416,14 @@ static bool isDefaultActorClass(const ClassMetadata *metadata) {
   assert(metadata->isTypeMetadata());
   return classifyActorClass(metadata) == ActorClassKind::DefaultActor;
 }
+#else
+// Embedded variant: every Swift actor that survives to runtime metadata
+// is a default actor in Embedded (no resilience, no artificial
+// subclasses for ObjC interop). We simplify accordingly.
+static bool isDefaultActorClass(const ClassMetadata *metadata) {
+  (void)metadata;
+  return true;
+}
 #endif
 
 void swift::swift_defaultActor_deallocateResilient(HeapObject *actor) {
@@ -2944,6 +2952,7 @@ void swift::swift_executor_escalate(SerialExecutorRef executor, AsyncTask *task,
 void swift::swift_nonDefaultDistributedActor_initialize(NonDefaultDistributedActor *_actor) {
   asImpl(_actor)->initialize();
 }
+#endif // !SWIFT_CONCURRENCY_EMBEDDED
 
 /// Compute the minimal allocation size for a 'remote' distributed actor reference.
 ///
@@ -2961,6 +2970,7 @@ getDistributedRemoteActorAllocSize(const ClassMetadata *metadata) {
          "distributed actor must have at least id, actorSystem, and "
          "unownedExecutor fields");
 
+#if !SWIFT_CONCURRENCY_EMBEDDED
   if (numFields >= 4) {
     // The 4th field is the first user-defined stored property.
     // Its offset marks the end of the synthesized fields,
@@ -2968,6 +2978,17 @@ getDistributedRemoteActorAllocSize(const ClassMetadata *metadata) {
     const auto *fieldOffsets = metadata->getFieldOffsets();
     return fieldOffsets[3];
   }
+#else
+  // Embedded codepath: the field-offset-vector accessor pulls in
+  // getResilientMetadataBounds, which the embedded runtime does not
+  // provide. We currently always allocate the full instance size for
+  // remote proxies in embedded; that's safe (over-allocates by the
+  // sum of user-defined property sizes) and matches what we'd
+  // allocate for a local instance anyway. A follow-up should plumb
+  // the field-offset vector through a non-resilient-only API so we
+  // can trim the allocation in embedded too.
+  (void)numFields;
+#endif
 
   // Only the three required fields exist, remote-ref and local instances have the same size.
   return metadata->getInstanceSize();
@@ -2996,14 +3017,21 @@ swift::swift_distributedActor_remote_initialize(const Metadata *actorType) {
     actor->initialize(/*remote*/true);
     assert(swift_distributed_actor_is_remote(alloc));
     return reinterpret_cast<OpaqueValue*>(actor);
-  } else {
-    auto actor = asImpl(reinterpret_cast<NonDefaultDistributedActor *>(alloc));
-    actor->initialize(/*remote*/true);
-    assert(swift_distributed_actor_is_remote(alloc));
-    return reinterpret_cast<OpaqueValue*>(actor);
   }
+#if !SWIFT_CONCURRENCY_EMBEDDED
+  // Non-default-actor distributed actors are not supported in Embedded Swift
+  // yet (the embedded runtime omits the NonDefaultDistributedActor machinery).
+  // Falling through here would mean the user declared a custom executor on a
+  // distributed actor, which embedded codegen does not currently handle.
+  auto actor = asImpl(reinterpret_cast<NonDefaultDistributedActor *>(alloc));
+  actor->initialize(/*remote*/true);
+  assert(swift_distributed_actor_is_remote(alloc));
+  return reinterpret_cast<OpaqueValue*>(actor);
+#else
+  swift_unreachable(
+      "non-default-actor distributed actor in Embedded Swift");
+#endif
 }
-#endif // !SWIFT_CONCURRENCY_EMBEDDED
 
 bool swift::swift_distributed_actor_is_remote(HeapObject *_actor) {
 #if !SWIFT_CONCURRENCY_EMBEDDED
@@ -3021,6 +3049,17 @@ bool swift::swift_distributed_actor_is_remote(HeapObject *_actor) {
     return asImpl(reinterpret_cast<NonDefaultDistributedActor *>(_actor))->isDistributedRemote();
   }
 #else
+  // The embedded ClassMetadata carries no descriptor, so classifyActorClass
+  // cannot run here. Every actor that survives to runtime metadata in
+  // Embedded Swift is a default actor, and non-default-actor distributed
+  // actors are rejected in swift_distributedActor_remote_initialize
+  if (!_actor)
+    return false;
+
+  const ClassMetadata *metadata = cast<ClassMetadata>(_actor->metadata);
+  if (isDefaultActorClass(metadata))
+    return asImpl(reinterpret_cast<DefaultActor *>(_actor))->isDistributedRemote();
+
   return false;
 #endif
 }
