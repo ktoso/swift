@@ -1653,6 +1653,10 @@ ProtocolDecl *ASTContext::getProtocol(KnownProtocolKind kind) const {
   case KnownProtocolKind::DistributedTargetInvocationEncoder:
   case KnownProtocolKind::DistributedTargetInvocationDecoder:
   case KnownProtocolKind::DistributedTargetInvocationResultHandler:
+  case KnownProtocolKind::EmbeddedDistributedActorSystem:
+  case KnownProtocolKind::EmbeddedDistributedTargetInvocationEncoder:
+  case KnownProtocolKind::EmbeddedDistributedTargetInvocationDecoder:
+  case KnownProtocolKind::EmbeddedDistributedTargetInvocationResultHandler:
     M = getLoadedModule(Id_Distributed);
     break;
   case KnownProtocolKind::CxxConvertibleToBool:

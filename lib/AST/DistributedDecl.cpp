@@ -211,6 +211,25 @@ Type swift::getDistributedActorIDType(NominalTypeDecl *actor) {
   return getAssociatedTypeOfDistributedSystemOfActor(actor, C.Id_ActorID);
 }
 
+bool swift::isEmbeddedDistributedActorSystem(NominalTypeDecl *actor) {
+  if (!actor || !actor->isDistributedActor())
+    return false;
+
+  auto &C = actor->getASTContext();
+  auto *embeddedProto =
+      C.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
+  if (!embeddedProto)
+    return false;
+
+  Type systemTy = getDistributedActorSystemType(actor);
+  if (!systemTy || systemTy->hasError())
+    return false;
+
+  // If the system type itself is a protocol composition or archetype,
+  // ask via lookup; otherwise check for direct conformance.
+  return !lookupConformance(systemTy, embeddedProto).isInvalid();
+}
+
 Identifier swift::getDistributedResolvableProtocolStubName(ProtocolDecl *proto) {
   if (!proto)
     return Identifier();
