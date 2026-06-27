@@ -33,6 +33,7 @@ add_swift_target_library(swiftDistributed ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS
   DistributedDefaultExecutor.swift
   DistributedMacros.swift
   DistributedMetadata.swift
+  EmbeddedDistributedActorSystem.swift
   LocalTestingDistributedActorSystem.swift
 
   SWIFT_MODULE_DEPENDS_IOS ${swift_distributed_darwin_dependencies}
@@ -148,6 +149,7 @@ if(SWIFT_SHOULD_BUILD_EMBEDDED_STDLIB AND SWIFT_SHOULD_BUILD_EMBEDDED_DISTRIBUTE
       DistributedDefaultExecutor.swift
       DistributedMacros.swift
       DistributedMetadata.swift
+      EmbeddedDistributedActorSystem.swift
       # LocalTestingDistributedActorSystem.swift is not built for embedded;
       # it depends on Codable/locks and the user is expected to supply their
       # own concrete actor system.
