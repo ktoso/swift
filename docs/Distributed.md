@@ -793,14 +793,97 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
   for the concrete type), which is a non-trivial design exercise on
   top of Phase 2.
 
-- **Performance of the receive-side if/else chain.** Currently O(N) in
-  the number of distributed methods (including inherited
-  `@Resolvable` requirements). For small N this is fine and likely
-  faster than any hash lookup, but past some threshold a switch-style
-  dispatch (perfect-hash on the mangled name, jump table over a
-  compile-time-assigned target id, or length-then-byte trie) could
-  win. Needs benchmarking before deciding which (if any) to
-  implement.
+- **Performance of the receive-side if/else chain.** The synthesized
+  dispatch is a linear scan over `target.identifier.utf8.elementsEqual(...)`,
+  one branch per distributed method (including inherited `@Resolvable`
+  requirements). The microbenchmark in
+  `test/Distributed/Embedded/distributed_embedded_dispatch_microbench.swift`
+  measures the cost on the development machine at `-O`:
+
+  | Methods (N) | first branch | middle branch | last branch  |
+  |-------------|--------------|---------------|--------------|
+  |  1          | ~310 ns      | -             | -            |
+  |  4          | ~325 ns      | ~690 ns       | ~890 ns      |
+  | 16          | ~310 ns      | ~1.9 us       | ~3.1 us      |
+  | 64          | ~330 ns      | ~6.5 us       | ~12.5 us     |
+
+  Cost grows by **~200 ns per branch traversed**. For small N (say,
+  N <= 10) this is acceptable. For large N the cost dominates and the
+  dispatch becomes the bottleneck.
+
+  Two issues drive the per-branch cost:
+
+  1. `Sequence.elementsEqual` is iterator-based and does **not**
+     short-circuit on `count`. Two iterators advance lockstep,
+     reading bytes until they differ. For two 65-byte mangled names
+     differing only at byte 60 (the method-number byte), the loop
+     reads 60 bytes per branch.
+  2. The `Tg5` specialization of `elementsEqual` on `String.UTF8View`
+     emits per-call `swift_bridgeObjectRelease` on the String backing.
+     Bench64 ends up with ~127 release calls and ~64 elementsEqual
+     calls before reaching the matched branch.
+
+  Concrete next-step options, in order of estimated yield:
+
+  - **(a) Length short-circuit.** Wrap each `elementsEqual` in
+    `__identifier.utf8.count == N && ...`. Zero cost when lengths
+    differ. Helps real codebases where method-name lengths vary; no
+    help in the synthetic benchmark where all names are length 65.
+  - **(b) Eight-byte hash-first dispatch.** At compile time, slice a
+    UInt64 out of bytes 50..58 (or wherever the names diverge) of
+    each mangled name. At runtime, load the same 8 bytes from
+    `__identifier`, switch on that UInt64 (LLVM lowers a switch over
+    a dense range to a jump table). The matched branch confirms with
+    a full byte compare to guard against hash collisions. This makes
+    dispatch O(1) for the common case, with the byte compare as a
+    constant-cost confirmation.
+  - **(c) Replace `elementsEqual` with raw memcmp.** Synthesize a
+    `__identifier.withUTF8 { buffer in buffer.count == N && memcmp(buffer.baseAddress, ".str.N....", N) == 0 }`
+    body. Eliminates the per-branch retain/release and the iterator
+    loop; the optimizer can vectorize memcmp aggressively.
+
+    Empirical: a hand-rolled `withUTF8` + `memcmp` dispatch over 10
+    distinct 65-byte mangled names, hitting the last branch,
+    measured **~23 ns/call**. Compared against the current synthesized
+    dispatch's ~2 us for the same shape (interpolated), that's ~85x
+    faster - making this the highest-yield option.
+  - **(d) Per-actor identifier cache.** Mirror what non-embedded does
+    via `ConcurrentReadableHashMap<AccessibleFunctionCacheEntry>` in
+    `stdlib/public/runtime/AccessibleFunction.cpp`: cache the
+    matched branch index by a quick hash of `target.identifier`.
+    First call does the full scan; repeated calls of the same target
+    hit the cache. For real workloads (a handful of methods called in
+    a loop) this is essentially free per-call. Open design questions:
+    - **Where the cache lives.** Per-actor static var (simplest, but
+      shared across instances) or per-instance (more memory). The
+      non-embedded path uses a single global hashmap; per-type is
+      the embedded analog.
+    - **Concurrency.** `_executeDistributedTarget` is `nonisolated`,
+      so the cache needs atomics. `Synchronization.Atomic<UInt64>`
+      is embedded-safe. A single-entry cache (one UInt64 hash + one
+      Int idx) tolerates races: a stale read just leads to one extra
+      full scan and a re-store; correctness is preserved because the
+      full scan always confirms the matched branch (the cached idx
+      is consulted only to skip the scan, never to bypass the byte
+      compare).
+    - **Hash function.** A FNV-1a or splitmix64 over the bytes of
+      the identifier is enough for a tiny cache. For a hashmap, use
+      the embedded stdlib's `Hasher` (which is available).
+    - **Eviction.** Trivial for single-entry (always overwrite).
+      For multi-entry, modulo into a small fixed array indexed by
+      `hash & 7`.
+
+  Implementing (a) is a 5-line change to `buildEmbeddedDispatchBranch`.
+  (c) requires synthesizing `withUTF8 { ... }` closures around the
+  whole dispatch body, which is more involved but where the empirical
+  ~85x win lives. (b) and (d) are larger design exercises; (d) in
+  particular is what the C++ runtime uses today, and is the cleanest
+  long-term answer if multiple distinct target identifiers per actor
+  are common.
+
+  None of these are blocking for Phase 2 - the current dispatch works
+  correctly. They're optimizations for actors with large numbers of
+  distributed methods, picked up after the design is settled.
 
 - **Non-default-actor distributed actors.** Currently trap at runtime in embedded (the `NonDefaultDistributedActor` machinery is gated out). Either re-enable it under embedded or diagnose at the actor declaration site.
 
