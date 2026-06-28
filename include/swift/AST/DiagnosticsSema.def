@@ -6244,14 +6244,12 @@ ERROR(distributed_actor_func_param_not_codable,none,
 // type-check time and emits these diagnostics for missing overloads.
 ERROR(distributed_embedded_missing_record_argument,none,
       "embedded distributed actor system encoder %0 is missing an "
-      "overload of 'recordArgument' for parameter %1 of type %2 in "
-      "%kindonly3",
-      (Type, Identifier, Type, const AbstractFunctionDecl *))
+      "overload of 'recordArgument' for type %1 in %kindonly2",
+      (Type, Type, const AbstractFunctionDecl *))
 ERROR(distributed_embedded_missing_decode_next_argument,none,
       "embedded distributed actor system decoder %0 is missing an "
-      "overload of 'decodeNextArgument' for parameter %1 of type %2 in "
-      "%kindonly3",
-      (Type, Identifier, Type, const AbstractFunctionDecl *))
+      "overload of 'decodeNextArgument' for type %1 in %kindonly2",
+      (Type, Type, const AbstractFunctionDecl *))
 ERROR(distributed_embedded_missing_record_return_type,none,
       "embedded distributed actor system encoder %0 is missing an "
       "overload of 'recordReturnType' for the return type %1 of "

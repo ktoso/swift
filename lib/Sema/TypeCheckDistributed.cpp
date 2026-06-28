@@ -881,6 +881,47 @@ static StringRef classifyAnySomeForEmbedded(Type interfaceTy,
   return {};
 }
 
+/// Emits the "missing overload" note with a fix-it stub for an embedded
+/// distributed actor system overload that the user needs to add.
+///
+/// The note is always anchored at the distributed function so the source
+/// location matches what the user sees.  The fix-it inserts the stub at the
+/// right place: directly inside the target type's braces when it is in the
+/// same module, or as an extension block after the enclosing actor/extension
+/// declaration when it is in a different module.
+static void emitEmbeddedMissingOverloadNoteWithFixIt(
+    AbstractFunctionDecl *func, DeclContext *actorOrExt,
+    Type targetTy, StringRef methodSig) {
+  auto note = func->diagnose(diag::distributed_embedded_missing_overload_note,
+                             targetTy, methodSig);
+
+  auto *targetNominal = targetTy->getAnyNominal();
+  bool sameModule = targetNominal &&
+      targetNominal->getModuleContext() == func->getModuleContext();
+
+  llvm::SmallString<256> fixItText;
+  llvm::raw_svector_ostream fix(fixItText);
+
+  if (sameModule && targetNominal->getBraces().End.isValid()) {
+    fix << "\n  public " << methodSig << " {}";
+    note.fixItInsert(targetNominal->getBraces().End, fixItText);
+    return;
+  }
+
+  // Different module or no source location: suggest an extension after the
+  // enclosing actor/extension declaration.
+  fix << "\nextension ";
+  targetTy->print(fix);
+  fix << " {\n  public " << methodSig << " {}\n}";
+
+  SourceLoc insertLoc;
+  if (auto *D = actorOrExt->getAsDecl())
+    insertLoc = D->getEndLoc();
+
+  if (insertLoc.isValid())
+    note.fixItInsertAfter(insertLoc, fixItText);
+}
+
 /// For a `distributed func` whose enclosing actor uses an
 /// `EmbeddedDistributedActorSystem`, verify that the system's concrete
 /// encoder / decoder / handler types provide non-generic per-type
@@ -1020,13 +1061,13 @@ static bool checkEmbeddedDistributedFunctionCoverage(
             /*isMetatype=*/false)) {
       func->diagnose(
           diag::distributed_embedded_missing_record_argument, encoderTy,
-          param->getArgumentName(), printableParamTy, func);
+          printableParamTy, func);
       llvm::SmallString<128> sigBuf;
       llvm::raw_svector_ostream sig(sigBuf);
       sig << "mutating func recordArgument(_ argument: RemoteCallArgument<"
           << printableParamTy << ">) throws";
-      func->diagnose(diag::distributed_embedded_missing_overload_note,
-                     encoderTy, StringRef(sigBuf));
+      emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, encoderTy,
+                                              StringRef(sigBuf));
       anyMissing = true;
     }
 
@@ -1036,13 +1077,13 @@ static bool checkEmbeddedDistributedFunctionCoverage(
             /*isMetatype=*/true)) {
       func->diagnose(
           diag::distributed_embedded_missing_decode_next_argument, decoderTy,
-          param->getArgumentName(), printableParamTy, func);
+          printableParamTy, func);
       llvm::SmallString<128> sigBuf;
       llvm::raw_svector_ostream sig(sigBuf);
       sig << "mutating func decodeNextArgument(_ type: " << printableParamTy
           << ".Type) throws -> " << printableParamTy;
-      func->diagnose(diag::distributed_embedded_missing_overload_note,
-                     decoderTy, StringRef(sigBuf));
+      emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, decoderTy,
+                                              StringRef(sigBuf));
       anyMissing = true;
     }
   }
@@ -1105,8 +1146,8 @@ static bool checkEmbeddedDistributedFunctionCoverage(
         llvm::raw_svector_ostream sig(sigBuf);
         sig << "mutating func recordReturnType(_ type: " << printableReturnTy
             << ".Type) throws";
-        func->diagnose(diag::distributed_embedded_missing_overload_note,
-                       encoderTy, StringRef(sigBuf));
+        emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, encoderTy,
+                                                StringRef(sigBuf));
         anyMissing = true;
       }
 
@@ -1121,8 +1162,8 @@ static bool checkEmbeddedDistributedFunctionCoverage(
         llvm::raw_svector_ostream sig(sigBuf);
         sig << "func onReturn(_ value: " << printableReturnTy
             << ") async throws";
-        func->diagnose(diag::distributed_embedded_missing_overload_note,
-                       handlerTy, StringRef(sigBuf));
+        emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, handlerTy,
+                                                StringRef(sigBuf));
         anyMissing = true;
       }
     }

@@ -86,9 +86,9 @@ distributed actor Greeter {
   // encoder.recordArgument(_:RemoteCallArgument<Int>), decoder.decodeNextArgument(_:Int.Type),
   // encoder.recordReturnType(_:Int.Type), and handler.onReturn(_:Int).
   // The parameter label is `_` (since `square(_ x: Int)`).
-  // expected-error@+8{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for parameter '_' of type 'Int' in distributed instance method}}
+  // expected-error@+8{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for type 'Int' in distributed instance method}}
   // expected-note@+7{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws}}
-  // expected-error@+6{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for parameter '_' of type 'Int' in distributed instance method}}
+  // expected-error@+6{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for type 'Int' in distributed instance method}}
   // expected-note@+5{{add this overload to 'MySystem.InvocationDecoder' (aka 'MyDecoder') (or to an extension of it):  mutating func decodeNextArgument(_ type: Int.Type) throws -> Int}}
   // expected-error@+4{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordReturnType' for the return type 'Int' of distributed instance method}}
   // expected-note@+3{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordReturnType(_ type: Int.Type) throws}}
