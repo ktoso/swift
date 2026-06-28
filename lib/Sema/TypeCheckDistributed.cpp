@@ -1228,6 +1228,13 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
       }
     }
   }
+
+  // Under Embedded Swift, synthesize the per-actor receiver-side
+  // dispatch method `_executeDistributedTarget(target:invocationDecoder:
+  // resultHandler:)`. This is no-op for non-embedded distributed actors.
+  if (auto *classDecl = dyn_cast<ClassDecl>(nominal)) {
+    synthesizeEmbeddedDistributedReceiveDispatch(SF, classDecl);
+  }
 }
 
 bool TypeChecker::checkDistributedFunc(FuncDecl *func) {
