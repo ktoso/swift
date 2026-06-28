@@ -495,7 +495,7 @@ public protocol EmbeddedDistributedActorSystem: Sendable {
 
 public protocol EmbeddedDistributedTargetInvocationEncoder {
   mutating func doneRecording() throws
-  // Per-type recordArgument(_: T, label: String) and recordReturnType(_: T.Type)
+  // Per-type recordArgument(_: RemoteCallArgument<T>) and recordReturnType(_: T.Type)
   // overloads are NOT requirements; the user provides them via extensions
   // (see below) for each type that appears in a distributed func signature.
 }
@@ -528,8 +528,8 @@ struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
 // Extensions can be in any file; the compiler resolves the overload
 // against everything in module scope.
 extension MyEncoder {
-  mutating func recordArgument(_ value: String, label: String) throws { ... }
-  mutating func recordArgument(_ value: Int,    label: String) throws { ... }
+  mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws { ... }
+  mutating func recordArgument(_ argument: RemoteCallArgument<Int>)    throws { ... }
   mutating func recordReturnType(_ type: String.Type) throws { ... }
 }
 
@@ -549,7 +549,7 @@ The synthesized distributed thunk emits these as plain method lookups (overload-
 
 `deriveBodyDistributed_thunk` in `lib/Sema/CodeSynthesisDistributedActor.cpp` branches on `isEmbeddedDistributedActorSystem(actor)`. When true, it:
 
-1. Emits `encoder.recordArgument(value, label: "argName")` per parameter — value passed directly, no `RemoteCallArgument<Value>` wrapper struct.
+1. Emits `encoder.recordArgument(RemoteCallArgument(label:name:value:))` per parameter — same wrapper struct used by standard distributed, just dispatched against a non-generic per-type overload at the call site.
 2. Emits `encoder.recordReturnType(R.self)` for the return type.
 3. **Skips** `encoder.recordErrorType(...)` (the embedded encoder protocol has no such method; errors travel as `any Error`).
 4. Calls `system.remoteCall(on:target:invocation:)` (or `remoteCallVoid(on:target:invocation:)`) — note no `throwing:` or `returning:` labels.
@@ -564,7 +564,7 @@ All four are non-generic call sites at the SIL level; the user's extension metho
 ```
 error: embedded distributed actor system encoder 'MyEncoder' is missing an overload of 'recordArgument' for parameter 'name' of type 'String' in distributed instance method
 note: add this overload to 'MyEncoder' (or to an extension of it):
-  func recordArgument(_ value: String, label: String) throws
+  mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws
 ```
 
 Diagnostic IDs: `distributed_embedded_missing_record_argument`, `distributed_embedded_missing_decode_next_argument`, `distributed_embedded_missing_record_return_type`, `distributed_embedded_missing_on_return`, plus the note `distributed_embedded_missing_overload_note`. See `include/swift/AST/DiagnosticsSema.def`.
@@ -600,7 +600,10 @@ Runtime entry points enabled in embedded (`stdlib/public/Concurrency/Actor.cpp`)
    │
    if __isRemoteActor(self):
      var enc = system.makeInvocationEncoder()
-     try enc.recordArgument(name, label: "name")  ────► MyEncoder.recordArgument(String, label:)
+     try enc.recordArgument(                       ────► MyEncoder.recordArgument(_: RemoteCallArgument<String>)
+         RemoteCallArgument(label: "name",
+                            name: "name",
+                            value: name))
      try enc.recordReturnType(String.self)        ────► MyEncoder.recordReturnType(String.Type)
      try enc.doneRecording()
      var dec = try await system.remoteCall(on: self, target: ..., invocation: &enc)
@@ -642,7 +645,9 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
   }
   ```
 
-  with entries pointing at the local impl (and any parameter-type / flags metadata the dispatcher needs), and a stdlib helper the user's `remoteCall` receive loop can use to look up an entry by ID. Emission goes alongside the current `emitDistributedTargetAccessor` work in `lib/IRGen/GenDistributed.cpp` but bypasses the global `swift5_acfuncs` section.
+  with entries pointing at the local impl (and any parameter-type / flags metadata the dispatcher needs), 
+- and a stdlib helper the user's `remoteCall` receive loop can use to look up an entry by ID. 
+- Emission goes alongside the current `emitDistributedTargetAccessor` work in `lib/IRGen/GenDistributed.cpp` but bypasses the global `swift5_acfuncs` section.
 
   Workaround for now: the user's `remoteCall` implementation calls the distributed method directly on the local actor instance, e.g.
   ```swift

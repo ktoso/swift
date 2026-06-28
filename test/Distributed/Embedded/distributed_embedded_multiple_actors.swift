@@ -20,7 +20,7 @@ public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  public mutating func recordArgument(_ value: String, label: String) throws {}
+  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
   public mutating func recordReturnType(_ type: String.Type) throws {}
 }
 

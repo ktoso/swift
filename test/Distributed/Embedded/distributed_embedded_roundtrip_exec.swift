@@ -43,8 +43,8 @@ struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
   mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  mutating func recordArgument(_ value: String, label: String) throws {
-    buffer.argString = value
+  mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {
+    buffer.argString = argument.value
   }
   mutating func recordReturnType(_ type: String.Type) throws {}
 }

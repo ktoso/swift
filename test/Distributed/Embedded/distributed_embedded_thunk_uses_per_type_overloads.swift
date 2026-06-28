@@ -21,7 +21,7 @@ public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  public mutating func recordArgument(_ value: String, label: String) throws {}
+  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
   public mutating func recordReturnType(_ type: String.Type) throws {}
 }
 
@@ -83,12 +83,12 @@ distributed actor Greeter {
 }
 
 // The synthesized distributed thunk (`Greeter.hello`'s TE) calls the
-// per-type recordArgument(_:label:) overload on the user's encoder,
-// not a generic-over-SerializationRequirement one. Confirm the call
-// site references the exact non-generic user method.
+// per-type recordArgument(_: RemoteCallArgument<String>) overload on
+// the user's encoder, not a generic-over-SerializationRequirement one.
+// Confirm the call site references the exact non-generic user method.
 
 // CHECK-LABEL: sil hidden{{.*}} @${{.*}}GreeterC5hello4nameS2S_tYaKFTE
-// CHECK: function_ref @${{.+}}MyEncoderV14recordArgument_5labelySS_SStKF
+// CHECK: function_ref @${{.+}}MyEncoderV14recordArgumentyy11Distributed010RemoteCallK0VySSGKF
 // CHECK: function_ref @${{.+}}MyEncoderV16recordReturnTypeyySSmKF
 // CHECK: function_ref @${{.+}}MySystemC10remoteCall2on6target10invocation
 // CHECK: function_ref @${{.+}}MyDecoderV18decodeNextArgumentyS2SmKF
