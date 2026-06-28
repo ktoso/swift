@@ -115,7 +115,7 @@ extension DistributedResolvableMacro {
       for binding in variable.bindings {
         if let accessorBlock = binding.accessorBlock {
           for accessor in accessorBlock.accessors.children(viewMode: .all) {
-            let accessorStub = "\(accessor) { \(stubFunctionBody()) }"
+            let accessorStub = "\(accessor) { \(stubFunctionBody())\n }"
             accessorStubs.append(accessorStub)
           }
         }
