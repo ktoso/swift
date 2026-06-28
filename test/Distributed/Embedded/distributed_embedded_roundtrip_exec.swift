@@ -134,7 +134,14 @@ final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
     guard let greeter = self.greeter else {
       fatalError("no local greeter registered")
     }
-    let result = await greeter.helloLocal(name: name)
+    // The receiver-side dispatch problem: in this single-actor /
+    // single-method test we hand-route to `hello` directly. When
+    // called on the local greeter, the synthesized thunk takes the
+    // local branch (`__isRemoteActor` returns false) and runs the
+    // body. A real distributed actor system with multiple methods
+    // would dispatch via `target.identifier` against a per-actor
+    // accessor table (TODO under embedded; see docs/Distributed.md).
+    let result = try await greeter.hello(name: name)
     buffer.argString = result
     return MyDecoder(buffer: buffer)
   }
@@ -157,13 +164,6 @@ typealias DefaultDistributedActorSystem = MySystem
 distributed actor Greeter {
   distributed func hello(name: String) -> String {
     return "Hello, \(name)!"
-  }
-
-  // Bypass the distributed dispatch for the receiver-side call from
-  // the system. A real implementation would route through a per-actor
-  // accessor table (still TODO under embedded); this test stands in.
-  nonisolated func helloLocal(name: String) async -> String {
-    return try! await self.hello(name: name)
   }
 }
 

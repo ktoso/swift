@@ -632,7 +632,7 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 
 ## Open work (not yet done)
 
-- **Per-actor accessor table.** The receiver-side dispatch in the round-trip test currently goes through a hand-coded `helloLocal` shim because there is no compiler-emitted table mapping `target.identifier` (the mangled distributed thunk name, or a precomputed `UInt64` hash thereof) to the function to call on the local actor. A real actor system needs one. The plan is to emit per-distributed-actor:
+- **Per-actor accessor table.** A distributed actor with multiple distributed funcs needs a way for the actor system's receive loop to look up which local method to call given a `RemoteCallTarget`. Today the system gets the target as a string (`target.identifier`) and has to either string-compare against the mangled names or maintain its own table. The plan is for the compiler to emit per-distributed-actor:
 
   ```swift
   extension Greeter {
@@ -643,6 +643,12 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
   ```
 
   with entries pointing at the local impl (and any parameter-type / flags metadata the dispatcher needs), and a stdlib helper the user's `remoteCall` receive loop can use to look up an entry by ID. Emission goes alongside the current `emitDistributedTargetAccessor` work in `lib/IRGen/GenDistributed.cpp` but bypasses the global `swift5_acfuncs` section.
+
+  Workaround for now: the user's `remoteCall` implementation calls the distributed method directly on the local actor instance, e.g.
+  ```swift
+  let result = try await self.greeter.hello(name: decodedName)
+  ```
+  The synthesized thunk's `__isRemoteActor` check sees that the actor is local and takes the local branch, so the distributed method body just runs. The system has to dispatch by `target.identifier` itself.
 
 - **`@Resolvable` / `any P` / `some P` parameters under embedded.** Phase 2. Today these are not diagnosed under embedded; they will either need to be banned with a clear "not yet supported" diagnostic, or built on top of the AST-level stub-type substitution work in the `wip-wip-distributed-any-some-param-combined` branch.
 
