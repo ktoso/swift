@@ -6264,6 +6264,26 @@ ERROR(distributed_embedded_missing_on_return,none,
 NOTE(distributed_embedded_missing_overload_note,none,
      "add this overload to %0 (or to an extension of it):  %1",
      (Type, StringRef))
+
+// Embedded Swift: `any P` / `some P` parameters or returns in distributed
+// funcs are not yet supported. The full @Resolvable machinery that
+// substitutes a wire-friendly `$P` stub at the call site has not yet been
+// ported to embedded mode. Phase 2 territory.
+ERROR(distributed_embedded_any_some_param_not_supported,none,
+      "parameter %0 of %1 type %2 in %kindonly3 is not yet supported in "
+      "Embedded Swift; only concrete types may appear in 'distributed func' "
+      "signatures",
+      (Identifier, StringRef, Type, const AbstractFunctionDecl *))
+ERROR(distributed_embedded_any_some_result_not_supported,none,
+      "%0 return type %1 of %kindonly2 is not yet supported in Embedded "
+      "Swift; only concrete types may appear in 'distributed func' "
+      "signatures",
+      (StringRef, Type, const AbstractFunctionDecl *))
+NOTE(distributed_embedded_any_some_not_supported_note,none,
+     "Embedded Swift does not yet emit the wire-level proxy ($P stub) "
+     "for '@Resolvable' protocols. Use a concrete type that conforms "
+     "to a compile-time-known serialization protocol instead.",
+     ())
 ERROR(distributed_actor_func_param_resolvable_actor_system_mismatch,none,
       "parameter %0 of type %1 in %kindonly2 must match the enclosing actor's "
       "ActorSystem (%5)",

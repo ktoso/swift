@@ -825,6 +825,62 @@ static bool hasEmbeddedDistributedOverload(
   return false;
 }
 
+/// Classify `T` as `any P` / `some P` for the purpose of the embedded
+/// Phase 2 diagnostic. Returns a non-null kind string ("'any'" or
+/// "'some'") when the type is an existential or opaque/generic type
+/// whose conformances include non-marker protocols (i.e. when proxying
+/// would normally require the `@Resolvable` `$P` stub machinery, which
+/// is not yet supported in Embedded). Returns an empty StringRef when
+/// the type is a concrete type, or an existential/opaque type that
+/// only refers to marker protocols (like `any AnyObject`).
+///
+/// Pass both the *interface* type (which may be a `GenericTypeParamType`
+/// for `some P` parameters) and the *contextual* type (mapped into the
+/// function's generic environment; the archetype with its
+/// `getConformsTo()` list) so we can catch both forms.
+///
+/// Distributed `self` parameters and concrete distributed-actor types
+/// are explicitly NOT diagnosed: they are not generic existentials in
+/// the type-system sense and the synthesized thunk handles them via
+/// `is-remote` dispatch.
+static StringRef classifyAnySomeForEmbedded(Type interfaceTy,
+                                            Type contextualTy) {
+  if ((!interfaceTy || interfaceTy->hasError()) &&
+      (!contextualTy || contextualTy->hasError()))
+    return {};
+
+  auto hasNonMarkerProtocol =
+      [](llvm::ArrayRef<ProtocolDecl *> protos) -> bool {
+        for (auto *p : protos) {
+          if (!p->isMarkerProtocol())
+            return true;
+        }
+        return false;
+      };
+
+  // `any P` / protocol composition like `any P & Q`.
+  if (interfaceTy && (interfaceTy->isAnyExistentialType() ||
+                      interfaceTy->isConstraintType())) {
+    auto layout = interfaceTy->getExistentialLayout();
+    llvm::SmallVector<ProtocolDecl *, 2> protos(layout.getProtocols().begin(),
+                                                layout.getProtocols().end());
+    if (hasNonMarkerProtocol(protos))
+      return "'any'";
+  }
+
+  // `some P` / generic parameter constrained to P. Use the contextual
+  // type (after `mapTypeIntoEnvironment`) to get the archetype's
+  // `getConformsTo()` list.
+  if (contextualTy) {
+    if (auto archetype = contextualTy->getAs<ArchetypeType>()) {
+      if (hasNonMarkerProtocol(archetype->getConformsTo()))
+        return "'some'";
+    }
+  }
+
+  return {};
+}
+
 /// For a `distributed func` whose enclosing actor uses an
 /// `EmbeddedDistributedActorSystem`, verify that the system's concrete
 /// encoder / decoder / handler types provide non-generic per-type
@@ -872,6 +928,22 @@ static bool checkEmbeddedDistributedFunctionCoverage(
   for (auto *param : *func->getParameters()) {
     Type paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
     Type printableParamTy = param->getInterfaceType();
+
+    // Embedded Phase 2 placeholder: diagnose `any P` / `some P`
+    // parameters (where P is not just a marker protocol) and skip the
+    // per-type-overload coverage check. The user cannot meaningfully
+    // provide a `recordArgument(_: RemoteCallArgument<any P>)`
+    // overload because we have no wire shape for existentials yet
+    // (would require the `@Resolvable` `$P` stub).
+    if (auto kind = classifyAnySomeForEmbedded(printableParamTy, paramTy);
+        !kind.empty()) {
+      func->diagnose(
+          diag::distributed_embedded_any_some_param_not_supported,
+          param->getArgumentName(), kind, printableParamTy, func);
+      func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
+      anyMissing = true;
+      continue;
+    }
 
     // Build `RemoteCallArgument<T>` for the recordArgument lookup. The
     // compiler-synthesized distributed thunk wraps each argument in this
@@ -923,6 +995,16 @@ static bool checkEmbeddedDistributedFunctionCoverage(
     Type returnInterfaceTy = funcDecl->getResultInterfaceType();
     if (!returnInterfaceTy->isVoid()) {
       Type returnTy = funcDecl->mapTypeIntoEnvironment(returnInterfaceTy);
+
+      // Embedded Phase 2 placeholder: see the parameter loop above.
+      if (auto kind = classifyAnySomeForEmbedded(returnInterfaceTy, returnTy);
+          !kind.empty()) {
+        func->diagnose(
+            diag::distributed_embedded_any_some_result_not_supported,
+            kind, returnInterfaceTy, func);
+        func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
+        return true;
+      }
 
       if (encoderTy &&
           !hasEmbeddedDistributedOverload(
