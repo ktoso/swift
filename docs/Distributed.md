@@ -679,7 +679,7 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 
 ## Open work (not yet done)
 
-- **`@Resolvable` / `any P` / `some P` parameters under embedded.** Phase 2. Today these are not diagnosed under embedded; they will either need to be banned with a clear "not yet supported" diagnostic, or built on top of the AST-level stub-type substitution work in the `wip-wip-distributed-any-some-param-combined` branch.
+- **`@Resolvable` / `any P` / `some P` parameters under embedded.** Phase 2. Today these are diagnosed with `distributed_embedded_any_some_param_not_supported` / `distributed_embedded_any_some_result_not_supported` (errors), pointing the user at the underlying gap: Embedded Swift does not yet emit the wire-level `$P` proxy stub for `@Resolvable` protocols, so the existential cannot be transmitted. The user is expected to use concrete types for now. Full Phase 2 support will require porting the AST-level stub-type substitution work from the `wip-wip-distributed-any-some-param-combined` branch to embedded and synthesizing the resolvable proxy adapter thunk under Embedded too.
 
 - **Non-default-actor distributed actors.** Currently trap at runtime in embedded (the `NonDefaultDistributedActor` machinery is gated out). Either re-enable it under embedded or diagnose at the actor declaration site.
 
