@@ -1582,10 +1582,46 @@ void swift::synthesizeEmbeddedDistributedReceiveDispatch(
 
   // Collect the distributed funcs from the actor.
   llvm::SmallVector<AbstractFunctionDecl *, 4> distributedFuncs;
+  llvm::SmallPtrSet<DeclName, 8> seenNames;
   for (auto member : actor->getMembers()) {
     if (auto *func = dyn_cast<FuncDecl>(member)) {
-      if (func->isDistributed())
+      if (func->isDistributed()) {
         distributedFuncs.push_back(func);
+        seenNames.insert(func->getName());
+      }
+    }
+  }
+
+  // Also collect distributed requirements from `@Resolvable` protocols this
+  // actor conforms to. The sender's wire target identifier for a call made
+  // through a `$P` proxy uses the mangled name of `$P.<method>`'s thunk
+  // (the protocol-extension stub), not the concrete actor's method. The
+  // dispatch needs to recognize that target string and call `self.<method>`
+  // which dynamically resolves to the concrete impl
+  auto *C = &actor->getASTContext();
+  auto *distActorProto = C->getDistributedActorDecl();
+  if (distActorProto) {
+    for (auto *inherited : actor->getAllProtocols()) {
+      if (inherited == distActorProto)
+        continue;
+      if (!inherited->inheritsFrom(distActorProto))
+        continue;
+      // Only include protocols that have a `$P` stub (i.e. `@Resolvable`)
+      if (!getDistributedResolvableProtocolStubDecl(inherited))
+        continue;
+      for (auto *member : inherited->getMembers()) {
+        auto *func = dyn_cast<FuncDecl>(member);
+        if (!func || !func->isDistributed())
+          continue;
+        // Skip if we already have the concrete impl on the actor itself with
+        // the same DeclName: the actor's concrete distributed thunk's mangled
+        // name is what the wire target identifier would be for direct calls
+        // on the concrete actor. The `$P.<method>` thunk's mangled name is
+        // distinct and is what comes in over the wire when the caller went
+        // through a `$P` proxy. Including both branches ensures the receiver
+        // matches either target identifier
+        distributedFuncs.push_back(func);
+      }
     }
   }
 
