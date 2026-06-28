@@ -71,9 +71,9 @@ public final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable
 typealias DefaultDistributedActorSystem = MySystem
 
 distributed actor Greeter {
-  // expected-error@+8{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for parameter 'name' of type 'String' in distributed instance method}}
+  // expected-error@+8{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for type 'String' in distributed instance method}}
   // expected-note@+7{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws}}
-  // expected-error@+6{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for parameter 'name' of type 'String' in distributed instance method}}
+  // expected-error@+6{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for type 'String' in distributed instance method}}
   // expected-note@+5{{add this overload to 'MySystem.InvocationDecoder' (aka 'MyDecoder') (or to an extension of it):  mutating func decodeNextArgument(_ type: String.Type) throws -> String}}
   // expected-error@+4{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordReturnType' for the return type 'String' of distributed instance method}}
   // expected-note@+3{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordReturnType(_ type: String.Type) throws}}
