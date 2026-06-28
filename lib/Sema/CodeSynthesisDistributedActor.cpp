@@ -31,6 +31,7 @@
 #include "swift/Basic/Defer.h"
 #include "swift/ClangImporter/ClangModule.h"
 #include "swift/Sema/ConstraintSystem.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 
@@ -1452,19 +1453,84 @@ deriveBodyEmbeddedDistributedReceiveDispatch(AbstractFunctionDecl *thunk,
   auto *invocationDecoderParam = params->get(1);
   auto *resultHandlerParam = params->get(2);
 
-  SmallVector<ASTNode, 8> bodyStmts;
-
-  // For each distributed func on the actor, emit one if-block.
-  for (auto *distFunc : ctx->distributedFuncs) {
-    if (auto *ifStmt = buildEmbeddedDispatchBranch(
-            C, thunk, targetParam, invocationDecoderParam,
-            resultHandlerParam, distFunc)) {
-      bodyStmts.push_back(ifStmt);
+  // Group distributed funcs by their thunk's mangled-name length. The
+  // dispatch then switches over `target.identifier.utf8.count`, and
+  // each case body is a linear scan of the per-length-group funcs.
+  // This avoids the byte-by-byte `elementsEqual` on every branch when
+  // the identifier's length doesn't match any of the known methods,
+  // and prunes most candidates in real codebases where method-name
+  // lengths vary
+  llvm::MapVector<unsigned, SmallVector<AbstractFunctionDecl *, 4>> byLength;
+  {
+    for (auto *distFunc : ctx->distributedFuncs) {
+      auto *funcDecl = cast<FuncDecl>(distFunc);
+      auto *thunkFunc = funcDecl->getDistributedThunk();
+      if (!thunkFunc)
+        continue;
+      Mangle::ASTMangler mangler(C);
+      auto mangled = mangler.mangleDistributedThunk(thunkFunc);
+      byLength[(unsigned)mangled.size()].push_back(distFunc);
     }
   }
 
-  // Fallthrough: throw EmbeddedDistributedTargetNotFound(target: target.identifier).
-  auto *targetIdentifier =
+  SmallVector<ASTNode, 4> bodyStmts;
+
+  // Build: let __identifierCount = target.identifier.utf8.count
+  // Hoist so each case doesn't reproject it
+  auto *targetIdentifierExpr =
+      UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(targetParam), dloc, implicit),
+          C.getIdentifier("identifier"));
+  auto *targetIdentifierUTF8 =
+      UnresolvedDotExpr::createImplicit(
+          C, targetIdentifierExpr, C.getIdentifier("utf8"));
+  auto *targetIdentifierCount =
+      UnresolvedDotExpr::createImplicit(
+          C, targetIdentifierUTF8, C.getIdentifier("count"));
+
+  // Build the switch cases
+  SmallVector<CaseStmt *, 4> cases;
+  for (auto &kv : byLength) {
+    unsigned length = kv.first;
+    auto &funcs = kv.second;
+
+    SmallVector<ASTNode, 4> caseStmts;
+    for (auto *distFunc : funcs) {
+      if (auto *ifStmt = buildEmbeddedDispatchBranch(
+              C, thunk, targetParam, invocationDecoderParam,
+              resultHandlerParam, distFunc)) {
+        caseStmts.push_back(ifStmt);
+      }
+    }
+    // Fall through past the if-chain in this case: no break needed in
+    // Swift switches, but we need *something* if all branches miss.
+    // Emit `break` (implicit) by ending the BraceStmt naturally.
+    auto *caseBody = BraceStmt::create(C, sloc, caseStmts, sloc, implicit);
+
+    auto *lengthLit =
+        IntegerLiteralExpr::createFromUnsigned(C, length, sloc);
+    auto *lengthPat = ExprPattern::createImplicit(C, lengthLit, thunk);
+    cases.push_back(CaseStmt::createImplicit(
+        C, CaseParentKind::Switch, CaseLabelItem(lengthPat), caseBody));
+  }
+
+  // Default case: empty body (falls through to the post-switch throw)
+  {
+    auto *anyPat = AnyPattern::createImplicit(C);
+    auto *defaultBody =
+        BraceStmt::create(C, sloc, /*Elements=*/{}, sloc, implicit);
+    cases.push_back(CaseStmt::createImplicit(
+        C, CaseParentKind::Switch, CaseLabelItem::getDefault(anyPat),
+        defaultBody));
+  }
+
+  auto *switchStmt = SwitchStmt::createImplicit(
+      LabeledStmtInfo(), targetIdentifierCount, cases, C);
+  bodyStmts.push_back(switchStmt);
+
+  // Fallthrough (no match in any case, or a case's if-chain fell
+  // through with no match): throw EmbeddedDistributedTargetNotFound
+  auto *targetIdentifierForThrow =
       UnresolvedDotExpr::createImplicit(
           C, new (C) DeclRefExpr(ConcreteDeclRef(targetParam), dloc, implicit),
           C.getIdentifier("identifier"));
@@ -1474,7 +1540,8 @@ deriveBodyEmbeddedDistributedReceiveDispatch(AbstractFunctionDecl *thunk,
           C, C.getIdentifier("EmbeddedDistributedTargetNotFound"));
   auto *notFoundInitArgs =
       ArgumentList::createImplicit(
-          C, { Argument(sloc, C.getIdentifier("target"), targetIdentifier) });
+          C, { Argument(sloc, C.getIdentifier("target"),
+                        targetIdentifierForThrow) });
   Expr *notFoundExpr = CallExpr::createImplicit(C, notFoundTypeExpr,
                                                 notFoundInitArgs);
   bodyStmts.push_back(new (C) ThrowStmt(sloc, notFoundExpr));
