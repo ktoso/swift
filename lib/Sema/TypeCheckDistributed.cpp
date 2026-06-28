@@ -893,6 +893,31 @@ static bool checkEmbeddedDistributedFunctionCoverage(
   auto &ctx = func->getASTContext();
 
   auto *actorOrExt = func->getDeclContext();
+
+  // Embedded Phase 2: user-written generic distributed methods (e.g.
+  // `distributed func foo<T>(...)`) require the thunk to emit
+  // `recordGenericSubstitution(T.self)` calls, which the embedded
+  // encoder doesn't support (no generic substitution wire shape
+  // without runtime metadata). Diagnose up front.
+  //
+  // Implicit generic params introduced by `some P` parameters are
+  // handled per-parameter below so the diagnostic points at the
+  // offending `some P` rather than the function as a whole
+  if (auto *genericParams = func->getGenericParams()) {
+    bool hasUserWrittenGeneric = false;
+    for (auto *param : genericParams->getParams()) {
+      if (!param->isOpaqueType()) {
+        hasUserWrittenGeneric = true;
+        break;
+      }
+    }
+    if (hasUserWrittenGeneric) {
+      func->diagnose(
+          diag::distributed_embedded_generic_func_not_supported, func);
+      return true;
+    }
+  }
+
   Type systemTy = getConcreteReplacementForProtocolActorSystemType(func);
   if (!systemTy || systemTy->hasError())
     return false;
@@ -929,20 +954,54 @@ static bool checkEmbeddedDistributedFunctionCoverage(
     Type paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
     Type printableParamTy = param->getInterfaceType();
 
-    // Embedded Phase 2 placeholder: diagnose `any P` / `some P`
-    // parameters (where P is not just a marker protocol) and skip the
-    // per-type-overload coverage check. The user cannot meaningfully
-    // provide a `recordArgument(_: RemoteCallArgument<any P>)`
-    // overload because we have no wire shape for existentials yet
-    // (would require the `@Resolvable` `$P` stub).
+    // Embedded Phase 2:
+    //   - `any P` where P is `@Resolvable`: substitute `$P` for the
+    //     coverage check below; the synthesized distributed thunk
+    //     does the same substitution at the call site.
+    //   - `any P` where P is not `@Resolvable`: not supported. The
+    //     existential has no wire shape; would need `$P`.
+    //   - `some P` (any P, with or without `@Resolvable`): not
+    //     supported. Generic specialization of distributed methods is
+    //     not supported under embedded; the synthesized thunk would
+    //     need to record generic substitutions on the wire, which
+    //     requires runtime metadata that embedded doesn't have.
     if (auto kind = classifyAnySomeForEmbedded(printableParamTy, paramTy);
         !kind.empty()) {
-      func->diagnose(
-          diag::distributed_embedded_any_some_param_not_supported,
-          param->getArgumentName(), kind, printableParamTy, func);
-      func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
-      anyMissing = true;
-      continue;
+      auto resolvable =
+          findDistributedResolvableExistentialOrOpaqueProtocol(paramTy);
+      auto *stub = resolvable.proto
+                       ? getDistributedResolvableProtocolStubDecl(resolvable.proto)
+                       : nullptr;
+
+      // `some P` is rejected even if P has `@Resolvable`: the thunk
+      // can't substitute the opaque type at the wire level without
+      // generic substitution support that embedded doesn't have.
+      if (kind == "'some'") {
+        StringRef protoName = resolvable.proto
+            ? resolvable.proto->getName().str()
+            : "<#Resolvable Protocol#>";
+        func->diagnose(
+            diag::distributed_embedded_some_param_not_supported,
+            param->getArgumentName(), printableParamTy, func, protoName);
+        anyMissing = true;
+        continue;
+      }
+
+      // `any P` with `@Resolvable`: substitute `$P` for the coverage
+      // check. The thunk's existing `getDistributedResolvableProtocolStubType`
+      // substitution does the same at the call site.
+      if (stub) {
+        paramTy = stub->getDeclaredInterfaceType();
+        printableParamTy = paramTy;
+      } else {
+        // `any P` without `@Resolvable`: not yet supported.
+        func->diagnose(
+            diag::distributed_embedded_any_some_param_not_supported,
+            param->getArgumentName(), kind, printableParamTy, func);
+        func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
+        anyMissing = true;
+        continue;
+      }
     }
 
     // Build `RemoteCallArgument<T>` for the recordArgument lookup. The
@@ -995,15 +1054,44 @@ static bool checkEmbeddedDistributedFunctionCoverage(
     Type returnInterfaceTy = funcDecl->getResultInterfaceType();
     if (!returnInterfaceTy->isVoid()) {
       Type returnTy = funcDecl->mapTypeIntoEnvironment(returnInterfaceTy);
+      Type printableReturnTy = returnInterfaceTy;
 
-      // Embedded Phase 2 placeholder: see the parameter loop above.
+      // Embedded Phase 2: same `@Resolvable`-aware handling as the
+      // parameter loop.
+      //   - `any P` where P is `@Resolvable`: substitute `$P` and
+      //     continue with the coverage check.
+      //   - `some P`: rejected outright (no generic substitution
+      //     support).
+      //   - `any P` without `@Resolvable`: rejected with the
+      //     not-yet-supported diagnostic.
       if (auto kind = classifyAnySomeForEmbedded(returnInterfaceTy, returnTy);
           !kind.empty()) {
-        func->diagnose(
-            diag::distributed_embedded_any_some_result_not_supported,
-            kind, returnInterfaceTy, func);
-        func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
-        return true;
+        auto resolvable =
+            findDistributedResolvableExistentialOrOpaqueProtocol(returnTy);
+        auto *stub = resolvable.proto
+                         ? getDistributedResolvableProtocolStubDecl(resolvable.proto)
+                         : nullptr;
+
+        if (kind == "'some'") {
+          StringRef protoName = resolvable.proto
+              ? resolvable.proto->getName().str()
+              : "<#Resolvable Protocol#>";
+          func->diagnose(
+              diag::distributed_embedded_some_result_not_supported,
+              returnInterfaceTy, func, protoName);
+          return true;
+        }
+
+        if (stub) {
+          returnTy = stub->getDeclaredInterfaceType();
+          printableReturnTy = returnTy;
+        } else {
+          func->diagnose(
+              diag::distributed_embedded_any_some_result_not_supported,
+              kind, returnInterfaceTy, func);
+          func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
+          return true;
+        }
       }
 
       if (encoderTy &&
@@ -1012,10 +1100,10 @@ static bool checkEmbeddedDistributedFunctionCoverage(
               /*isMetatype=*/true)) {
         func->diagnose(
             diag::distributed_embedded_missing_record_return_type, encoderTy,
-            returnInterfaceTy, func);
+            printableReturnTy, func);
         llvm::SmallString<128> sigBuf;
         llvm::raw_svector_ostream sig(sigBuf);
-        sig << "mutating func recordReturnType(_ type: " << returnInterfaceTy
+        sig << "mutating func recordReturnType(_ type: " << printableReturnTy
             << ".Type) throws";
         func->diagnose(diag::distributed_embedded_missing_overload_note,
                        encoderTy, StringRef(sigBuf));
@@ -1028,10 +1116,10 @@ static bool checkEmbeddedDistributedFunctionCoverage(
               /*isMetatype=*/false)) {
         func->diagnose(
             diag::distributed_embedded_missing_on_return, handlerTy,
-            returnInterfaceTy, func);
+            printableReturnTy, func);
         llvm::SmallString<128> sigBuf;
         llvm::raw_svector_ostream sig(sigBuf);
-        sig << "func onReturn(_ value: " << returnInterfaceTy
+        sig << "func onReturn(_ value: " << printableReturnTy
             << ") async throws";
         func->diagnose(diag::distributed_embedded_missing_overload_note,
                        handlerTy, StringRef(sigBuf));

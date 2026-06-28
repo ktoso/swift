@@ -221,7 +221,16 @@ bool swift::isEmbeddedDistributedActorSystem(NominalTypeDecl *actor) {
   if (!embeddedProto)
     return false;
 
-  Type systemTy = getDistributedActorSystemType(actor);
+  // For protocols themselves (e.g. a `@Resolvable` protocol inheriting
+  // DistributedActor), `getDistributedActorSystemType` is unsafe; the
+  // protocol may not constrain `ActorSystem` to a concrete type. Use
+  // the generic-signature-aware variant.
+  Type systemTy;
+  if (isa<ProtocolDecl>(actor)) {
+    systemTy = getConcreteReplacementForProtocolActorSystemType(actor);
+  } else {
+    systemTy = getDistributedActorSystemType(actor);
+  }
   if (!systemTy || systemTy->hasError())
     return false;
 
