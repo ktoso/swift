@@ -676,10 +676,131 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 - `distributed_embedded_thunk_uses_per_type_overloads.swift` — `-emit-sil` test that asserts the synthesized thunk calls the user's specific per-type overload methods, not generic dispatch.
 - `distributed_embedded_missing_overloads_diag.swift` — `-verify` test that asserts the coverage diagnostics fire when an overload is missing, including the paste-ready notes.
 - `distributed_embedded_roundtrip_exec.swift` — full executable: builds a remote reference via `Greeter.resolve`, calls `hello` on it, takes the remote branch through the encoder/`remoteCall`/decoder, asserts the result flows back.
+- `distributed_embedded_any_some_param_diag.swift` — `-verify` test pinning Phase 2 sema: `any P` with `@Resolvable` accepted; `some P` rejected with "use 'any P' instead"; `any P` without `@Resolvable` rejected; user-written generic distributed funcs rejected.
+- `distributed_embedded_resolvable_any_roundtrip_exec.swift` — full Phase 2 executable: `Hub.dispatch(to: any RWorker)` invoked with a `$RWorker` proxy, inner `worker.work(name:)` re-enters the stub transport and dispatches to the concrete `WorkerImpl.work`, result flows back.
+
+## Phase 2: `@Resolvable` `any P` parameters and returns
+
+The compiler accepts `any P` parameters and return types in
+`distributed func` signatures under Embedded **iff** `P` is annotated
+with `@Resolvable`. The macro emits a peer `distributed actor $P:
+P, _DistributedActorStub` whose generated thunks ship over the wire in
+place of the `any P` existential, recovering the static-shape property
+embedded Swift needs.
+
+What is **not** supported, and why:
+
+- **`some P` parameters.** Even with `@Resolvable`, the user-facing
+  body sees a generic archetype; the synthesized thunk would need
+  `recordGenericSubstitution(T.self)` on the encoder to communicate
+  the concrete type to the receiver. The embedded encoder protocol
+  family has no such requirement (it has no runtime-metadata path).
+  Diagnosed as `distributed_embedded_some_param_not_supported` with
+  fix-it "use 'any P' instead".
+- **`any P` without `@Resolvable`.** No `$P` stub type exists for the
+  thunk to use as the wire shape. Diagnosed as
+  `distributed_embedded_any_some_param_not_supported`.
+- **User-written generic `distributed func`s.** Same generic-substitution
+  story as `some P`. Diagnosed as
+  `distributed_embedded_generic_func_not_supported`. The check
+  distinguishes user-written generic params from implicit ones
+  introduced by `some P` (uses `GenericTypeParamDecl::isOpaqueType`)
+  so the `some P` case gets the more specific diagnostic.
+
+### Wire shape
+
+The sender thunk for `distributed func dispatch(to: any RWorker)` rewrites
+the type at every wire-level position:
+
+```
+encoder.recordArgument(RemoteCallArgument<$RWorker>(label:"to", name:"worker", value: $worker))
+encoder.recordReturnType($RWorker.self)   // for `-> any RWorker` returns
+RemoteCallTarget("<mangled name of $RWorker.work's thunk>")
+system.remoteCall(on: ..., target: ..., invocation: &enc) -> decoder
+return try decoder.decodeNextArgument($RWorker.self)  // for `-> any RWorker` returns
+```
+
+The substitution is `getDistributedResolvableProtocolStubType(paramTy)`
+in `lib/Sema/CodeSynthesisDistributedActor.cpp`. The
+`recordGenericSubstitution` block in `deriveBodyDistributed_thunk` is
+skipped entirely under embedded; any generic-env entries that remain
+are protocol-extension `Self` parameters from `@Resolvable` extension
+thunks and carry no useful wire-level substitution under embedded.
+
+### Receive-side dispatch table (per-actor)
+
+Each embedded distributed actor `T` gets a synthesized
+`_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+method (see `synthesizeEmbeddedDistributedReceiveDispatch` and
+`buildEmbeddedDispatchBranch` in
+`lib/Sema/CodeSynthesisDistributedActor.cpp`). The body is an if/else
+chain over `target.identifier.utf8.elementsEqual("<mangled>".utf8)`
+calls, one branch per distributed func collected for `T`. The
+collection is:
+
+1. **Every concrete `distributed func` declared on `T`.** Mangled name
+   is `T.<method>`'s thunk (e.g.
+   `$e<module>10WorkerImplC4work4nameS2S_tYaKFTE`).
+2. **Every distributed requirement on every `@Resolvable` protocol
+   that `T` conforms to.** Mangled name is the `$P.<method>` thunk
+   (e.g. `$e<module>8$RWorkerC4work4nameS2S_tYaKFTE`). This is the
+   target identifier the sender thunk produces when the call goes
+   through `any P` -> `$P` proxy.
+
+The body of each matched branch decodes args with `$P` substituted
+for `any P`, calls `self.<method>(...)`, and hands the result to the
+result handler. The `self.<method>(...)` call dynamically dispatches
+into the concrete impl regardless of which target identifier matched
+(Swift's normal class-method dispatch).
+
+This mirrors what non-embedded mode does at runtime: the
+`swift_findAccessibleFunction` registry contains accessors keyed by
+mangled name; the accessor for `$P.<method>` dispatches into the
+conforming type via witness tables. We can't do that in embedded (no
+runtime accessor table, no witness-table-by-mangled-name lookup), so
+the same routing is reified at compile time as extra branches in
+every conforming actor's synthesized dispatch method.
+
+UTF-8 byte comparison via `elementsEqual` is used (not `String ==`)
+because embedded Swift doesn't link the Unicode NFC normalization
+helpers; the mangled name is plain ASCII so byte-equal is correct.
+
+### Return path: `any P` -> `$P` for `onReturn`
+
+When the user's body returns `any P`, the result handler's
+per-type overload is `onReturn(_: $P)`. The receive-side dispatch
+synthesizes a `$P.resolve(id: __result.id, using: self.actorSystem)`
+call to turn the `any P` back into a `$P` proxy before invoking
+`onReturn`. The sender thunk's `decodeNextArgument($P.self)` then
+reconstructs the proxy on the caller side; the call returns `any P`
+to the user via the implicit `$P: P` existential conversion.
+
+### `@Resolvable` macro under embedded
+
+The macro generates an extension default impl for each protocol
+requirement with body `if #available(...) { _distributedStubFatalError() } else { fatalError() }`.
+The `#available` runtime check pulls in `_stdlib_isOSVersionAtLeast`,
+which embedded Swift doesn't have. Under `#if $Embedded` the macro
+emits bare `fatalError()`. The body is dead code anyway (the
+synthesized distributed thunk replaces the call at every site), so
+the nicer `_distributedStubFatalError()` diagnostic isn't observable.
 
 ## Open work (not yet done)
 
-- **`@Resolvable` / `any P` / `some P` parameters under embedded.** Phase 2. Today these are diagnosed with `distributed_embedded_any_some_param_not_supported` / `distributed_embedded_any_some_result_not_supported` (errors), pointing the user at the underlying gap: Embedded Swift does not yet emit the wire-level `$P` proxy stub for `@Resolvable` protocols, so the existential cannot be transmitted. The user is expected to use concrete types for now. Full Phase 2 support will require porting the AST-level stub-type substitution work from the `wip-wip-distributed-any-some-param-combined` branch to embedded and synthesizing the resolvable proxy adapter thunk under Embedded too.
+- **`some P` and generic distributed funcs.** Currently diagnosed as
+  not-supported. Lifting these would require adding generic-substitution
+  support to the embedded encoder protocol family (a wire-level shape
+  for the concrete type), which is a non-trivial design exercise on
+  top of Phase 2.
+
+- **Performance of the receive-side if/else chain.** Currently O(N) in
+  the number of distributed methods (including inherited
+  `@Resolvable` requirements). For small N this is fine and likely
+  faster than any hash lookup, but past some threshold a switch-style
+  dispatch (perfect-hash on the mangled name, jump table over a
+  compile-time-assigned target id, or length-then-byte trie) could
+  win. Needs benchmarking before deciding which (if any) to
+  implement.
 
 - **Non-default-actor distributed actors.** Currently trap at runtime in embedded (the `NonDefaultDistributedActor` machinery is gated out). Either re-enable it under embedded or diagnose at the actor declaration site.
 
