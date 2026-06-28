@@ -233,7 +233,13 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 
   // --- Recording invocation details
   // -- recordGenericSubstitution(s)
-  if (auto genEnv = thunk->getGenericEnvironment()) {
+  // Skipped under Embedded: the EmbeddedDistributedTargetInvocationEncoder
+  // has no `recordGenericSubstitution` requirement, and generic distributed
+  // funcs are rejected by sema before we get here. The remaining generic
+  // env entries are protocol-extension `Self` parameters (e.g. the thunks
+  // synthesized for `@Resolvable` protocol extensions), which carry no
+  // substitution to record on the wire under embedded
+  if (auto genEnv = thunk->getGenericEnvironment(); genEnv && !isEmbeddedSystem) {
     auto recordGenericSubstitutionName =
         DeclName(C, C.Id_recordGenericSubstitution,
                  /*labels=*/{Identifier()});
@@ -638,9 +644,15 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
       // decoder.decodeNextArgument(R.self)
       auto resultType =
           func->mapTypeIntoEnvironment(func->getResultInterfaceType());
-      auto *metaTypeRef = TypeExpr::createImplicit(resultType, C);
+      // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`
+      // The decoder's overload is on `$P`, and the embedded `recordReturnType`
+      // call above already substituted, so the wire-level shape is `$P`
+      Type decodedReturnType = resultType;
+      if (Type stubTy = getDistributedResolvableProtocolStubType(resultType))
+        decodedReturnType = func->mapTypeIntoEnvironment(stubTy);
+      auto *metaTypeRef = TypeExpr::createImplicit(decodedReturnType, C);
       auto *resultTypeExpr =
-          new (C) DotSelfExpr(metaTypeRef, sloc, sloc, resultType);
+          new (C) DotSelfExpr(metaTypeRef, sloc, sloc, decodedReturnType);
 
       DeclName decodeNextArgName(C, C.Id_decodeNextArgument,
                                  /*labels=*/{Identifier()});
@@ -1228,11 +1240,23 @@ static IfStmt *buildEmbeddedDispatchBranch(
   // Build a `let pN = try invocationDecoder.decodeNextArgument(TN.self)`
   // for each parameter of distFunc, collecting the resulting VarDecls so
   // we can pass them to the local call.
+  //
+  // For `any P` / `some P` parameters where `P` is `@Resolvable`, the
+  // wire-level type is the macro-generated `$P` stub: the encoder
+  // shipped `RemoteCallArgument<$P>`, so the decoder reconstructs `$P`
+  // here and the user-declared body (which expects `any P` / `some P`)
+  // receives a `$P` instance via the existential conversion that the
+  // resolvable proxy adapter thunk takes care of.
   SmallVector<VarDecl *, 4> decodedParamVars;
   auto *funcParams = distFunc->getParameters();
   for (unsigned i = 0; i < funcParams->size(); ++i) {
     auto *param = funcParams->get(i);
     Type paramTy = distFunc->mapTypeIntoEnvironment(param->getInterfaceType());
+
+    // If `paramTy` is `any P` / `some P` with `@Resolvable`, swap in
+    // the stub type `$P`. Otherwise leave unchanged.
+    if (Type stubTy = getDistributedResolvableProtocolStubType(paramTy))
+      paramTy = stubTy;
 
     auto paramVarName =
         C.getIdentifier("_arg" + llvm::utostr(i));
@@ -1241,7 +1265,7 @@ static IfStmt *buildEmbeddedDispatchBranch(
         paramVarName, thunk);
     paramVar->setImplicit();
     paramVar->setSynthesized();
-    paramVar->setInterfaceType(param->getInterfaceType());
+    paramVar->setInterfaceType(paramTy);
 
     Pattern *paramPattern = NamedPattern::createImplicit(C, paramVar, paramTy);
 
@@ -1331,7 +1355,25 @@ static IfStmt *buildEmbeddedDispatchBranch(
     doStmts.push_back(resultPB);
     doStmts.push_back(resultVar);
 
-    // try await resultHandler.onReturn(__result)
+    // For `any P` / `some P` results where P is `@Resolvable`, the
+    // resultHandler's onReturn overload is `onReturn(_: $P)`. The user's
+    // body returned `any P`, so we must extract a `$P` proxy from it
+    // via `$P.resolve(id: __result.id, using: self.actorSystem)` before
+    // handing it to the handler
+    Expr *resultArgExpr = new (C) DeclRefExpr(
+        ConcreteDeclRef(resultVar), dloc, implicit);
+    if (Type stubTy = getDistributedResolvableProtocolStubType(returnTy)) {
+      auto *resultIdExpr = UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(resultVar), dloc, implicit),
+          C.Id_id);
+      auto *selfSystemExpr = UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(selfDecl, dloc, implicit),
+          C.Id_actorSystem);
+      resultArgExpr = createDistributedResolveCall(
+          C, stubTy, resultIdExpr, selfSystemExpr);
+    }
+
+    // try await resultHandler.onReturn(<__result or $P.resolve(...)>)
     auto *onReturn =
         UnresolvedDotExpr::createImplicit(
             C, new (C) DeclRefExpr(ConcreteDeclRef(resultHandlerVar), dloc,
@@ -1340,9 +1382,7 @@ static IfStmt *buildEmbeddedDispatchBranch(
     Expr *onReturnCall = CallExpr::createImplicit(
         C, onReturn,
         ArgumentList::createImplicit(
-            C, { Argument(sloc, Identifier(),
-                          new (C) DeclRefExpr(ConcreteDeclRef(resultVar), dloc,
-                                              implicit)) }));
+            C, { Argument(sloc, Identifier(), resultArgExpr) }));
     onReturnCall = AwaitExpr::createImplicit(C, sloc, onReturnCall);
     onReturnCall = TryExpr::createImplicit(C, sloc, onReturnCall);
     doStmts.push_back(onReturnCall);
