@@ -2961,8 +2961,21 @@ void swift::swift_nonDefaultDistributedActor_initialize(NonDefaultDistributedAct
 /// properties beyond those three are never initialized or accessed on a remote
 /// instance, so we can trim the allocation at the offset where the first
 /// user-defined field would begin.
+///
+/// Under embedded Swift this trim is not currently feasible: the embedded
+/// `ClassMetadata` layout is intentionally minimal (just superclass + destroy
+/// + ivarDestroyer pointers; see `stdlib/public/core/EmbeddedRuntime.swift`)
+/// and does NOT carry a `TargetClassDescriptor` or field-offset vector. The
+/// non-embedded path reads `description->NumFields` and projects
+/// `metadata->getFieldOffsets()[3]`, neither of which exists in the embedded
+/// metadata. To enable trimming under embedded would require either extending
+/// the embedded class metadata to carry the trim-size, or having the compiler
+/// emit a per-actor static constant. For now we always allocate the full
+/// instance size for remote proxies in embedded; that's safe but over-allocates
+/// by the sum of user-defined property sizes
 static size_t
 getDistributedRemoteActorAllocSize(const ClassMetadata *metadata) {
+#if !SWIFT_CONCURRENCY_EMBEDDED
   auto description = metadata->getDescription();
   uint32_t numFields = description->NumFields;
 
@@ -2970,27 +2983,18 @@ getDistributedRemoteActorAllocSize(const ClassMetadata *metadata) {
          "distributed actor must have at least id, actorSystem, and "
          "unownedExecutor fields");
 
-#if !SWIFT_CONCURRENCY_EMBEDDED
   if (numFields >= 4) {
     // The 4th field is the first user-defined stored property.
     // Its offset marks the end of the synthesized fields,
-    // so it is exactly  how much storage we need.
+    // so it is exactly how much storage we need.
     const auto *fieldOffsets = metadata->getFieldOffsets();
     return fieldOffsets[3];
   }
-#else
-  // Embedded codepath: the field-offset-vector accessor pulls in
-  // getResilientMetadataBounds, which the embedded runtime does not
-  // provide. We currently always allocate the full instance size for
-  // remote proxies in embedded; that's safe (over-allocates by the
-  // sum of user-defined property sizes) and matches what we'd
-  // allocate for a local instance anyway. A follow-up should plumb
-  // the field-offset vector through a non-resilient-only API so we
-  // can trim the allocation in embedded too.
-  (void)numFields;
 #endif
 
-  // Only the three required fields exist, remote-ref and local instances have the same size.
+  // Embedded: ClassMetadata has no descriptor or field offsets; fall through
+  // and use the full instance size. Non-embedded with only the three required
+  // fields: remote-ref and local instances are the same size
   return metadata->getInstanceSize();
 }
 
