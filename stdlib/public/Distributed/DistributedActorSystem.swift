@@ -197,6 +197,7 @@ import _Concurrency
 /// - [SE-0336: Distributed Actor Isolation](https://github.com/apple/swift-evolution/blob/main/proposals/0336-distributed-actor-isolation.md)
 /// - [SE-0344: Distributed Actor Runtime](https://github.com/apple/swift-evolution/blob/main/proposals/0344-distributed-actor-runtime.md)
 @available(SwiftStdlib 5.7, *)
+@_unavailableInEmbedded
 public protocol DistributedActorSystem<SerializationRequirement>: Sendable {
   /// The type ID that will be assigned to any distributed actor managed by this actor system.
   ///
@@ -417,6 +418,7 @@ extension DistributedActorSystem {
 // ==== ----------------------------------------------------------------------------------------------------------------
 // MARK: Execute Distributed Methods
 
+#if !$Embedded
 @available(SwiftStdlib 5.7, *)
 extension DistributedActorSystem {
 
@@ -658,6 +660,7 @@ extension DistributedActorSystem {
     }
   }
 }
+#endif // !$Embedded
 
 @export(implementation)
 @available(SwiftStdlib 5.7, *)
@@ -754,6 +757,7 @@ public struct RemoteCallTarget: CustomStringConvertible, Hashable {
 }
 
 @available(SwiftStdlib 5.7, *)
+@_unavailableInEmbedded
 @_silgen_name("swift_distributed_execute_target")
 func _executeDistributedTarget<D: DistributedTargetInvocationDecoder>(
   on actor: AnyObject, // : DistributedActor
@@ -798,6 +802,7 @@ func _executeDistributedTarget<D: DistributedTargetInvocationDecoder>(
 /// so decoding can rely on simply invoking e.g. `Codable` (if that is the `SerializationRequirement`) decoding
 /// entry points on the provided types.
 @available(SwiftStdlib 5.7, *)
+@_unavailableInEmbedded
 public protocol DistributedTargetInvocationEncoder<SerializationRequirement> {
   /// The serialization requirement that the types passed to `recordArgument` and `recordReturnType` are required to conform to.
   associatedtype SerializationRequirement
@@ -916,6 +921,7 @@ public struct RemoteCallArgument<Value> {
 /// }
 /// ```
 @available(SwiftStdlib 5.7, *)
+@_unavailableInEmbedded
 public protocol DistributedTargetInvocationDecoder<SerializationRequirement> {
   /// The serialization requirement that the types passed to `decodeNextArgument` are required to conform to.
   /// The type returned by `decodeReturnType` is also expected to conform to this associated type requirement.
@@ -968,6 +974,7 @@ public protocol DistributedTargetInvocationDecoder<SerializationRequirement> {
 ///
 /// The handler will then be invoked with the return value (or error) that the invoked target returned (or threw).
 @available(SwiftStdlib 5.7, *)
+@_unavailableInEmbedded
 public protocol DistributedTargetInvocationResultHandler<SerializationRequirement> {
   /// The serialization requirement that the value passed to `onReturn` is required to conform to.
   associatedtype SerializationRequirement
