@@ -126,23 +126,25 @@ final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
   ) async throws -> InvocationDecoder
       where Act: DistributedActor, Act.ID == ActorID {
     print("[swift] remoteCall reached")
-    // Pretend we shipped this off. Instead, invoke the local greeter
-    // (kept on the side) via a non-distributed entry point and put the
-    // result back into the buffer so the thunk can decode it.
-    let name = buffer.argString!
-    buffer.argString = nil
     guard let greeter = self.greeter else {
       fatalError("no local greeter registered")
     }
-    // The receiver-side dispatch problem: in this single-actor /
-    // single-method test we hand-route to `hello` directly. When
-    // called on the local greeter, the synthesized thunk takes the
-    // local branch (`__isRemoteActor` returns false) and runs the
-    // body. A real distributed actor system with multiple methods
-    // would dispatch via `target.identifier` against a per-actor
-    // accessor table (TODO under embedded; see docs/Distributed.md).
-    let result = try await greeter.hello(name: name)
-    buffer.argString = result
+    // Receiver-side dispatch via the compiler-synthesized
+    // `_executeDistributedTarget` method on the local actor. The
+    // synthesized body matches `target.identifier` against each
+    // distributed func, decodes the args via our per-type decoder
+    // overloads, calls the impl, and hands the result back through
+    // the result handler.
+    var decoder = MyDecoder(buffer: buffer)
+    let handler = MyResultHandler(buffer: buffer)
+    try await greeter._executeDistributedTarget(
+        target: target,
+        invocationDecoder: &decoder,
+        resultHandler: handler)
+    // The handler stashed the typed result in returnString; expose
+    // it via a fresh decoder for the sender-side thunk to pick up.
+    buffer.argString = buffer.returnString
+    buffer.returnString = nil
     return MyDecoder(buffer: buffer)
   }
 
