@@ -152,11 +152,15 @@ extension DistributedResolvableMacro {
 
   static func stubFunctionBody() -> DeclSyntax {
     """
+    #if $Embedded
+    fatalError()
+    #else
     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
       Distributed._distributedStubFatalError()
     } else {
       fatalError()
     }
+    #endif
     """
   }
 }
