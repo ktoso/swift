@@ -794,24 +794,28 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
   top of Phase 2.
 
 - **Performance of the receive-side if/else chain.** The synthesized
-  dispatch is a linear scan over `target.identifier.utf8.elementsEqual(...)`,
-  one branch per distributed method (including inherited `@Resolvable`
-  requirements). The microbenchmark in
+  dispatch groups branches by mangled-name length and switches over
+  `target.identifier.utf8.count` first; within each length bucket the
+  linear `elementsEqual` scan is unchanged. LLVM lowers the outer
+  Int-switch to a jump table.
+
+  The microbenchmark in
   `test/Distributed/Embedded/distributed_embedded_dispatch_microbench.swift`
   measures the cost on the development machine at `-O`:
 
   | Methods (N) | first branch | middle branch | last branch  |
   |-------------|--------------|---------------|--------------|
   |  1          | ~310 ns      | -             | -            |
-  |  4          | ~325 ns      | ~690 ns       | ~890 ns      |
-  | 16          | ~310 ns      | ~1.9 us       | ~3.1 us      |
-  | 64          | ~330 ns      | ~6.5 us       | ~12.5 us     |
+  |  4          | ~320 ns      | ~680 ns       | ~860 ns      |
+  | 16          | ~310 ns      | ~1.9 us       | ~1.4 us      |
+  | 64          | ~320 ns      | ~4.7 us       | ~10.7 us     |
 
-  Cost grows by **~200 ns per branch traversed**. For small N (say,
-  N <= 10) this is acceptable. For large N the cost dominates and the
-  dispatch becomes the bottleneck.
+  In the benchmark the method-number suffix produces only two length
+  buckets (`m0..m9` are length 65; `m10..m63` are length 66), so the
+  last-branch case still scans ~54 names for N=64. Real codebases
+  with varied method-name lengths will see much smaller buckets.
 
-  Two issues drive the per-branch cost:
+  Two issues drive the remaining per-branch cost:
 
   1. `Sequence.elementsEqual` is iterator-based and does **not**
      short-circuit on `count`. Two iterators advance lockstep,
@@ -819,17 +823,12 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
      differing only at byte 60 (the method-number byte), the loop
      reads 60 bytes per branch.
   2. The `Tg5` specialization of `elementsEqual` on `String.UTF8View`
-     emits per-call `swift_bridgeObjectRelease` on the String backing.
-     Bench64 ends up with ~127 release calls and ~64 elementsEqual
-     calls before reaching the matched branch.
+     emits per-call `swift_bridgeObjectRelease` on the String
+     backing.
 
-  Concrete next-step options, in order of estimated yield:
+  Further optimizations (deferred, none blocking):
 
-  - **(a) Length short-circuit.** Wrap each `elementsEqual` in
-    `__identifier.utf8.count == N && ...`. Zero cost when lengths
-    differ. Helps real codebases where method-name lengths vary; no
-    help in the synthetic benchmark where all names are length 65.
-  - **(b) Eight-byte hash-first dispatch.** At compile time, slice a
+  - **(a) Eight-byte hash-first dispatch.** At compile time, slice a
     UInt64 out of bytes 50..58 (or wherever the names diverge) of
     each mangled name. At runtime, load the same 8 bytes from
     `__identifier`, switch on that UInt64 (LLVM lowers a switch over
@@ -837,7 +836,7 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
     a full byte compare to guard against hash collisions. This makes
     dispatch O(1) for the common case, with the byte compare as a
     constant-cost confirmation.
-  - **(c) Replace `elementsEqual` with raw memcmp.** Synthesize a
+  - **(b) Replace `elementsEqual` with raw memcmp.** Synthesize a
     `__identifier.withUTF8 { buffer in buffer.count == N && memcmp(buffer.baseAddress, ".str.N....", N) == 0 }`
     body. Eliminates the per-branch retain/release and the iterator
     loop; the optimizer can vectorize memcmp aggressively.
@@ -847,7 +846,7 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
     measured **~23 ns/call**. Compared against the current synthesized
     dispatch's ~2 us for the same shape (interpolated), that's ~85x
     faster - making this the highest-yield option.
-  - **(d) Per-actor identifier cache.** Mirror what non-embedded does
+  - **(c) Per-actor identifier cache.** Mirror what non-embedded does
     via `ConcurrentReadableHashMap<AccessibleFunctionCacheEntry>` in
     `stdlib/public/runtime/AccessibleFunction.cpp`: cache the
     matched branch index by a quick hash of `target.identifier`.
@@ -873,10 +872,9 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
       For multi-entry, modulo into a small fixed array indexed by
       `hash & 7`.
 
-  Implementing (a) is a 5-line change to `buildEmbeddedDispatchBranch`.
-  (c) requires synthesizing `withUTF8 { ... }` closures around the
+  (b) requires synthesizing `withUTF8 { ... }` closures around the
   whole dispatch body, which is more involved but where the empirical
-  ~85x win lives. (b) and (d) are larger design exercises; (d) in
+  ~85x win lives. (a) and (c) are larger design exercises; (c) in
   particular is what the C++ runtime uses today, and is the cleanest
   long-term answer if multiple distinct target identifiers per actor
   are common.
