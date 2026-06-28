@@ -64,6 +64,14 @@ void diagnoseDistributedFunctionInNonDistributedActorProtocol(
 /// Emit a FixIt suggesting to add Codable to the nominal type.
 void addCodableFixIt(const NominalTypeDecl *nominal, InFlightDiagnostic &diag);
 
+/// Synthesize a `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+/// instance method on the given distributed actor, dispatching by mangled
+/// target name to each of the actor's distributed functions. Only runs
+/// when the actor's `ActorSystem` conforms to
+/// `EmbeddedDistributedActorSystem`. No-op otherwise.
+void synthesizeEmbeddedDistributedReceiveDispatch(
+    SourceFile *SF, ClassDecl *actor);
+
 }
 
 #endif /* SWIFT_SEMA_TYPECHECKDISTRIBUTED_H */

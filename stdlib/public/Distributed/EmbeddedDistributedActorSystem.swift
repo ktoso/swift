@@ -199,4 +199,27 @@ public protocol EmbeddedDistributedTargetInvocationResultHandler {
   //   func onReturn(_ value: SomeType) async throws
 }
 
+// ==== -----------------------------------------------------------------------
+// MARK: Receiver-side dispatch
+
+/// Error thrown by a distributed actor's compiler-synthesized
+/// `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+/// method when the given `RemoteCallTarget` does not match any of the
+/// actor's distributed functions.
+///
+/// The compiler synthesizes a `_executeDistributedTarget` instance method
+/// on every `distributed actor` whose `ActorSystem` conforms to
+/// `EmbeddedDistributedActorSystem`. The synthesized method examines
+/// `target.identifier` and dispatches to the matching local
+/// `distributed func`, decoding arguments via the user's per-type
+/// `decodeNextArgument(_:)` overloads and handing the result back via
+/// `onReturn(_:)` / `onReturnVoid()`. When no distributed function on the
+/// actor matches the incoming target, the synthesized method throws this
+/// error.
+@available(SwiftStdlib 5.7, *)
+public struct EmbeddedDistributedTargetNotFound: Error, Sendable {
+  public let target: String
+  public init(target: String) { self.target = target }
+}
+
 #endif // $Embedded

@@ -569,6 +569,50 @@ note: add this overload to 'MyEncoder' (or to an extension of it):
 
 Diagnostic IDs: `distributed_embedded_missing_record_argument`, `distributed_embedded_missing_decode_next_argument`, `distributed_embedded_missing_record_return_type`, `distributed_embedded_missing_on_return`, plus the note `distributed_embedded_missing_overload_note`. See `include/swift/AST/DiagnosticsSema.def`.
 
+## Receiver-side dispatch: compiler-synthesized `_executeDistributedTarget`
+
+For every `distributed actor` whose `ActorSystem` conforms to `EmbeddedDistributedActorSystem`, the compiler synthesizes an instance method on the actor:
+
+```swift
+extension Greeter {
+  nonisolated public func _executeDistributedTarget(
+    target: RemoteCallTarget,
+    invocationDecoder: inout Self.ActorSystem.InvocationDecoder,
+    resultHandler: Self.ActorSystem.ResultHandler
+  ) async throws { ... }
+}
+```
+
+The synthesized body is an if-chain over `target.identifier` (UTF-8 byte-compared to each distributed func's mangled-thunk name to avoid pulling in Unicode normalization). For each match it decodes the arguments via the user's per-type `decodeNextArgument(_:)` overloads, calls the local distributed function on `self`, hands the result to the user's `onReturn(_:)` / `onReturnVoid()` overload, and forwards thrown errors to `resultHandler.onThrow(error:)`. If no target matches, the method throws `EmbeddedDistributedTargetNotFound`.
+
+The user does not write any of this. From the actor system's receive code:
+
+```swift
+func remoteCall<Act>(
+  on actor: Act,
+  target: RemoteCallTarget,
+  invocation: inout InvocationEncoder
+) async throws -> InvocationDecoder
+    where Act: DistributedActor, Act.ID == ActorID {
+  // 1. Ship `invocation`'s bytes off, or here, look up the local actor:
+  guard let local = self.locallyRegisteredGreeter else { ... }
+
+  // 2. Dispatch the incoming call to the right local method:
+  var decoder = MyDecoder(...)
+  let handler = MyResultHandler(...)
+  try await local._executeDistributedTarget(
+      target: target,
+      invocationDecoder: &decoder,
+      resultHandler: handler)
+
+  return decoder // populated by the handler with the result
+}
+```
+
+The synthesis lives in `lib/Sema/CodeSynthesisDistributedActor.cpp` (`synthesizeEmbeddedDistributedReceiveDispatch`, `createEmbeddedDistributedReceiveDispatch`, `deriveBodyEmbeddedDistributedReceiveDispatch`, `buildEmbeddedDispatchBranch`). It runs from `checkDistributedActor` in `lib/Sema/TypeCheckDistributed.cpp`, alongside the existing per-distributed-func thunk synthesis.
+
+The synthesis is opt-out: it does nothing when the actor's `ActorSystem` does not conform to `EmbeddedDistributedActorSystem`. Non-embedded distributed actors continue to use the runtime-demangler-based `swift_distributed_execute_target` path.
+
 ## What's gated where
 
 Standard runtime entry points unavailable in the embedded `Distributed` module:
@@ -634,26 +678,6 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 - `distributed_embedded_roundtrip_exec.swift` — full executable: builds a remote reference via `Greeter.resolve`, calls `hello` on it, takes the remote branch through the encoder/`remoteCall`/decoder, asserts the result flows back.
 
 ## Open work (not yet done)
-
-- **Per-actor accessor table.** A distributed actor with multiple distributed funcs needs a way for the actor system's receive loop to look up which local method to call given a `RemoteCallTarget`. Today the system gets the target as a string (`target.identifier`) and has to either string-compare against the mangled names or maintain its own table. The plan is for the compiler to emit per-distributed-actor:
-
-  ```swift
-  extension Greeter {
-    static var __distributedAccessors:
-        UnsafePointer<DistributedAccessorEntry>
-    static var __distributedAccessorCount: Int
-  }
-  ```
-
-  with entries pointing at the local impl (and any parameter-type / flags metadata the dispatcher needs), 
-- and a stdlib helper the user's `remoteCall` receive loop can use to look up an entry by ID. 
-- Emission goes alongside the current `emitDistributedTargetAccessor` work in `lib/IRGen/GenDistributed.cpp` but bypasses the global `swift5_acfuncs` section.
-
-  Workaround for now: the user's `remoteCall` implementation calls the distributed method directly on the local actor instance, e.g.
-  ```swift
-  let result = try await self.greeter.hello(name: decodedName)
-  ```
-  The synthesized thunk's `__isRemoteActor` check sees that the actor is local and takes the local branch, so the distributed method body just runs. The system has to dispatch by `target.identifier` itself.
 
 - **`@Resolvable` / `any P` / `some P` parameters under embedded.** Phase 2. Today these are not diagnosed under embedded; they will either need to be banned with a clear "not yet supported" diagnostic, or built on top of the AST-level stub-type substitution work in the `wip-wip-distributed-any-some-param-combined` branch.
 

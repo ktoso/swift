@@ -1118,6 +1118,450 @@ addDistributedActorCodableConformance(
   return conformance;
 }
 
+// ==== ----------------------------------------------------------------------
+// MARK: Embedded receiver-side dispatch synthesis
+//
+// For every `distributed actor` whose `ActorSystem` conforms to
+// `EmbeddedDistributedActorSystem`, the compiler synthesizes:
+//
+//   nonisolated public func _executeDistributedTarget(
+//     target: RemoteCallTarget,
+//     invocationDecoder: inout Self.ActorSystem.InvocationDecoder,
+//     resultHandler: Self.ActorSystem.ResultHandler
+//   ) async throws
+//
+// The body is an if/else chain that string-compares `target.identifier`
+// against each distributed function's mangled distributed-thunk name.
+// For each match it decodes the arguments via the user's per-type
+// `decodeNextArgument(_:)` overloads, calls the local distributed
+// function, and hands the result (or `Void`) to the result handler's
+// per-type `onReturn(_:)` / `onReturnVoid()` overload. Errors thrown by
+// the user-declared body are forwarded to `resultHandler.onThrow(error:)`
+// and not rethrown. When no match is found, an
+// `EmbeddedDistributedTargetNotFound` is thrown.
+
+namespace {
+
+/// Context attached to the body synthesizer, carrying the list of
+/// distributed funcs we need to dispatch to.
+struct EmbeddedDispatchContext {
+  llvm::SmallVector<AbstractFunctionDecl *, 4> distributedFuncs;
+};
+
+} // end anonymous namespace
+
+/// Build the body of a single dispatch branch for `distFunc`:
+///
+///   if target.identifier.utf8.elementsEqual("$e_..._TE".utf8) {
+///     let p1 = try invocationDecoder.decodeNextArgument(T1.self)
+///     let p2 = try invocationDecoder.decodeNextArgument(T2.self)
+///     do {
+///       let __result = try await self.distFunc(p1, p2)
+///       try await resultHandler.onReturn(__result)
+///     } catch {
+///       try await resultHandler.onThrow(error: error)
+///     }
+///     return
+///   }
+static IfStmt *buildEmbeddedDispatchBranch(
+    ASTContext &C, AbstractFunctionDecl *thunk,
+    VarDecl *targetVar, VarDecl *invocationDecoderVar,
+    VarDecl *resultHandlerVar, AbstractFunctionDecl *distFunc) {
+  const auto implicit = true;
+  const SourceLoc sloc = SourceLoc();
+  const DeclNameLoc dloc = DeclNameLoc();
+
+  // === Build the condition.
+  //
+  // We compare `RemoteCallTarget.identifier` (a `String`) against the
+  // distributed-thunk's mangled name via a UTF-8 byte comparison:
+  //
+  //   target.identifier.utf8.elementsEqual("<mangled>".utf8)
+  //
+  // We deliberately avoid `String == String` because that pulls in
+  // full Unicode NFC normalization, which isn't available under the
+  // embedded stdlib (the `__swift_stdlib_*` normalization helpers are
+  // not linked in). A byte-equal compare is correct here because the
+  // mangled name is plain ASCII.
+  llvm::SmallString<128> targetNameBuf;
+  {
+    Mangle::ASTMangler mangler(C);
+    auto *funcDecl = cast<FuncDecl>(distFunc);
+    auto *thunkFunc = funcDecl->getDistributedThunk();
+    if (!thunkFunc)
+      return nullptr;
+    targetNameBuf = mangler.mangleDistributedThunk(thunkFunc);
+  }
+
+  // target.identifier
+  Expr *targetIdentifier =
+      UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(targetVar), dloc, implicit),
+          C.getIdentifier("identifier"));
+
+  // target.identifier.utf8
+  Expr *targetIdentifierUTF8 =
+      UnresolvedDotExpr::createImplicit(
+          C, targetIdentifier, C.getIdentifier("utf8"));
+
+  // "<mangled>" string literal.
+  Expr *mangledLiteral =
+      new (C) StringLiteralExpr(C.AllocateCopy(StringRef(targetNameBuf)),
+                                SourceRange(), implicit);
+
+  // "<mangled>".utf8
+  Expr *mangledLiteralUTF8 =
+      UnresolvedDotExpr::createImplicit(
+          C, mangledLiteral, C.getIdentifier("utf8"));
+
+  // target.identifier.utf8.elementsEqual("<mangled>".utf8)
+  Expr *eqCheck = CallExpr::createImplicit(
+      C,
+      UnresolvedDotExpr::createImplicit(
+          C, targetIdentifierUTF8, C.getIdentifier("elementsEqual")),
+      ArgumentList::createImplicit(
+          C, { Argument(sloc, Identifier(), mangledLiteralUTF8) }));
+
+  // === Build the then-branch statements.
+  SmallVector<ASTNode, 8> thenStmts;
+
+  // Build a `let pN = try invocationDecoder.decodeNextArgument(TN.self)`
+  // for each parameter of distFunc, collecting the resulting VarDecls so
+  // we can pass them to the local call.
+  SmallVector<VarDecl *, 4> decodedParamVars;
+  auto *funcParams = distFunc->getParameters();
+  for (unsigned i = 0; i < funcParams->size(); ++i) {
+    auto *param = funcParams->get(i);
+    Type paramTy = distFunc->mapTypeIntoEnvironment(param->getInterfaceType());
+
+    auto paramVarName =
+        C.getIdentifier("_arg" + llvm::utostr(i));
+    auto *paramVar = new (C) VarDecl(
+        /*isStatic=*/false, VarDecl::Introducer::Let, sloc,
+        paramVarName, thunk);
+    paramVar->setImplicit();
+    paramVar->setSynthesized();
+    paramVar->setInterfaceType(param->getInterfaceType());
+
+    Pattern *paramPattern = NamedPattern::createImplicit(C, paramVar, paramTy);
+
+    // invocationDecoder.decodeNextArgument(TN.self)
+    auto *metaRef = TypeExpr::createImplicit(paramTy, C);
+    auto *metaDotSelf = new (C) DotSelfExpr(metaRef, sloc, sloc, paramTy);
+
+    auto decodeArgs = ArgumentList::createImplicit(
+        C, { Argument(sloc, Identifier(), metaDotSelf) });
+    Expr *decodeCall = CallExpr::createImplicit(
+        C,
+        UnresolvedDotExpr::createImplicit(
+            C,
+            new (C) DeclRefExpr(ConcreteDeclRef(invocationDecoderVar), dloc,
+                                implicit, AccessSemantics::Ordinary),
+            C.Id_decodeNextArgument),
+        decodeArgs);
+    decodeCall = TryExpr::createImplicit(C, sloc, decodeCall);
+
+    auto *paramPB = PatternBindingDecl::createImplicit(
+        C, StaticSpellingKind::None, paramPattern, decodeCall, thunk);
+    thenStmts.push_back(paramPB);
+    thenStmts.push_back(paramVar);
+
+    decodedParamVars.push_back(paramVar);
+  }
+
+  // Build the call to the local impl:
+  //   try await self.<distFunc>(arg0, arg1, ...)
+  auto *funcDecl = cast<FuncDecl>(distFunc);
+  Type returnTy = funcDecl->mapTypeIntoEnvironment(
+      funcDecl->getResultInterfaceType());
+  bool isVoidReturn = returnTy->isVoid();
+
+  auto *selfDecl = thunk->getImplicitSelfDecl();
+
+  SmallVector<Argument, 4> callArgs;
+  for (unsigned i = 0; i < funcParams->size(); ++i) {
+    auto *param = funcParams->get(i);
+    auto *paramVar = decodedParamVars[i];
+    callArgs.push_back(
+        Argument(sloc, param->getArgumentName(),
+                 new (C) DeclRefExpr(ConcreteDeclRef(paramVar), dloc,
+                                     implicit)));
+  }
+
+  auto *selfDotFunc =
+      UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(selfDecl, dloc, implicit),
+          funcDecl->getBaseName());
+  Expr *funcCall = CallExpr::createImplicit(
+      C, selfDotFunc,
+      ArgumentList::createImplicit(C, callArgs));
+  funcCall = AwaitExpr::createImplicit(C, sloc, funcCall);
+  funcCall = TryExpr::createImplicit(C, sloc, funcCall);
+
+  // The do-try-catch wrapper, with onReturn / onReturnVoid in the do
+  // branch and onThrow in the catch branch.
+  SmallVector<ASTNode, 4> doStmts;
+  if (isVoidReturn) {
+    // self.<func>(...)
+    doStmts.push_back(funcCall);
+
+    // try await resultHandler.onReturnVoid()
+    auto *onReturnVoid =
+        UnresolvedDotExpr::createImplicit(
+            C, new (C) DeclRefExpr(ConcreteDeclRef(resultHandlerVar), dloc,
+                                   implicit),
+            C.getIdentifier("onReturnVoid"));
+    Expr *onReturnVoidCall = CallExpr::createImplicit(
+        C, onReturnVoid, ArgumentList::createImplicit(C, {}));
+    onReturnVoidCall = AwaitExpr::createImplicit(C, sloc, onReturnVoidCall);
+    onReturnVoidCall = TryExpr::createImplicit(C, sloc, onReturnVoidCall);
+    doStmts.push_back(onReturnVoidCall);
+  } else {
+    // let __result = try await self.<func>(...)
+    auto *resultVar = new (C) VarDecl(
+        /*isStatic=*/false, VarDecl::Introducer::Let, sloc,
+        C.getIdentifier("__result"), thunk);
+    resultVar->setImplicit();
+    resultVar->setSynthesized();
+    resultVar->setInterfaceType(funcDecl->getResultInterfaceType());
+
+    Pattern *resultPattern = NamedPattern::createImplicit(C, resultVar, returnTy);
+    auto *resultPB = PatternBindingDecl::createImplicit(
+        C, StaticSpellingKind::None, resultPattern, funcCall, thunk);
+    doStmts.push_back(resultPB);
+    doStmts.push_back(resultVar);
+
+    // try await resultHandler.onReturn(__result)
+    auto *onReturn =
+        UnresolvedDotExpr::createImplicit(
+            C, new (C) DeclRefExpr(ConcreteDeclRef(resultHandlerVar), dloc,
+                                   implicit),
+            C.getIdentifier("onReturn"));
+    Expr *onReturnCall = CallExpr::createImplicit(
+        C, onReturn,
+        ArgumentList::createImplicit(
+            C, { Argument(sloc, Identifier(),
+                          new (C) DeclRefExpr(ConcreteDeclRef(resultVar), dloc,
+                                              implicit)) }));
+    onReturnCall = AwaitExpr::createImplicit(C, sloc, onReturnCall);
+    onReturnCall = TryExpr::createImplicit(C, sloc, onReturnCall);
+    doStmts.push_back(onReturnCall);
+  }
+  auto *doBody = BraceStmt::create(C, sloc, doStmts, sloc, implicit);
+
+  // catch { try await resultHandler.onThrow(error: error) }
+  auto *catchErrorVar = new (C) VarDecl(
+      /*isStatic=*/false, VarDecl::Introducer::Let, sloc,
+      C.Id_error, thunk);
+  catchErrorVar->setImplicit();
+  catchErrorVar->setSynthesized();
+  catchErrorVar->setInterfaceType(C.getErrorExistentialType());
+
+  Pattern *catchPattern =
+      NamedPattern::createImplicit(C, catchErrorVar, C.getErrorExistentialType());
+
+  auto *onThrow =
+      UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(resultHandlerVar), dloc,
+                                 implicit),
+          C.getIdentifier("onThrow"));
+  Expr *onThrowCall = CallExpr::createImplicit(
+      C, onThrow,
+      ArgumentList::createImplicit(
+          C, { Argument(sloc, C.getIdentifier("error"),
+                        new (C) DeclRefExpr(ConcreteDeclRef(catchErrorVar), dloc,
+                                            implicit)) }));
+  onThrowCall = AwaitExpr::createImplicit(C, sloc, onThrowCall);
+  onThrowCall = TryExpr::createImplicit(C, sloc, onThrowCall);
+  auto *catchBody = BraceStmt::create(C, sloc, { onThrowCall }, sloc, implicit);
+
+  auto *catchStmt = CaseStmt::createImplicit(
+      C, CaseParentKind::DoCatch,
+      { CaseLabelItem(catchPattern) },
+      catchBody);
+
+  auto *doCatch = DoCatchStmt::create(
+      thunk, LabeledStmtInfo(), sloc,
+      /*throwsLoc=*/sloc, TypeLoc(),
+      doBody, { catchStmt }, implicit);
+
+  thenStmts.push_back(doCatch);
+
+  // return
+  thenStmts.push_back(ReturnStmt::createImplicit(C, sloc, /*Result=*/nullptr));
+
+  auto *thenBody = BraceStmt::create(C, sloc, thenStmts, sloc, implicit);
+
+  return new (C) IfStmt(sloc, /*Cond=*/eqCheck, /*Then=*/thenBody,
+                        /*ElseLoc=*/SourceLoc(), /*Else=*/nullptr,
+                        implicit, C);
+}
+
+/// Body synthesizer for the embedded receiver-side dispatch function.
+static std::pair<BraceStmt *, bool>
+deriveBodyEmbeddedDistributedReceiveDispatch(AbstractFunctionDecl *thunk,
+                                             void *context) {
+  auto *ctx = static_cast<EmbeddedDispatchContext *>(context);
+  ASTContext &C = thunk->getASTContext();
+  const auto implicit = true;
+  const SourceLoc sloc = SourceLoc();
+  const DeclNameLoc dloc = DeclNameLoc();
+
+  auto *params = thunk->getParameters();
+  auto *targetParam = params->get(0);
+  auto *invocationDecoderParam = params->get(1);
+  auto *resultHandlerParam = params->get(2);
+
+  SmallVector<ASTNode, 8> bodyStmts;
+
+  // For each distributed func on the actor, emit one if-block.
+  for (auto *distFunc : ctx->distributedFuncs) {
+    if (auto *ifStmt = buildEmbeddedDispatchBranch(
+            C, thunk, targetParam, invocationDecoderParam,
+            resultHandlerParam, distFunc)) {
+      bodyStmts.push_back(ifStmt);
+    }
+  }
+
+  // Fallthrough: throw EmbeddedDistributedTargetNotFound(target: target.identifier).
+  auto *targetIdentifier =
+      UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(targetParam), dloc, implicit),
+          C.getIdentifier("identifier"));
+
+  auto *notFoundTypeExpr =
+      UnresolvedDeclRefExpr::createImplicit(
+          C, C.getIdentifier("EmbeddedDistributedTargetNotFound"));
+  auto *notFoundInitArgs =
+      ArgumentList::createImplicit(
+          C, { Argument(sloc, C.getIdentifier("target"), targetIdentifier) });
+  Expr *notFoundExpr = CallExpr::createImplicit(C, notFoundTypeExpr,
+                                                notFoundInitArgs);
+  bodyStmts.push_back(new (C) ThrowStmt(sloc, notFoundExpr));
+
+  auto *body = BraceStmt::create(C, sloc, bodyStmts, sloc, implicit);
+  (void)dloc;
+  return { body, /*isTypeChecked=*/false };
+}
+
+/// Create the `_executeDistributedTarget` instance method declaration on
+/// the given distributed actor under Embedded Swift. Returns the
+/// FuncDecl (with a body synthesizer attached) or null if the actor's
+/// actor system type is unavailable.
+static FuncDecl *createEmbeddedDistributedReceiveDispatch(
+    ClassDecl *actor, llvm::ArrayRef<AbstractFunctionDecl *> distributedFuncs) {
+  auto &C = actor->getASTContext();
+  const SourceLoc sloc = SourceLoc();
+
+  // Look up the actor system, then its InvocationDecoder/ResultHandler
+  // type witnesses against EmbeddedDistributedActorSystem.
+  Type systemTy = getDistributedActorSystemType(actor);
+  if (!systemTy || systemTy->hasError())
+    return nullptr;
+
+  auto *embeddedDAS =
+      C.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
+  if (!embeddedDAS)
+    return nullptr;
+
+  auto *systemNominal = systemTy->getAnyNominal();
+  if (!systemNominal)
+    return nullptr;
+
+  auto sysConf = lookupConformance(
+      systemNominal->getDeclaredInterfaceType(), embeddedDAS);
+  if (sysConf.isInvalid())
+    return nullptr;
+
+  Type decoderTy =
+      sysConf.getTypeWitnessByName(C.getIdentifier("InvocationDecoder"));
+  Type handlerTy =
+      sysConf.getTypeWitnessByName(C.getIdentifier("ResultHandler"));
+  if (!decoderTy || !handlerTy)
+    return nullptr;
+
+  auto *RCT = C.getRemoteCallTargetDecl();
+  if (!RCT)
+    return nullptr;
+  Type remoteCallTargetTy = RCT->getDeclaredInterfaceType();
+
+  // Params: target: RemoteCallTarget,
+  //         invocationDecoder: inout Self.ActorSystem.InvocationDecoder,
+  //         resultHandler: Self.ActorSystem.ResultHandler
+  auto *targetParam = ParamDecl::createImplicit(
+      C, C.getIdentifier("target"), C.getIdentifier("target"),
+      remoteCallTargetTy, actor);
+
+  auto *invocationDecoderParam = ParamDecl::createImplicit(
+      C, C.getIdentifier("invocationDecoder"),
+      C.getIdentifier("invocationDecoder"),
+      decoderTy, actor);
+  invocationDecoderParam->setSpecifier(ParamSpecifier::InOut);
+
+  auto *resultHandlerParam = ParamDecl::createImplicit(
+      C, C.getIdentifier("resultHandler"), C.getIdentifier("resultHandler"),
+      handlerTy, actor);
+
+  auto *paramList = ParameterList::create(
+      C, sloc,
+      { targetParam, invocationDecoderParam, resultHandlerParam },
+      sloc);
+
+  DeclName name(C, C.getIdentifier("_executeDistributedTarget"), paramList);
+
+  auto *funcDecl = FuncDecl::createImplicit(
+      C, StaticSpellingKind::None, name, sloc,
+      /*async=*/true, /*throws=*/true,
+      /*ThrownType=*/Type(),
+      /*genericParams=*/nullptr,
+      paramList, /*returnType=*/TupleType::getEmpty(C), actor);
+  funcDecl->setSynthesized(true);
+  funcDecl->copyFormalAccessFrom(actor, /*sourceIsParentContext=*/true);
+  funcDecl->addAttribute(NonisolatedAttr::createImplicit(C));
+
+  // Body synthesizer: emit the if-chain over each distributed func.
+  auto *bodyCtx = C.Allocate<EmbeddedDispatchContext>();
+  new (bodyCtx) EmbeddedDispatchContext{
+    llvm::SmallVector<AbstractFunctionDecl *, 4>(distributedFuncs.begin(),
+                                                 distributedFuncs.end())};
+  funcDecl->setBodySynthesizer(
+      deriveBodyEmbeddedDistributedReceiveDispatch, bodyCtx);
+
+  return funcDecl;
+}
+
+/// Synthesize and add `_executeDistributedTarget(...)` to an embedded
+/// distributed actor. Called from `checkDistributedActor` after the
+/// existing thunk machinery has been triggered.
+void swift::synthesizeEmbeddedDistributedReceiveDispatch(
+    SourceFile *SF, ClassDecl *actor) {
+  if (!actor || !actor->isDistributedActor())
+    return;
+  if (!isEmbeddedDistributedActorSystem(actor))
+    return;
+
+  // Collect the distributed funcs from the actor.
+  llvm::SmallVector<AbstractFunctionDecl *, 4> distributedFuncs;
+  for (auto member : actor->getMembers()) {
+    if (auto *func = dyn_cast<FuncDecl>(member)) {
+      if (func->isDistributed())
+        distributedFuncs.push_back(func);
+    }
+  }
+
+  // If there are no distributed funcs, still synthesize an empty
+  // dispatch (it'll just throw notFound for everything). Keeps the
+  // user-facing API uniform.
+  auto *dispatchFn =
+      createEmbeddedDistributedReceiveDispatch(actor, distributedFuncs);
+  if (!dispatchFn)
+    return;
+
+  actor->addMember(dispatchFn);
+  if (SF)
+    SF->addDelayedFunction(dispatchFn);
+}
+
 /******************************************************************************/
 /******************************************************************************/
 
