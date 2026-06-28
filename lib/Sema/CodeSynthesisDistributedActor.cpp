@@ -267,17 +267,17 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   }
 
   // -- recordArgument(s)
+  // Both standard and embedded distributed actors pass each argument
+  // through a `RemoteCallArgument<Value>` struct, which carries the
+  // call-site label, internal parameter name, and the value. The
+  // difference between modes is only how the encoder's
+  // `recordArgument` is declared:
+  //   standard: `mutating func recordArgument<Value: SerializationRequirement>(_:)`
+  //   embedded: per-type overload `mutating func recordArgument(_: RemoteCallArgument<T>)`
+  // The synthesized call-site shape is identical.
   {
-    // Standard distributed actors use a single-positional-argument
-    // `recordArgument(_:)` taking a `RemoteCallArgument<Value>` struct.
-    // Embedded actors instead use a per-type `recordArgument(_:label:)`
-    // overload on the user's concrete encoder; the value is passed
-    // directly and the label is a `String` keyword argument.
-    auto recordArgumentName = isEmbeddedSystem
-        ? DeclName(C, C.Id_recordArgument,
-                   /*labels=*/{Identifier(), C.getIdentifier("label")})
-        : DeclName(C, C.Id_recordArgument,
-                   /*labels=*/{Identifier()});
+    auto recordArgumentName = DeclName(C, C.Id_recordArgument,
+                                       /*labels=*/{Identifier()});
     if (auto params = thunk->getParameters()) {
       if (params->begin())
       for (auto param : *params) {
@@ -374,44 +374,15 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         auto callArgPB = PatternBindingDecl::createImplicit(
             C, StaticSpellingKind::None, callArgPattern, initCallArgCallExpr, thunk);
 
-        if (!isEmbeddedSystem) {
-          remoteBranchStmts.push_back(callArgPB);
-          remoteBranchStmts.push_back(callArgVar);
-        }
+        remoteBranchStmts.push_back(callArgPB);
+        remoteBranchStmts.push_back(callArgVar);
 
-        /// --- Pass the argument to the recordArgument function
-        // Standard mode: pass the `RemoteCallArgument<Value>` we just built.
-        // Embedded mode: pass the raw argument value and a String label so
-        // overload resolution picks the user's
-        // `recordArgument(_: T, label: String)` extension method.
-        ArgumentList *recordArgArgsList;
-        if (isEmbeddedSystem) {
-          // Use the argument label literal we computed above; embedded API
-          // requires a `String` so an empty argument label becomes "_".
-          Expr *labelExpr;
-          if (argumentName.empty()) {
-            labelExpr =
-                new (C) StringLiteralExpr("_", SourceRange(), implicit);
-          } else {
-            labelExpr = new (C) StringLiteralExpr(argumentName, SourceRange(),
-                                                  implicit);
-          }
-          recordArgArgsList = ArgumentList::createImplicit(
-              C, {
-                     Argument(sloc, Identifier(),
-                              new (C) DeclRefExpr(ConcreteDeclRef(param), dloc,
-                                                  implicit,
-                                                  AccessSemantics::Ordinary,
-                                                  paramTy)),
-                     Argument(sloc, C.getIdentifier("label"), labelExpr),
-                 });
-        } else {
-          recordArgArgsList = ArgumentList::forImplicitCallTo(
-              DeclNameRef(recordArgumentName),
-              {new (C) DeclRefExpr(ConcreteDeclRef(callArgVar), dloc, implicit,
-                                   AccessSemantics::Ordinary)},
-              C);
-        }
+        /// --- Pass the argumentRepr to the recordArgument function
+        auto recordArgArgsList = ArgumentList::forImplicitCallTo(
+            DeclNameRef(recordArgumentName),
+            {new (C) DeclRefExpr(ConcreteDeclRef(callArgVar), dloc, implicit,
+                                 AccessSemantics::Ordinary)},
+            C);
 
         auto tryRecordArgExpr = TryExpr::createImplicit(
             C, sloc,

@@ -790,17 +790,15 @@ static void emitResolvableProtocolMissingActorSystemFixit(
 }
 
 /// Look up a single-parameter method with the given name on \p type,
-/// matching either `func name(_: paramTy)` (when `isMetatype` is false)
-/// or `func name(_: paramTy.Type)` (when `isMetatype` is true). Optionally
-/// requires an additional `label: String` keyword argument. Returns true
-/// if at least one matching candidate exists.
+/// matching `func name(_: paramTy)` (when `isMetatype` is false) or
+/// `func name(_: paramTy.Type)` (when `isMetatype` is true). Returns
+/// true if at least one matching candidate exists.
 static bool hasEmbeddedDistributedOverload(
     DeclContext *useDC, Type type, Identifier methodName, Type paramTy,
-    bool isMetatype, bool requireLabelStringArg) {
+    bool isMetatype) {
   if (!type || type->hasError())
     return true; // can't check; don't add a confusing diagnostic on top
 
-  auto &ctx = useDC->getASTContext();
   auto members = TypeChecker::lookupMember(useDC, type,
                                            DeclNameRef(methodName));
   for (auto &found : members) {
@@ -808,8 +806,7 @@ static bool hasEmbeddedDistributedOverload(
     if (!fd)
       continue;
     auto *params = fd->getParameters();
-    auto expectedSize = requireLabelStringArg ? 2u : 1u;
-    if (params->size() != expectedSize)
+    if (params->size() != 1)
       continue;
 
     // First parameter: the value (or the metatype).
@@ -822,15 +819,6 @@ static bool hasEmbeddedDistributedOverload(
       expected = MetatypeType::get(paramTy);
     if (!firstTy->isEqual(expected))
       continue;
-
-    // Optional second parameter: `label: String`.
-    if (requireLabelStringArg) {
-      auto *labelParam = params->get(1);
-      if (labelParam->getArgumentName() != ctx.getIdentifier("label"))
-        continue;
-      if (!labelParam->getInterfaceType()->isEqual(ctx.getStringType()))
-        continue;
-    }
 
     return true;
   }
@@ -879,23 +867,33 @@ static bool checkEmbeddedDistributedFunctionCoverage(
   bool anyMissing = false;
 
   // For each (non-`@Resolvable`) parameter, require:
-  //   encoder.recordArgument(_: T, label: String)
+  //   encoder.recordArgument(_: RemoteCallArgument<T>)
   //   decoder.decodeNextArgument(_: T.Type) -> T
   for (auto *param : *func->getParameters()) {
     Type paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
     Type printableParamTy = param->getInterfaceType();
 
-    if (encoderTy &&
+    // Build `RemoteCallArgument<T>` for the recordArgument lookup. The
+    // compiler-synthesized distributed thunk wraps each argument in this
+    // struct before calling recordArgument, so the user's per-type
+    // overload signature is `func recordArgument(_: RemoteCallArgument<T>)`.
+    Type recordArgumentParamTy;
+    if (auto *RCA = ctx.getRemoteCallArgumentDecl()) {
+      recordArgumentParamTy =
+          BoundGenericType::get(RCA, Type(), {paramTy});
+    }
+
+    if (encoderTy && recordArgumentParamTy &&
         !hasEmbeddedDistributedOverload(
-            actorOrExt, encoderTy, ctx.Id_recordArgument, paramTy,
-            /*isMetatype=*/false, /*requireLabelStringArg=*/true)) {
+            actorOrExt, encoderTy, ctx.Id_recordArgument, recordArgumentParamTy,
+            /*isMetatype=*/false)) {
       func->diagnose(
           diag::distributed_embedded_missing_record_argument, encoderTy,
           param->getArgumentName(), printableParamTy, func);
       llvm::SmallString<128> sigBuf;
       llvm::raw_svector_ostream sig(sigBuf);
-      sig << "func recordArgument(_ value: " << printableParamTy
-          << ", label: String) throws";
+      sig << "mutating func recordArgument(_ argument: RemoteCallArgument<"
+          << printableParamTy << ">) throws";
       func->diagnose(diag::distributed_embedded_missing_overload_note,
                      encoderTy, StringRef(sigBuf));
       anyMissing = true;
@@ -904,13 +902,13 @@ static bool checkEmbeddedDistributedFunctionCoverage(
     if (decoderTy &&
         !hasEmbeddedDistributedOverload(
             actorOrExt, decoderTy, ctx.Id_decodeNextArgument, paramTy,
-            /*isMetatype=*/true, /*requireLabelStringArg=*/false)) {
+            /*isMetatype=*/true)) {
       func->diagnose(
           diag::distributed_embedded_missing_decode_next_argument, decoderTy,
           param->getArgumentName(), printableParamTy, func);
       llvm::SmallString<128> sigBuf;
       llvm::raw_svector_ostream sig(sigBuf);
-      sig << "func decodeNextArgument(_ type: " << printableParamTy
+      sig << "mutating func decodeNextArgument(_ type: " << printableParamTy
           << ".Type) throws -> " << printableParamTy;
       func->diagnose(diag::distributed_embedded_missing_overload_note,
                      decoderTy, StringRef(sigBuf));
@@ -929,13 +927,13 @@ static bool checkEmbeddedDistributedFunctionCoverage(
       if (encoderTy &&
           !hasEmbeddedDistributedOverload(
               actorOrExt, encoderTy, ctx.Id_recordReturnType, returnTy,
-              /*isMetatype=*/true, /*requireLabelStringArg=*/false)) {
+              /*isMetatype=*/true)) {
         func->diagnose(
             diag::distributed_embedded_missing_record_return_type, encoderTy,
             returnInterfaceTy, func);
         llvm::SmallString<128> sigBuf;
         llvm::raw_svector_ostream sig(sigBuf);
-        sig << "func recordReturnType(_ type: " << returnInterfaceTy
+        sig << "mutating func recordReturnType(_ type: " << returnInterfaceTy
             << ".Type) throws";
         func->diagnose(diag::distributed_embedded_missing_overload_note,
                        encoderTy, StringRef(sigBuf));
@@ -945,7 +943,7 @@ static bool checkEmbeddedDistributedFunctionCoverage(
       if (handlerTy &&
           !hasEmbeddedDistributedOverload(
               actorOrExt, handlerTy, ctx.Id_onReturn, returnTy,
-              /*isMetatype=*/false, /*requireLabelStringArg=*/false)) {
+              /*isMetatype=*/false)) {
         func->diagnose(
             diag::distributed_embedded_missing_on_return, handlerTy,
             returnInterfaceTy, func);
