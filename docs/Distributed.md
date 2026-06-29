@@ -644,7 +644,10 @@ Runtime entry points enabled in embedded (`stdlib/public/Concurrency/Actor.cpp`)
    │
    if __isRemoteActor(self):
      var enc = system.makeInvocationEncoder()
-     try enc.recordArgument(                       ────► MyEncoder.recordArgument(_: RemoteCallArgument<String>)
+     
+     // === Encode arguments
+     // Call the concrete-typed 'recordArgument(_: RemoteCallArgument<String>)':
+     try enc.recordArgument(                       
          RemoteCallArgument(label: "name",
                             name: "name",
                             value: name))
@@ -825,7 +828,7 @@ vector, no `InstanceSize`, and no `InstanceAlignMask` for the runtime
 to read. See `lib/IRGen/GenDistributed.cpp::emitDistributedActorInitializeRemote`
 and the embedded branch in `stdlib/public/Concurrency/Actor.cpp`.
 
-## Phase 2: `@Resolvable` `any P` parameters and returns
+## `@Resolvable` `any P` parameters and returns
 
 The compiler accepts `any P` parameters and return types in
 `distributed func` signatures under Embedded **iff** `P` is annotated
@@ -881,8 +884,9 @@ method (see `synthesizeEmbeddedDistributedReceiveDispatch` and
 `buildEmbeddedDispatchBranch` in
 `lib/Sema/CodeSynthesisDistributedActor.cpp`). The body is an if/else
 chain over `target.identifier.utf8.elementsEqual("<mangled>".utf8)`
-calls, one branch per distributed func collected for `T`. The
-collection is:
+calls, one branch per distributed func collected for `T`. 
+
+The collection is:
 
 1. **Every concrete `distributed func` declared on `T`.** Mangled name
    is `T.<method>`'s thunk (e.g.
@@ -921,23 +925,7 @@ call to turn the `any P` back into a `$P` proxy before invoking
 reconstructs the proxy on the caller side; the call returns `any P`
 to the user via the implicit `$P: P` existential conversion.
 
-### `@Resolvable` macro under embedded
-
-The macro generates an extension default impl for each protocol
-requirement with body `if #available(...) { _distributedStubFatalError() } else { fatalError() }`.
-The `#available` runtime check pulls in `_stdlib_isOSVersionAtLeast`,
-which embedded Swift doesn't have. Under `#if $Embedded` the macro
-emits bare `fatalError()`. The body is dead code anyway (the
-synthesized distributed thunk replaces the call at every site), so
-the nicer `_distributedStubFatalError()` diagnostic isn't observable.
-
 ## Open work (not yet done)
-
-- **`some P` and generic distributed funcs.** Currently diagnosed as
-  not-supported. Lifting these would require adding generic-substitution
-  support to the embedded encoder protocol family (a wire-level shape
-  for the concrete type), which is a non-trivial design exercise on
-  top of Phase 2.
 
 - **Performance of the receive-side if/else chain.** The synthesized
   dispatch groups branches by mangled-name length and switches over
@@ -1030,5 +1018,3 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
   distributed methods, picked up after the design is settled.
 
 - **Non-default-actor distributed actors.** Currently trap at runtime in embedded (the `NonDefaultDistributedActor` machinery is gated out). Either re-enable it under embedded or diagnose at the actor declaration site.
-
-- **Codable on `ActorID`.** The implicit `Codable` conformance synthesis on `DistributedActor` where `Self.ID: Codable` is `#if !$Embedded`-guarded today; users must implement `init(from:)` / `encode(to:)` manually if their `ActorID` needs to serialize on the wire. (For most embedded use cases the wire format is custom anyway, so this is acceptable.)
