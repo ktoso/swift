@@ -119,5 +119,11 @@ distributed actor Greeter {
 // generic-over-SerializationRequirement remoteCall is left around).
 // CHECK: @"$e{{.+}}MySystemC10remoteCall2on6target10invocation{{.+}}GreeterC_Tg5{{.*}}"
 
+// Remote-proxy allocation goes through the embedded-only entry point with a
+// compiler-computed allocSize and alignMask (the minimal embedded
+// ClassMetadata has no InstanceSize/InstanceAlignMask the runtime could read).
+// CHECK-NOT: call swiftcc {{.*}}@swift_distributedActor_remote_initialize(
+// CHECK: call swiftcc ptr @swift_distributedActor_remote_initialize_embedded(ptr {{.*}}, i64 {{[0-9]+}}, i64 {{[0-9]+}})
+
 // No accessible-function-table section under Embedded.
 // CHECK-NOT: __swift5_acfuncs

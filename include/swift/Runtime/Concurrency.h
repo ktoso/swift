@@ -1059,6 +1059,17 @@ SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 OpaqueValue*
 swift_distributedActor_remote_initialize(const Metadata *actorType);
 
+/// Embedded-only variant of swift_distributedActor_remote_initialize.
+/// Accepts the allocation size and alignment mask computed by the compiler at
+/// IR generation time, bypassing the runtime metadata-based lookups that are
+/// unavailable in the minimal embedded ClassMetadata layout (which has no
+/// InstanceSize/InstanceAlignMask fields).
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+OpaqueValue*
+swift_distributedActor_remote_initialize_embedded(const Metadata *actorType,
+                                                  size_t allocSize,
+                                                  size_t alignMask);
+
 /// Enqueue a job on the default actor implementation.
 ///
 /// The job must be ready to run.  Notably, if it's a task, that
