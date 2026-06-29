@@ -3037,6 +3037,33 @@ swift::swift_distributedActor_remote_initialize(const Metadata *actorType) {
 #endif
 }
 
+#if SWIFT_CONCURRENCY_EMBEDDED
+/// Embedded-only variant: accepts the allocation size and alignment mask
+/// pre-computed by the compiler at IR generation time. The minimal embedded
+/// ClassMetadata layout carries no TargetClassDescriptor, field-offset vector,
+/// InstanceSize, or InstanceAlignMask, so the runtime cannot derive either
+/// value itself. IRGen emits the correct trim size (offset of the first
+/// user-defined stored property, or full instance size when there are none)
+/// and the class's alignment mask, and passes both here directly.
+OpaqueValue*
+swift::swift_distributedActor_remote_initialize_embedded(
+    const Metadata *actorType, size_t allocSize, size_t alignMask) {
+  const ClassMetadata *metadata = actorType->getClassObject();
+
+  HeapObject *alloc = swift_allocObject(metadata, allocSize, alignMask);
+
+  // Zero the body so that the destructor can safely release fields without
+  // encountering uninitialized memory.
+  memset((void *)(alloc + 1), 0, allocSize - sizeof(HeapObject));
+
+  // All embedded distributed actors are default actors.
+  auto actor = asImpl(reinterpret_cast<DefaultActor *>(alloc));
+  actor->initialize(/*remote*/true);
+  assert(swift_distributed_actor_is_remote(alloc));
+  return reinterpret_cast<OpaqueValue*>(actor);
+}
+#endif
+
 bool swift::swift_distributed_actor_is_remote(HeapObject *_actor) {
 #if !SWIFT_CONCURRENCY_EMBEDDED
   if (!_actor || isObjCTaggedPointer(_actor))
