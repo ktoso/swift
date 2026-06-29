@@ -679,6 +679,152 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 - `distributed_embedded_any_some_param_diag.swift` — `-verify` test pinning Phase 2 sema: `any P` with `@Resolvable` accepted; `some P` rejected with "use 'any P' instead"; `any P` without `@Resolvable` rejected; user-written generic distributed funcs rejected.
 - `distributed_embedded_resolvable_any_roundtrip_exec.swift` — full Phase 2 executable: `Hub.dispatch(to: any RWorker)` invoked with a `$RWorker` proxy, inner `worker.work(name:)` re-enters the stub transport and dispatches to the concrete `WorkerImpl.work`, result flows back.
 
+## Code-size overhead
+
+What does opting into `distributed actor` cost in an embedded binary,
+relative to plain Swift / a regular `actor`? Measured on
+`arm64-apple-macos14`, `swift-frontend -O -enable-experimental-feature
+Embedded -parse-as-library -wmo`, identical 5-file harness (MySystem +
+MyEncoder + MyDecoder + MyResultHandler), differing only in the actor
+definition and how `main` calls into it. Two measurement passes: the
+`.o` numbers come straight from `size -m`; the linked numbers come
+from linking each scenario against the embedded runtime
+(`-lswift_Concurrency -lswiftDistributed -lswift_ConcurrencyDefaultExecutor
+-lswiftEmbeddedPlatformPOSIX -lswiftExclusivitySingleThreaded
+-lswiftUnicodeDataTables`) with `-Xlinker -dead_strip`.
+
+### Per-scenario sizes
+
+| Scenario                                       | `.o` total | linked total |
+|------------------------------------------------|-----------|--------------|
+| baseline (no actor, just MySystem)             | 6520      | 28319        |
+| add a regular `actor` with no methods          | 6852      | 29322        |
+| make it `distributed`, still no methods        | 6924      | 29626        |
+| declare 1 distributed method, never call it    | 7044      | 29746        |
+| 1 distributed method, called from main         | 7508      | 30514        |
+| 4 distributed methods, all called              | 8084      | 31114        |
+| 8 distributed methods, all called              | 8852      | 31914        |
+
+Linked totals sum `__text + __data + __const + __swift_as_*` from
+`size -m` on the stripped binary, which is what actually ships. The
+linked overhead dominates the `.o` overhead because most of the cost
+is in the embedded `_Concurrency` runtime itself (Actor.cpp,
+Task.cpp, TaskStatus.cpp, TaskLocal.cpp ~= 17 KB combined) — that
+chunk is constant whether you have one distributed actor or eight,
+and is mostly there as soon as you use Swift Concurrency at all.
+
+### What each step costs
+
+- **Per-actor framing (~72 B in `.o`, ~304 B linked):** what you pay
+  to turn an `actor` into a `distributed actor` with zero distributed
+  methods. Mostly extra slots in `__const` for the actor's metadata
+  plus a small grow in the default `__deallocating_deinit`.
+
+- **First call site in the program (~344 B in `.o`, ~768 B linked,
+  one-time):** the first `try await x.foo()` anywhere in the binary
+  drags in `swift_deletedAsyncMethodErrorTu`, the await-resume
+  partial, `async_MainTQ0_`, the async function pointer to main's
+  continuation, and `__swift_async_ret_functlets`. Amortized across
+  all distributed calls — paid once, regardless of how many
+  distributed methods exist.
+
+- **Per declared distributed method (~120 B in `.o`, ~8 B linked when
+  never called):** the distributed thunk symbol itself. The link-time
+  dead-strip is aggressive: `lld -dead_strip` keeps only the metadata
+  vtable slot and the async function pointer (~8 B in `__const`/`__data`)
+  when no caller ever names the thunk. The remaining 100+ bytes of
+  thunk body get stripped.
+
+- **Per called distributed method (~192 B in `.o`, ~200 B linked):**
+  observed by linear regression across C_dist1 (1 method called) ->
+  D_dist4 (4 methods) -> E_dist8 (8 methods). The linked-binary
+  per-method cost converges to **~200 bytes** — `~192` for `.o`
+  symbols + a small constant of stub/got overhead per cross-reference
+  added when each new thunk has its own async pointer.
+
+Per-method 192 B `.o` breakdown (from `llvm-objdump --syms` + the
+`Counter.mN` symbol families in scenarios D and E):
+
+```
+  64 B  __text   suspend-resume partial for distributed thunk Counter.mN
+  68 B  __text   suspend-resume partial #N for main's call site
+   8 B  __text   Counter.mN()                       (the user's body, post-inlining)
+   8 B  __data   async function pointer to thunk
+   8 B  __const  type-metadata vtable slot
+   4 B  __swift_as_entry   async resume marker
+   8 B  __swift_as_cont    async continuation marker
+  ----
+ ~168 B observed + ~24 B alignment slop = 192 B
+```
+
+There is **no per-method metadata table** in embedded distributed.
+Non-embedded distributed emits a `__swift5_acfuncs` section indexed
+by mangled-name lookup at runtime (`swift_findAccessibleFunction`);
+embedded drops both the section and the runtime lookup, dispatching
+via the user's specialized `EmbeddedDistributedActorSystem.remoteCall<Greeter>`
+overload, which the optimizer picks per-actor. (This is what
+`distributed_embedded_no_forbidden_symbols.swift` enforces.)
+
+### Compilation-unit attribution
+
+Sanity-check with `swift-codesize` (apple/applejack tap; wraps
+`bloaty` + DWARF) over the linked binary built with `-g` and a
+dSYM:
+
+```
+swift-codesize generate --binary scen.exe --no-build --include-all
+```
+
+The C_dist1 linked binary (1 distributed actor, 1 distributed method,
+called once) breaks down by compilation unit:
+
+| Source                                             | Bytes | Symbols |
+|----------------------------------------------------|-------|---------|
+| `stdlib/public/Concurrency/Actor.cpp`              | 5672  | 78      |
+| `stdlib/public/Concurrency/Task.cpp`               | 4756  | 66      |
+| `stdlib/public/Concurrency/TaskStatus.cpp`         | 4468  | 58      |
+| user code (harness.swift + scenC_dist1.swift)      | 2508  | 43      |
+| `stdlib/public/Concurrency/TaskLocal.cpp`          | 2188  | 24      |
+| `stdlib/public/Concurrency/TaskAlloc.cpp`          | 1124  | 12      |
+| `stdlib/public/Concurrency/CooperativeGlobalExecutor.cpp` | 1064 | 8 |
+| (smaller TUs)                                      | ~1100 | ~30     |
+
+Inside the 2508 B of user code, the symbols clearly attributable to
+the distributed machinery (`Counter.bump`, the distributed thunk and
+its suspend partials, MySystem allocation) sum to ~268 B; the rest is
+the `main`/`async_Main` skeleton that any embedded async program
+needs.
+
+`swift-codesize`'s value here is **source-line attribution and SIL/IR
+drill-down** (set up automatically when run through SwiftPM with
+Swift 6.4+). For headline byte numbers, `size -m` + `bloaty -d
+sections,symbols` gets the same data without the SwiftPM wrapping.
+
+### Heap-per-instance
+
+The same compilation pass at `-Onone` lets us read the constants that
+IRGen plugs into `swift_allocObject` (for the local instance) and into
+`swift_distributedActor_remote_initialize_embedded` (for the remote
+proxy):
+
+| Stored properties                  | Local instance | Remote proxy |
+|------------------------------------|----------------|--------------|
+| none                               | 128 B          | 128 B (nothing to trim) |
+| 3 × `Int` (24 B of user data)      | 152 B          | **128 B**    |
+| `SIMD16<Float>` (64 B + alignment) | 192 B          | 128 B        |
+
+The remote-proxy trim is what the embedded variant of
+`swift_distributedActor_remote_initialize` does: it allocates only the
+header through the last system-managed field (`id`, `actorSystem`,
+`DefaultActorStorage`) and leaves the user's stored properties off,
+since a remote reference never reads them. IRGen computes the trim
+offset and `alignMask` at compile time from `ClassLayout` and passes
+them to the runtime, because the minimal embedded `ClassMetadata` (see
+`stdlib/public/core/EmbeddedRuntime.swift`) has no field-offset
+vector, no `InstanceSize`, and no `InstanceAlignMask` for the runtime
+to read. See `lib/IRGen/GenDistributed.cpp::emitDistributedActorInitializeRemote`
+and the embedded branch in `stdlib/public/Concurrency/Actor.cpp`.
+
 ## Phase 2: `@Resolvable` `any P` parameters and returns
 
 The compiler accepts `any P` parameters and return types in
@@ -884,7 +1030,5 @@ the nicer `_distributedStubFatalError()` diagnostic isn't observable.
   distributed methods, picked up after the design is settled.
 
 - **Non-default-actor distributed actors.** Currently trap at runtime in embedded (the `NonDefaultDistributedActor` machinery is gated out). Either re-enable it under embedded or diagnose at the actor declaration site.
-
-- **Field-offset-trimmed remote allocation.** The embedded variant of `swift_distributedActor_remote_initialize` over-allocates: it returns `metadata->getInstanceSize()` rather than trimming at the offset where the first user-defined stored property begins (which is what non-embedded does via `metadata->getFieldOffsets()[3]`). The embedded `ClassMetadata` layout (see `stdlib/public/core/EmbeddedRuntime.swift`) is intentionally minimal (just `superclassMetadata` + `destroy` + `ivarDestroyer`) and carries no `TargetClassDescriptor` or field-offset vector, so the non-embedded path can't be reused. To enable trimming under embedded would require either (a) extending `ClassMetadata` to carry the trim-size as an extra field, or (b) having the compiler emit a per-actor static constant alongside the actor's metadata. Either is a non-trivial design exercise; the over-allocation is safe in the meantime.
 
 - **Codable on `ActorID`.** The implicit `Codable` conformance synthesis on `DistributedActor` where `Self.ID: Codable` is `#if !$Embedded`-guarded today; users must implement `init(from:)` / `encode(to:)` manually if their `ActorID` needs to serialize on the wire. (For most embedded use cases the wire format is custom anyway, so this is acceptable.)
