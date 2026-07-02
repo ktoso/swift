@@ -426,6 +426,18 @@ extension DistributedActorSystem {
     invocationDecoder: inout InvocationDecoder,
     handler: Self.ResultHandler
   ) async throws where Act: DistributedActor {
+    // Run `@Entitlement`/`@ValidateRemoteCall` validation before decoding
+    // arguments. A missing record (no annotation on the target) is a no-op;
+    // a failed policy check throws through `handler.onThrow(...)`.
+    if #available(SwiftStdlib 6.5, *) {
+      do {
+        try _DistributedValidation.preflight(on: actor, target: target)
+      } catch {
+        try await handler.onThrow(error: error)
+        return
+      }
+    }
+
     // NOTE: Implementation could be made more efficient because we still risk
     // demangling a RemoteCallTarget identity (if it is a mangled name) multiple
     // times. We would prefer to store if it is a mangled name, demangle, and

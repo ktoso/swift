@@ -786,6 +786,114 @@ bool swift::checkDistributedActorProperty(VarDecl *var, bool diagnose) {
 }
 
 // ==== ------------------------------------------------------------------------
+// MARK: Attribute inheritance from protocol requirements
+
+/// Clone allow-listed distributed-validation attributes (`@Entitlement`,
+/// `@ValidateRemoteCall`) from a protocol requirement onto its witness on
+/// the given nominal type.
+///
+/// This runs early, from `checkDistributedActor` — before per-member type
+/// checking triggers peer macro expansion on the witness. That ordering is
+/// what makes the feature work: by the time the peer macro reads the
+/// witness's attribute list, the inherited attributes are already there,
+/// and the macro emits a section record against the concrete method as if
+/// the user had written the annotation there directly.
+///
+/// The clone is marked implicit; `owner` is retargeted to the witness. The
+/// argument list is preserved verbatim.
+///
+/// Matching is by full `DeclName` (including argument labels) — a
+/// `distributed func openDoor()` requirement matches a
+/// `distributed func openDoor()` witness. No signature matching yet;
+/// distributed funcs with overloads across protocol/actor pairs would
+/// need more care (follow-up if it becomes a real case).
+static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
+  // Only concrete conformers (protocols themselves have nothing to
+  // inherit onto).
+  if (isa<ProtocolDecl>(nominal))
+    return;
+
+  ASTContext &ctx = nominal->getASTContext();
+
+  auto isAllowListed = [&](StringRef name) {
+    return name == "Entitlement" || name == "ValidateRemoteCall";
+  };
+
+  auto witnessAlreadyHas = [&](ValueDecl *witness, CustomAttr *reqAttr,
+                               MacroDecl *reqMacro) {
+    for (auto *existing : witness->getAttrs().getAttributes<CustomAttr>()) {
+      if (existing->getResolvedMacro() == reqMacro) {
+        auto lhsRange = reqAttr->getArgs()
+            ? reqAttr->getArgs()->getSourceRange()
+            : SourceRange();
+        auto rhsRange = existing->getArgs()
+            ? existing->getArgs()->getSourceRange()
+            : SourceRange();
+        if (lhsRange == rhsRange) return true;
+      }
+    }
+    return false;
+  };
+
+  auto cloneOnto = [&](ValueDecl *witness, CustomAttr *reqAttr) {
+    // Reuse the requirement's `TypeExpr` verbatim — the macro is already
+    // resolved on it (via `getResolvedMacro()`), which is what the peer
+    // expander uses. The `Type` isn't computed yet at this phase, so
+    // `TypeExpr::createImplicit(Type, _)` would trip on a null.
+    // Use the requirement's `AtLoc` so the `CustomAttr` constructor's
+    // range invariant (`Start.isValid() == End.isValid()`) holds.
+    auto *cloned = CustomAttr::create(ctx, reqAttr->AtLoc,
+                                      reqAttr->getTypeExpr(),
+                                      /*owner=*/witness,
+                                      reqAttr->getInitContext(),
+                                      reqAttr->getArgs(),
+                                      /*implicit=*/true);
+    witness->getAttrs().add(cloned);
+  };
+
+  // Walk every protocol this nominal conforms to (directly or transitively
+  // through refinements). For each `distributed` requirement, find the
+  // same-named witness on the nominal and clone allow-listed attributes.
+  for (auto *conformance : nominal->getAllConformances(/*sorted=*/false)) {
+    auto *proto = conformance->getProtocol();
+    for (auto *reqMember : proto->getMembers()) {
+      auto *req = dyn_cast<ValueDecl>(reqMember);
+      if (!req || !req->isDistributed())
+        continue;
+
+      // Fast filter: does the requirement carry any allow-listed
+      // `CustomAttr`? Avoid the more expensive lookup when it does not.
+      bool hasAny = false;
+      for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
+        if (auto *macro = reqAttr->getResolvedMacro()) {
+          if (isAllowListed(macro->getBaseIdentifier().str())) {
+            hasAny = true;
+            break;
+          }
+        }
+      }
+      if (!hasAny) continue;
+
+      // Find the corresponding witness on the nominal by full DeclName.
+      // A `distributed` requirement can only be satisfied by a `distributed`
+      // witness (enforced elsewhere), so we further filter by that.
+      for (auto *candidate : nominal->lookupDirect(req->getName())) {
+        auto *witness = candidate;
+        if (!witness->isDistributed()) continue;
+
+        for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
+          auto *macro = reqAttr->getResolvedMacro();
+          if (!macro) continue;
+          if (!isAllowListed(macro->getBaseIdentifier().str())) continue;
+          if (witnessAlreadyHas(witness, reqAttr, macro)) continue;
+          cloneOnto(witness, reqAttr);
+        }
+      }
+    }
+  }
+}
+
+// ==== ------------------------------------------------------------------------
 
 void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal) {
   if (!nominal || !nominal->isDistributedActor())
@@ -812,6 +920,14 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
   // --- Get the default initializer
   // If applicable, this will create the default 'init(transport:)' initializer
   (void)nominal->getDefaultInitializer();
+
+  // ==== Clone allow-listed validation attributes from protocol requirements
+  // ==== onto their witnesses BEFORE the member walk triggers peer macro
+  // ==== expansion. This is what makes @Entitlement / @ValidateRemoteCall on
+  // ==== a protocol requirement produce a section record on the concrete
+  // ==== witness — the macro reads the witness's attributes and expands as
+  // ==== if the user had written the annotation there directly.
+  inheritDistributedValidationAttrs(nominal);
 
   for (auto member : nominal->getMembers()) {
     // --- Ensure 'distributed func' all thunks

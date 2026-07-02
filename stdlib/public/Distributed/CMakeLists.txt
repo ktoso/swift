@@ -33,7 +33,12 @@ add_swift_target_library(swiftDistributed ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS
   DistributedDefaultExecutor.swift
   DistributedMacros.swift
   DistributedMetadata.swift
+  DistributedValidation.swift
   LocalTestingDistributedActorSystem.swift
+
+  # @Entitlement Proof of Concept:
+  DistributedValidation+Entitlement.swift
+  DistributedMacros+Entitlement.swift
 
   SWIFT_MODULE_DEPENDS_IOS ${swift_distributed_darwin_dependencies}
   SWIFT_MODULE_DEPENDS_OSX ${swift_distributed_darwin_dependencies}
