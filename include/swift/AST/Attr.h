@@ -2347,6 +2347,13 @@ class CustomAttr final : public DeclAttribute {
   CustomAttributeInitializer *initContext;
   Expr *semanticInit = nullptr;
 
+  /// Source text of the argument list, preserved by serialization when the
+  /// attribute refers to a macro that opted in via `@preservedInInterface`.
+  /// Non-empty on a deserialized `CustomAttr` before its `ArgumentList` has
+  /// been materialized by Sema; empty otherwise. See `CustomAttr::getArgs`
+  /// and Sema's `materializePreservedCustomAttrArgs`.
+  StringRef preservedArgText;
+
   mutable unsigned isArgUnsafeBit : 1;
 
   CustomAttr(SourceLoc atLoc, SourceRange range, TypeExpr *type,
@@ -2413,6 +2420,16 @@ public:
   void setSemanticInit(Expr *expr) { semanticInit = expr; }
 
   CustomAttributeInitializer *getInitContext() const { return initContext; }
+
+  /// The source text of the argument list preserved through serialization for
+  /// `@preservedInInterface`-opted-in macro attributes. Non-empty only on
+  /// deserialized attributes whose `ArgumentList` has not yet been
+  /// materialized. Sema is responsible for consuming this text (re-parsing
+  /// it, installing the resulting `ArgumentList` via `setArgs`, and clearing
+  /// the field via `clearPreservedArgText`).
+  StringRef getPreservedArgText() const { return preservedArgText; }
+  void setPreservedArgText(StringRef text) { preservedArgText = text; }
+  void clearPreservedArgText() { preservedArgText = StringRef(); }
 
   static bool classof(const DeclAttribute *DA) {
     return DA->getKind() == DeclAttrKind::Custom;

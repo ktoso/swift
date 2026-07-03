@@ -122,7 +122,7 @@ public struct _DistributedValidationKind: Sendable, RawRepresentable, Equatable 
 ///       @ValidateRemoteCall(.requireEntitlement("open-safe"))
 ///       distributed func openSafe() -> Bool { true }
 ///     }
-@available(SwiftStdlib 6.5, *)
+@available(SwiftStdlib 5.7, *)
 public struct RemoteCallValidator: Sendable {
   /// The closure invoked on the receive side, before argument decoding, to
   /// validate the incoming remote call. Throwing rejects the call and
@@ -157,7 +157,7 @@ public struct RemoteCallValidator: Sendable {
 /// **ABI-committed**: identical implementations run at macro-expansion time
 /// (in the SwiftMacros plugin) and here at receive time. Changing either
 /// without a coordinated update breaks the lookup.
-@available(SwiftStdlib 6.5, *)
+@available(SwiftStdlib 5.7, *)
 public enum _DistributedValidation {
 
   /// FNV-1a-64 of the UTF-8 bytes of a string. Must exactly match the
@@ -182,7 +182,7 @@ public enum _DistributedValidation {
 ///
 /// Returns `nil` if the identifier can't be demangled or doesn't look like
 /// a function name.
-@available(SwiftStdlib 6.5, *)
+@available(SwiftStdlib 5.7, *)
 internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
   guard let full = _getFunctionFullNameFromMangledName(mangledName: mangled)
   else { return nil }
@@ -204,7 +204,7 @@ internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
 // ==== -----------------------------------------------------------------------
 // MARK: Section lookup + preflight
 
-@available(SwiftStdlib 6.5, *)
+@available(SwiftStdlib 5.7, *)
 extension _DistributedValidation {
 
   /// Look up the ``RemoteCallValidator`` attached to the given target on the
@@ -292,7 +292,7 @@ private let _MH_DYLIB_IN_CACHE: UInt32 = 0x80000000
 /// the whole header through a raw pointer to avoid a Mach-O header import.
 private let _machHeader64FlagsOffset = 24
 
-@available(SwiftStdlib 6.5, *)
+@available(SwiftStdlib 5.7, *)
 extension _DistributedValidation {
 
   /// Walk `__DATA_CONST,__swift5_daval` in every loaded image, invoking the

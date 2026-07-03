@@ -16,6 +16,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ASTMangler.h"
 #include "swift/AST/ASTVisitor.h"
+#include "swift/AST/ArgumentList.h"
 #include "swift/AST/AutoDiff.h"
 #include "swift/AST/Decl.h"
 #include "swift/AST/DiagnosticsCommon.h"
@@ -50,6 +51,7 @@
 #include "swift/Basic/PathRemapper.h"
 #include "swift/Basic/PrettyStackTrace.h"
 #include "swift/Basic/STLExtras.h"
+#include "swift/Parse/Lexer.h"
 #include "swift/Basic/Version.h"
 #include "swift/ClangImporter/ClangImporter.h"
 #include "swift/ClangImporter/ClangModule.h"
@@ -3462,19 +3464,57 @@ class Serializer::DeclSerializer : public DeclVisitor<DeclSerializer> {
       auto abbrCode = S.DeclTypeAbbrCodes[CustomDeclAttrLayout::Code];
       auto theAttr = cast<CustomAttr>(DA);
 
-      // Macro attributes are not serialized.
-      if (theAttr->getResolvedMacro())
-        return;
+      // Macro `CustomAttr`s ordinarily drop out of the serialized module
+      // (their effect is baked into peer/member expansions that survive
+      // as regular decls, so re-materializing the attribute would
+      // double-expand on the reader side). Exception: macros that opt in
+      // via `@preservedInInterface` need their attribute + argument list
+      // to reach downstream modules so that logic like distributed
+      // remote-call validation can inherit them onto conforming
+      // witnesses cross-module. For those, we serialize a reference to
+      // the macro decl plus the source text of the argument list; the
+      // reader installs the text as a memory buffer and re-parses to
+      // reconstruct a real `ArgumentList` on the deserialized
+      // `CustomAttr`.
+      MacroDecl *preservedMacro = nullptr;
+      if (auto *macro = theAttr->getResolvedMacro()) {
+        if (!macro->getAttrs().hasAttribute<PreservedInInterfaceAttr>())
+          return;
+        preservedMacro = macro;
+      }
 
-      auto attrType =
-          D->getResolvedCustomAttrType(const_cast<CustomAttr *>(theAttr));
-      if (S.skipTypeIfInvalid(attrType, theAttr->getTypeRepr()))
-        return;
+      TypeID typeID = 0;
+      DeclID macroID = 0;
+      StringRef argText;
+      if (preservedMacro) {
+        // For a preserved macro attribute, serialize the macro decl
+        // reference instead of a type; the deserializer reconstructs the
+        // `TypeExpr` via a fresh `UnqualifiedIdentTypeRepr` at load time.
+        macroID = S.addDeclRef(preservedMacro);
+        if (auto *args = theAttr->getArgs()) {
+          SourceRange sr = args->getSourceRange();
+          if (sr.isValid()) {
+            auto &SM = D->getASTContext().SourceMgr;
+            auto charRange =
+                Lexer::getCharSourceRangeFromSourceRange(SM, sr);
+            argText = SM.extractText(charRange);
+          }
+        }
+      } else {
+        auto attrType =
+            D->getResolvedCustomAttrType(const_cast<CustomAttr *>(theAttr));
+        if (S.skipTypeIfInvalid(attrType, theAttr->getTypeRepr()))
+          return;
+        typeID = S.addTypeRef(attrType);
+      }
 
-      auto typeID = S.addTypeRef(attrType);
+      bool hasArgText = !argText.empty();
+
       CustomDeclAttrLayout::emitRecord(S.Out, S.ScratchRecord, abbrCode,
                                        theAttr->isImplicit(),
-                                       typeID, theAttr->isArgUnsafe());
+                                       typeID, theAttr->isArgUnsafe(),
+                                       hasArgText, argText.size(),
+                                       macroID, argText);
       return;
     }
 

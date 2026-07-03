@@ -68,7 +68,7 @@ public struct _EntitlementCheckFailed: Error, Codable, CustomStringConvertible {
 // ==== -----------------------------------------------------------------------
 // MARK: Task-local + evaluator
 
-@available(SwiftStdlib 6.5, *)
+@available(SwiftStdlib 5.7, *)
 extension _DistributedValidation {
 
   /// Currently-granted entitlements for the receiving side of a remote call.

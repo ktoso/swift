@@ -848,8 +848,15 @@ void DeclAttributes::print(ASTPrinter &Printer, const PrintOptions &Options,
     // a macro.
     if (Options.SuppressExpandedMacros) {
       if (auto customAttr = dyn_cast<CustomAttr>(DA)) {
-        if (customAttr->getResolvedMacro())
-          continue;
+        if (auto *macro = customAttr->getResolvedMacro()) {
+          // Macro authors opt into interface preservation by attaching
+          // `@preservedInInterface` to their macro declaration. Without
+          // it, macro `CustomAttr`s are stripped from the interface by
+          // default (their effect is baked into peer/member expansions
+          // that survive as regular decls).
+          if (!macro->getAttrs().hasAttribute<PreservedInInterfaceAttr>())
+            continue;
+        }
       }
     }
 

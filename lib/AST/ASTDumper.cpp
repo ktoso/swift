@@ -5161,6 +5161,7 @@ public:
   TRIVIAL_ATTR_PRINTER(Postfix, postfix)
   TRIVIAL_ATTR_PRINTER(Preconcurrency, preconcurrency)
   TRIVIAL_ATTR_PRINTER(Prefix, prefix)
+  TRIVIAL_ATTR_PRINTER(PreservedInInterface, preservedInInterface)
   TRIVIAL_ATTR_PRINTER(PropertyWrapper, property_wrapper)
   TRIVIAL_ATTR_PRINTER(Reasync, reasync)
   TRIVIAL_ATTR_PRINTER(Required, required)

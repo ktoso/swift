@@ -59,7 +59,7 @@ const uint16_t SWIFTMODULE_VERSION_MAJOR = 0;
 /// it just ensures a conflict if two people change the module format.
 /// Don't worry about adhering to the 80-column limit for this line.
 const uint16_t SWIFTMODULE_VERSION_MINOR =
-    1010; // metatype extension flag
+    1011; // preserved arg text on macro CustomAttr
 
 /// A standard hash seed used for all string hashes in a serialized module.
 ///
@@ -2620,8 +2620,14 @@ namespace decls_block {
   using CustomDeclAttrLayout = BCRecordLayout<
     Custom_DECL_ATTR,
     BCFixed<1>,  // implicit flag
-    TypeIDField, // type referenced by this custom attribute
-    BCFixed<1>   // is the argument (unsafe)
+    TypeIDField, // type referenced by this custom attribute (0 when the
+                 // attribute refers to a macro, in which case the DeclID
+                 // field below identifies the macro)
+    BCFixed<1>,  // is the argument (unsafe)
+    BCFixed<1>,  // has preserved arg text (true only for `@preservedInInterface` macro attrs)
+    BCVBR<5>,    // arg text length (0 when has-preserved-arg-text is false)
+    DeclIDField, // referenced macro decl (0 when non-macro)
+    BCBlob       // arg text (empty when has-preserved-arg-text is false)
   >;
 
   using UnavailableFromAsyncDeclAttrLayout = BCRecordLayout<

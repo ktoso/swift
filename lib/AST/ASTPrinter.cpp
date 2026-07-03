@@ -5278,8 +5278,26 @@ void CustomAttr::printCustomAttr(ASTPrinter &Printer, const PrintOptions &Option
   else
     getTypeRepr()->print(Printer, Options);
   Printer.printNamePost(PrintNameContext::Attribute);
-  if (hasArgs() && Options.PrintExprs) {
-    PrintAST(Printer, Options).printArgumentList(argList);
+  // Print the argument list when the caller asked for expressions, or when
+  // the attached macro opts in via `@preservedInInterface`. Those need
+  // their args to survive to the .swiftinterface so the payload can be
+  // re-parsed on the consuming side (e.g. protocol-requirement attributes
+  // that the compiler clones onto witnesses in downstream modules).
+  bool forceArgs = false;
+  if (auto *macro = getResolvedMacro()) {
+    if (macro->getAttrs().hasAttribute<PreservedInInterfaceAttr>())
+      forceArgs = true;
+  }
+  if (hasArgs() && (Options.PrintExprs || forceArgs)) {
+    if (forceArgs && !Options.PrintExprs) {
+      // `PrintAST::visit(Expr *)` short-circuits when `PrintExprs` is off;
+      // flip it locally so the arg literals actually render.
+      PrintOptions::OverrideScope scope(Options);
+      OVERRIDE_PRINT_OPTION(scope, PrintExprs, true);
+      PrintAST(Printer, scope.Options).printArgumentList(argList);
+    } else {
+      PrintAST(Printer, Options).printArgumentList(argList);
+    }
   }
 }
 

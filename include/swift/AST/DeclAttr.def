@@ -933,7 +933,23 @@ DECL_ATTR(com, COM,
   ABIBreakingToAdd | ABIBreakingToRemove | APIBreakingToAdd | APIBreakingToRemove | ForbiddenInABIAttr,
   176)
 
-LAST_DECL_ATTR(COM)
+// A macro-declaration opt-in: `@preservedInInterface` marks a macro whose
+// `CustomAttr` references should survive `SuppressExpandedMacros` and be
+// printed into `.swiftinterface` (with their argument list). It also
+// instructs serialization to preserve the argument list into `.swiftmodule`
+// (as inline source text, re-parsed on the reader side) so that consumers
+// in other modules see the full `CustomAttr` with its payload rather than
+// a stripped stub. Intended for macros whose attribute carries payload the
+// compiler consults on the consuming side, e.g. distributed remote-call
+// validation attributes inherited from protocol requirements onto witnesses.
+// Without this marker, macro `CustomAttr`s are stripped from interfaces and
+// their args are not serialized.
+SIMPLE_DECL_ATTR(preservedInInterface, PreservedInInterface,
+  OnMacro,
+  ABIStableToAdd | ABIStableToRemove | APIStableToAdd | APIStableToRemove | ForbiddenInABIAttr,
+  177)
+
+LAST_DECL_ATTR(PreservedInInterface)
 
 #undef DECL_ATTR_ALIAS
 #undef CONTEXTUAL_DECL_ATTR_ALIAS

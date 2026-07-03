@@ -94,6 +94,15 @@ bool accessorMacroIntroducesInitAccessor(
 bool isInvalidAttachedMacro(MacroRole role,
                             Decl *attachedTo);
 
+/// If \p attr was deserialized from another module and carries argument-list
+/// source text preserved via `@preservedInInterface`, install the text as a
+/// memory buffer in the ASTContext's SourceManager and re-parse it into an
+/// `ArgumentList`, then attach it to \p attr via `setArgs`. Clears the
+/// preserved text on success (or unconditionally if there is nothing to do).
+/// No-op if the attribute already has an `ArgumentList` or has no preserved
+/// text.
+void materializePreservedCustomAttrArgs(CustomAttr *attr, DeclContext *dc);
+
 } // end namespace swift
 
 #endif /* SWIFT_SEMA_TYPECHECKMACROS_H */

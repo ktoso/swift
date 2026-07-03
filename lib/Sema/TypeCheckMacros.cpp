@@ -23,6 +23,7 @@
 #include "swift/AST/ASTMangler.h"
 #include "swift/AST/ASTNode.h"
 #include "swift/AST/ASTPrinter.h"
+#include "swift/AST/ArgumentList.h"
 #include "swift/AST/DiagnosticsFrontend.h"
 #include "swift/AST/DiagnosticsParse.h"
 #include "swift/AST/Expr.h"
@@ -47,6 +48,7 @@
 #include "swift/Demangling/Demangler.h"
 #include "swift/Demangling/ManglingMacros.h"
 #include "swift/Parse/Lexer.h"
+#include "swift/Parse/Parser.h"
 #include "swift/Sema/ConstraintSystem.h"
 #include "swift/Sema/IDETypeChecking.h"
 #include "swift/Subsystems.h"
@@ -1412,6 +1414,12 @@ static SourceFile *evaluateAttachedMacro(MacroDecl *macro, Decl *attachedTo,
     dc = attachedTo->getInnermostDeclContext();
   }
 
+  // If the attribute is a deserialized `@preservedInInterface` opt-in that
+  // still carries only preserved arg-list source text, materialize its
+  // `ArgumentList` before any of the expansion paths below query
+  // `attr->getArgs()`.
+  materializePreservedCustomAttrArgs(attr, dc);
+
   // FIXME: compatibility hack for the transition from property wrapper
   // to macro for TaskLocal.
   //
@@ -1444,7 +1452,6 @@ static SourceFile *evaluateAttachedMacro(MacroDecl *macro, Decl *attachedTo,
     return nullptr;
 
   // If the declaration comes from a Clang module,
-  // pretty-print the declaration and use that location.
   SourceLoc attachedToLoc = attachedTo->getLoc();
   bool isPrettyPrintedDecl = false;
   if (isa<ClangModuleUnit>(dc->getModuleScopeContext())) {
@@ -2451,4 +2458,98 @@ SourceFile *
 swift::evaluateFreestandingMacro(FreestandingMacroExpansion *expansion,
                                  StringRef discriminator) {
   return ::evaluateFreestandingMacro(expansion, discriminator);
+}
+
+// ==== ------------------------------------------------------------------------
+// MARK: Preserved argument-list materialization
+
+void swift::materializePreservedCustomAttrArgs(CustomAttr *attr,
+                                               DeclContext *dc) {
+  // Nothing to do when the attribute already has args, or when nothing was
+  // preserved (typical for source-authored or non-macro CustomAttrs).
+  //
+  // Note: we deliberately do NOT clear `preservedArgText` even after
+  // materialization succeeds. Downstream consumers (e.g. cross-module
+  // `@Entitlement` inheritance in `inheritDistributedValidationAttrs`) need
+  // the raw source text later to synthesize a fresh attribute buffer on the
+  // witness. The early-out on `hasArgs()` prevents duplicate parses.
+  if (attr->hasArgs()) {
+    return;
+  }
+  StringRef text = attr->getPreservedArgText();
+  if (text.empty())
+    return;
+
+  ASTContext &ctx = dc->getASTContext();
+  SourceManager &SM = ctx.SourceMgr;
+
+  // Install the arg-text as a memory buffer we can parse from. The buffer
+  // name embeds the attribute's spelled type name (which for a macro
+  // `CustomAttr` is the macro's identifier) so that expansion diagnostics
+  // point back at something meaningful. We deliberately do NOT call
+  // `getResolvedMacro()` here: on a deserialized attribute, macro
+  // resolution needs the argument list to pick between overloads, which
+  // would loop back into this function.
+  llvm::SmallString<64> bufferName;
+  bufferName += "<preserved-arg for @";
+  if (auto *typeRepr = attr->getTypeRepr()) {
+    if (auto *declRefRepr = dyn_cast<DeclRefTypeRepr>(typeRepr)) {
+      bufferName += declRefRepr->getNameRef().getBaseName().userFacingName();
+    } else {
+      bufferName += "?";
+    }
+  } else {
+    bufferName += "?";
+  }
+  bufferName += ">";
+
+  auto buffer = llvm::MemoryBuffer::getMemBufferCopy(text, bufferName);
+  unsigned bufferID = SM.addNewSourceBuffer(std::move(buffer));
+
+  // Register the buffer as a generated source region rooted at the
+  // attribute's AtLoc (which may be invalid for deserialized attributes,
+  // but that's fine: `getEnclosingSourceFile` uses the loc to find the
+  // parent SourceFile and can tolerate an invalid loc by returning null).
+  // The kind is DefaultArgument since the content is a scoped expression
+  // list, not full top-level module content, and DefaultArgument suppresses
+  // the "expressions are not allowed at the top level" diagnostic.
+  auto macroBufferRange = SM.getRangeForBuffer(bufferID);
+  GeneratedSourceInfo sourceInfo{
+      GeneratedSourceInfo::DefaultArgument,
+      /*originalSourceRange=*/CharSourceRange(attr->AtLoc, 0),
+      macroBufferRange,
+      /*astNode=*/nullptr,
+      /*declContext=*/dc,
+      /*attachedMacroCustomAttr=*/nullptr};
+  SM.setGeneratedSourceInfo(bufferID, sourceInfo);
+
+  // A throwaway SourceFile just to host the Parser instance; the resulting
+  // ArgumentList is allocated in the ASTContext's permanent arena so its
+  // lifetime is independent of this SourceFile.
+  auto *parentModule = dc->getParentModule();
+  auto *scratchSF = new (ctx) SourceFile(
+      *parentModule, SourceFileKind::DefaultArgument, bufferID,
+      /*parsingOpts=*/{}, /*isPrimary=*/false);
+
+  Parser parser(bufferID, *scratchSF, /*SIL=*/nullptr);
+  // Prime the lexer.
+  if (parser.Tok.is(tok::NUM_TOKENS))
+    parser.consumeTokenWithoutFeedingReceiver();
+  auto argsResult = parser.parseArgumentList(tok::l_paren, tok::r_paren,
+                                             /*isExprBasic=*/true);
+  if (auto *argList = argsResult.getPtrOrNull()) {
+    // Rebuild as an implicit argument list: consumers that combine our
+    // args with an invalid `AtLoc` (e.g. `MacroExpansionInfo::getSourceRange`
+    // via `ResolveMacroRequest`) require the arg-list source range to be
+    // invalid when the outer sigil loc is invalid, so preserving parsed
+    // source locations here would trip the SourceRange invariant.
+    SmallVector<Argument, 4> argsCopy;
+    for (auto arg : *argList)
+      argsCopy.emplace_back(SourceLoc(), arg.getLabel(), arg.getExpr());
+    auto *implicitArgs = ArgumentList::create(
+        ctx, SourceLoc(), argsCopy, SourceLoc(),
+        /*firstTrailingClosureIndex=*/std::nullopt,
+        /*isImplicit=*/true);
+    attr->setArgs(implicitArgs);
+  }
 }

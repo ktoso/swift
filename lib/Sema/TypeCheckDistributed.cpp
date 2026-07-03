@@ -15,9 +15,11 @@
 //===----------------------------------------------------------------------===//
 #include "TypeCheckConcurrency.h"
 #include "TypeCheckDistributed.h"
+#include "TypeCheckMacros.h"
 #include "TypeChecker.h"
 #include "swift/Strings.h"
 #include "swift/AST/ASTWalker.h"
+#include "swift/AST/ArgumentList.h"
 #include "swift/AST/ConformanceLookup.h"
 #include "swift/AST/Initializer.h"
 #include "swift/AST/ParameterList.h"
@@ -31,6 +33,11 @@
 #include "swift/Basic/Assertions.h"
 #include "swift/Basic/Defer.h"
 #include "swift/AST/ASTPrinter.h"
+#include "swift/AST/Decl.h"
+#include "swift/AST/SourceFile.h"
+#include "swift/Basic/SourceManager.h"
+#include "swift/Parse/Parser.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 using namespace swift;
 
@@ -788,6 +795,91 @@ bool swift::checkDistributedActorProperty(VarDecl *var, bool diagnose) {
 // ==== ------------------------------------------------------------------------
 // MARK: Attribute inheritance from protocol requirements
 
+/// Synthesize a real `CustomAttr` for `@<macroName><argText>` (e.g.
+/// `@Entitlement("com.example.foo")`) at the witness's source location, by
+/// installing the attribute text as a memory buffer, wrapping it in a
+/// SourceFile, and running the parser. Returns nullptr if the surrounding
+/// declaration context lacks a source file (e.g. Clang-imported witnesses).
+///
+/// This is the cross-module inheritance path: the requirement's `CustomAttr`
+/// was deserialized from another module and has no valid `AtLoc`, so the
+/// attached-macro plugin cannot find an `AttributeSyntax` node to walk.
+/// Synthesizing a real source buffer here produces a `CustomAttr` whose
+/// `AtLoc` points into a parsed `AttributeSyntax`, which the plugin's
+/// `swift_Macros_expandAttachedMacro` entrypoint requires.
+///
+/// The pattern mirrors `ClangImporter::Implementation::getClangSwiftAttrSourceFile`
+/// / `importNontrivialAttribute`, which uses `AttributeFromClang` generated
+/// source buffers plus `parseExpandedAttributeList` to turn a raw attribute
+/// string into a real parsed attribute.
+static CustomAttr *
+synthesizeCustomAttrForWitness(ValueDecl *witness, StringRef macroName,
+                               StringRef argText) {
+  auto *witnessSF = witness->getDeclContext()->getParentSourceFile();
+  if (!witnessSF)
+    return nullptr;
+  (void)witnessSF;
+
+  ASTContext &ctx = witness->getASTContext();
+  SourceManager &SM = ctx.SourceMgr;
+  auto *module = witness->getDeclContext()->getParentModule();
+
+  // Compose the attribute source text: `@<MacroName><argText>`. `argText`
+  // already includes the parentheses (it was extracted from
+  // `ArgumentList::getSourceRange()` at serialization time).
+  llvm::SmallString<128> attrText;
+  attrText += "@";
+  attrText += macroName;
+  attrText += argText;
+
+  // Buffer name embeds the macro name so any diagnostic emitted from within
+  // the synthesized file points back at something meaningful.
+  llvm::SmallString<64> bufferName;
+  bufferName += "<inherited-attr @";
+  bufferName += macroName;
+  bufferName += " on ";
+  bufferName += witness->getBaseName().userFacingName();
+  bufferName += ">";
+
+  auto buffer = llvm::MemoryBuffer::getMemBufferCopy(attrText, bufferName);
+  unsigned bufferID = SM.addNewSourceBuffer(std::move(buffer));
+
+  // Register the buffer as a generated source rooted at the witness's loc.
+  // `AttributeFromClang` is exactly the right kind: it turns
+  // `parseExpandedAttributeList` on when the file is parsed, and it teaches
+  // `getExportedSourceFile` to bridge to ASTGen so `swift_Macros_...` can
+  // find the `AttributeSyntax`.
+  GeneratedSourceInfo sourceInfo{
+      GeneratedSourceInfo::AttributeFromClang,
+      /*originalSourceRange=*/CharSourceRange(witness->getLoc(), 0),
+      SM.getRangeForBuffer(bufferID),
+      /*astNode=*/static_cast<void *>(module),
+      /*declContext=*/witness->getDeclContext(),
+      /*attachedMacroCustomAttr=*/nullptr};
+  SM.setGeneratedSourceInfo(bufferID, sourceInfo);
+
+  // Wrap the buffer in a `Library`-kind SourceFile parented to the witness's
+  // module. `getTopLevelDecls()` will trigger `parseExpandedAttributeList`,
+  // which returns a `MissingDecl` carrying the parsed attribute list.
+  auto *attrSF = new (ctx) SourceFile(*module, SourceFileKind::Library,
+                                      bufferID, /*parsingOpts=*/{},
+                                      /*isPrimary=*/false);
+
+  for (auto *decl : attrSF->getTopLevelDecls()) {
+    for (auto *attr : decl->getAttrs()) {
+      if (auto *custom = dyn_cast<CustomAttr>(attr)) {
+        // Retarget owner to the witness; the attribute is otherwise ready
+        // to be attached with valid `AtLoc`, `TypeExpr`, and `ArgumentList`
+        // source locations inside our synthesized buffer.
+        custom->attachToDecl(witness);
+        return custom;
+      }
+    }
+  }
+
+  return nullptr;
+}
+
 /// Clone allow-listed distributed-validation attributes (`@Entitlement`,
 /// `@ValidateRemoteCall`) from a protocol requirement onto its witness on
 /// the given nominal type.
@@ -836,24 +928,53 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
   };
 
   auto cloneOnto = [&](ValueDecl *witness, CustomAttr *reqAttr) {
-    // Reuse the requirement's `TypeExpr` verbatim — the macro is already
-    // resolved on it (via `getResolvedMacro()`), which is what the peer
-    // expander uses. The `Type` isn't computed yet at this phase, so
-    // `TypeExpr::createImplicit(Type, _)` would trip on a null.
-    // Use the requirement's `AtLoc` so the `CustomAttr` constructor's
-    // range invariant (`Start.isValid() == End.isValid()`) holds.
-    auto *cloned = CustomAttr::create(ctx, reqAttr->AtLoc,
-                                      reqAttr->getTypeExpr(),
-                                      /*owner=*/witness,
-                                      reqAttr->getInitContext(),
-                                      reqAttr->getArgs(),
-                                      /*implicit=*/true);
-    witness->getAttrs().add(cloned);
+    // Same-module clone: the requirement's `TypeExpr` and `ArgumentList`
+    // already carry valid source locations. Reuse them verbatim; the peer
+    // macro plugin will walk the same `AttributeSyntax` the user wrote on
+    // the protocol requirement, which is fine.
+    if (reqAttr->AtLoc.isValid()) {
+      auto *cloned = CustomAttr::create(ctx, reqAttr->AtLoc,
+                                        reqAttr->getTypeExpr(),
+                                        /*owner=*/witness,
+                                        reqAttr->getInitContext(),
+                                        reqAttr->getArgs(),
+                                        /*implicit=*/true);
+      witness->getAttrs().add(cloned);
+      return;
+    }
+
+    // Cross-module clone: `reqAttr` was deserialized from another module and
+    // has no valid `AtLoc`. Synthesize a real attribute source buffer at the
+    // witness's location and parse it, so the attached-macro plugin can
+    // walk a real `AttributeSyntax` (its `swift_Macros_expandAttachedMacro`
+    // entrypoint requires that).
+    //
+    // The arg-list source text is preserved on the requirement's
+    // `CustomAttr` by `@preservedInInterface` serialization; we deliberately
+    // do NOT clear `preservedArgText` in `materializePreservedCustomAttrArgs`
+    // so it's available here.
+    auto *macro = reqAttr->getResolvedMacro();
+    if (!macro)
+      return;
+    StringRef macroName = macro->getBaseIdentifier().str();
+    StringRef argText = reqAttr->getPreservedArgText();
+
+    if (auto *synthesized =
+            synthesizeCustomAttrForWitness(witness, macroName, argText)) {
+      witness->getAttrs().add(synthesized);
+    }
   };
 
   // Walk every protocol this nominal conforms to (directly or transitively
   // through refinements). For each `distributed` requirement, find the
   // same-named witness on the nominal and clone allow-listed attributes.
+  //
+  // Cross-module: when the protocol is imported from another module, its
+  // `@Entitlement` / `@ValidateRemoteCall` `CustomAttr`s survive
+  // serialization because their macro declarations opt in via
+  // `@preservedInInterface`. The argument list arrives as preserved source
+  // text and is materialized into an `ArgumentList` inside the fast-filter
+  // loop below before we consult `reqAttr->getArgs()`.
   for (auto *conformance : nominal->getAllConformances(/*sorted=*/false)) {
     auto *proto = conformance->getProtocol();
     for (auto *reqMember : proto->getMembers()) {
@@ -862,10 +983,18 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
         continue;
 
       // Fast filter: does the requirement carry any allow-listed
-      // `CustomAttr`? Avoid the more expensive lookup when it does not.
+      // `CustomAttr`? Materialize preserved arg-list text on all
+      // `CustomAttr`s here first, since macro overload resolution needs
+      // the argument list to pick between overloads (e.g. the two
+      // `@Entitlement` variants).
+      for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
+        materializePreservedCustomAttrArgs(
+            const_cast<CustomAttr *>(reqAttr), req->getDeclContext());
+      }
       bool hasAny = false;
       for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
-        if (auto *macro = reqAttr->getResolvedMacro()) {
+        auto *macro = reqAttr->getResolvedMacro();
+        if (macro) {
           if (isAllowListed(macro->getBaseIdentifier().str())) {
             hasAny = true;
             break;

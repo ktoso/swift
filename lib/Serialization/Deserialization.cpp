@@ -35,6 +35,7 @@
 #include "swift/AST/PropertyWrappers.h"
 #include "swift/AST/ProtocolConformance.h"
 #include "swift/AST/TypeCheckRequests.h"
+#include "swift/AST/TypeRepr.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/Basic/Defer.h"
 #include "swift/Basic/Statistic.h"
@@ -5979,9 +5980,58 @@ llvm::Error DeclDeserializer::deserializeCustomAttrs() {
 
     bool isImplicit;
     bool isArgUnsafe;
+    bool hasArgText;
+    unsigned argTextLen;
     TypeID typeID;
+    DeclID macroID;
     serialization::decls_block::CustomDeclAttrLayout::readRecord(
-      scratch, isImplicit, typeID, isArgUnsafe);
+      scratch, isImplicit, typeID, isArgUnsafe, hasArgText, argTextLen,
+      macroID);
+
+    // Two record shapes share this layout:
+    //   * Non-macro `CustomAttr`: `typeID` carries the attribute's type,
+    //     `macroID` is 0, no preserved arg text.
+    //   * Preserved `@preservedInInterface` macro `CustomAttr`: `typeID` is
+    //     0, `macroID` references the target macro; arg text may follow.
+    if (macroID != 0) {
+      // Reconstruct a `CustomAttr` around an `UnqualifiedIdentTypeRepr` for
+      // the referenced macro. Sema resolves that back to the macro on
+      // demand via `ResolveMacroRequest`.
+      auto declOrError = MF.getDeclChecked(macroID);
+      if (!declOrError) {
+        if (declOrError.errorIsA<XRefNonLoadedModuleError>() ||
+            MF.allowCompilerErrors()) {
+          MF.diagnoseAndConsumeError(declOrError.takeError());
+        } else {
+          return declOrError.takeError();
+        }
+      } else if (auto *macro = dyn_cast_or_null<MacroDecl>(declOrError.get())) {
+        auto *typeRepr = UnqualifiedIdentTypeRepr::create(
+            ctx, DeclNameLoc(), DeclNameRef(macro->getBaseIdentifier()));
+        // A `TypeExpr` built from a `TypeRepr` alone (no `Type`) matches the
+        // shape produced by parsing `@Entitlement(...)` in source: the
+        // subsequent `ResolveMacroRequest` walks the `TypeRepr` to bind the
+        // macro. `setImplicit` on such a `TypeExpr` asserts, so we leave
+        // implicitness on the enclosing `CustomAttr` only.
+        auto *TE = new (ctx) TypeExpr(typeRepr);
+        auto custom = CustomAttr::create(ctx, SourceLoc(), TE,
+                                         CustomAttrOwner(), isImplicit);
+        custom->setArgIsUnsafe(isArgUnsafe);
+        // Preserve the serialized argument-list source text so Sema can
+        // materialize an `ArgumentList` on demand (see `CustomAttr` header
+        // and `materializePreservedCustomAttrArgs` in Sema).
+        if (hasArgText && argTextLen > 0) {
+          StringRef textOnDisk = blobData.substr(0, argTextLen);
+          char *copy = static_cast<char *>(
+              ctx.Allocate(argTextLen, alignof(char)));
+          std::memcpy(copy, textOnDisk.data(), argTextLen);
+          custom->setPreservedArgText(StringRef(copy, argTextLen));
+        }
+        AddAttribute(custom);
+      }
+      scratch.clear();
+      continue;
+    }
 
     Expected<Type> deserialized = MF.getTypeChecked(typeID);
     if (!deserialized) {

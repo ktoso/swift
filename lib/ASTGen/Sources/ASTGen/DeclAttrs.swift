@@ -301,6 +301,7 @@ extension ASTGenVisitor {
         .ObjCNonLazyRealization,
         .Owned,
         .Preconcurrency,
+        .PreservedInInterface,
         .PropertyWrapper,
         .Reparentable,
         .RequiresStoredPropertyInits,

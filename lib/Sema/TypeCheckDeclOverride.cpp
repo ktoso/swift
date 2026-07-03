@@ -1681,6 +1681,7 @@ namespace  {
     UNINTERESTING_ATTR(PrivateImport)
     UNINTERESTING_ATTR(MainType)
     UNINTERESTING_ATTR(Preconcurrency)
+    UNINTERESTING_ATTR(PreservedInInterface)
     UNINTERESTING_ATTR(AllowFeatureSuppression)
 
     // Differentiation-related attributes.
