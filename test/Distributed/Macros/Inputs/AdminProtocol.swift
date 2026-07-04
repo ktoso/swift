@@ -29,6 +29,35 @@
 import Distributed
 import FakeDistributedActorSystems
 
+// `@ValidateRemoteCall` with a named factory reference is inherited across
+// modules the same way `@Entitlement` is. Inline closures on protocol
+// requirements are rejected at macro-expansion time - the closure body would
+// be captured verbatim in `preservedArgText` and re-parsed at the witness
+// site, but the parsed `ClosureExpr`'s parent `DeclContext` doesn't match
+// the witness's DC, tripping a compiler invariant in `PreCheckTarget`. Named
+// factories don't need to preserve an inline expression tree, so they work
+// cleanly.
+//
+// The extension is unrestricted: the synthesized inherited-attribute buffer
+// created by `inheritDistributedValidationAttrs` does NOT propagate the
+// enclosing type's `@available(SwiftStdlib 6.5, *)` context, so referenced
+// symbols must resolve at the module's default availability floor. The
+// factory body only calls into stdlib and Distributed symbols available at
+// SwiftStdlib 5.7 or earlier.
+extension Distributed.RemoteCallValidator {
+  public static var requireCustomEntitlement: Distributed.RemoteCallValidator {
+    Distributed.RemoteCallValidator {
+      if #available(SwiftStdlib 5.7, *) {
+        guard Distributed.DistributedValidation.currentEntitlements.contains(
+          "com.example.custom-validator"
+        ) else {
+          throw Distributed.EntitlementCheckFailed(missing: "custom-validator")
+        }
+      }
+    }
+  }
+}
+
 @available(SwiftStdlib 6.5, *)
 public protocol HomeAdmin: DistributedActor where ActorSystem == FakeRoundtripActorSystem {
   // Bare string literal form: `EntitlementPolicy` conforms to
@@ -53,4 +82,11 @@ public protocol HomeAdmin: DistributedActor where ActorSystem == FakeRoundtripAc
     .entitlement("com.example.short-form-b"),
   ]))
   distributed func openDoorShortAnyOf() -> Bool
+
+  // `@ValidateRemoteCall` with a named factory. The producer defines the
+  // factory as a static member of `RemoteCallValidator`; the consumer just
+  // references it via implicit-member syntax, which resolves against the
+  // (imported) extension at the witness site.
+  @ValidateRemoteCall(.requireCustomEntitlement)
+  distributed func openDoorCustom() -> Bool
 }

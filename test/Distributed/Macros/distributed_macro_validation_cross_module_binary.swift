@@ -84,4 +84,12 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: .entitlement("com.example.short-form-a"),
   // CHECK-NEXT: .entitlement("com.example.short-form-b"),
   // CHECK-NEXT: ])) as Distributed.EntitlementPolicy)
+
+  // `@ValidateRemoteCall(.requireCustomEntitlement)` inherited from the
+  // protocol requirement. The named factory reference resolves against the
+  // producer module's extension on `RemoteCallValidator` (which the client
+  // imports transitively via `import AdminProtocol`).
+  distributed func openDoorCustom() -> Bool { true }
+  // CHECK: private static let __daval_openDoorCustom_record: Distributed._DistributedValidationRecord = (
+  // CHECK: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator(.requireCustomEntitlement)
 }

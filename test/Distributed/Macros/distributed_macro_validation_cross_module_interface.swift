@@ -78,4 +78,14 @@ distributed actor MyHome: HomeAdmin {
   distributed func openDoorShortAnyOf() -> Bool { true }
   // CHECK: private static let __daval_openDoorShortAnyOf_record: Distributed._DistributedValidationRecord = (
   // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf([Distributed::EntitlementPolicy.entitlement("com.example.short-form-a"), Distributed::EntitlementPolicy.entitlement("com.example.short-form-b")])) as Distributed.EntitlementPolicy)
+
+  // `@ValidateRemoteCall(.requireCustomEntitlement)` inherited across the
+  // interface-rebuild boundary. The named factory reference is re-parsed
+  // from the preserved arg text and resolves against the producer module's
+  // extension on `RemoteCallValidator` (imported transitively). The
+  // interface printer normalizes the implicit-member syntax to
+  // `Distributed::RemoteCallValidator.requireCustomEntitlement`.
+  distributed func openDoorCustom() -> Bool { true }
+  // CHECK: private static let __daval_openDoorCustom_record: Distributed._DistributedValidationRecord = (
+  // CHECK: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator(Distributed::RemoteCallValidator.requireCustomEntitlement)
 }

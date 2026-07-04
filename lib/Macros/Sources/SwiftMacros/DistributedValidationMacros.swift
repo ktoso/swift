@@ -96,6 +96,18 @@ public struct ValidateRemoteCallMacro: PeerMacro {
     // marker inherited onto witnesses by the compiler; peer expansion
     // runs on the concrete method there.
     if isProtocolRequirementContext(context) {
+      // But diagnose the closure-body form here: on cross-module inheritance
+      // the closure text is preserved via `@preservedInInterface` and
+      // re-parsed at the witness site. The parsed `ClosureExpr` carries a
+      // stale parent DeclContext that trips a compiler assertion in
+      // `PreCheckTarget::walkToClosureExprPre`. The pattern is safe only for
+      // named-factory references (`@ValidateRemoteCall(.myValidator)`),
+      // which don't require preserving an inline expression tree.
+      if let arguments = node.arguments?.as(LabeledExprListSyntax.self),
+         let first = arguments.first,
+         first.expression.is(ClosureExprSyntax.self) {
+        throw closureOnProtocolRequirement(node: node)
+      }
       return []
     }
 
@@ -309,6 +321,7 @@ struct DistributedValidationDiagnostic: DiagnosticMessage {
   enum ID: String {
     case notDistributedFuncOrVar = "not distributed func or var"
     case missingDistributedModifier = "missing distributed modifier"
+    case closureOnProtocolRequirement = "closure on protocol requirement"
   }
 
   var message: String
@@ -385,6 +398,27 @@ private func missingDistributedModifier(
           "'\(attributeName)' can only be applied to a 'distributed func' or 'distributed var'; add the 'distributed' modifier or remove '\(attributeName)'",
         id: .missingDistributedModifier),
       fixIt: fixIt)
+  ])
+}
+
+/// Emitted when `@ValidateRemoteCall({ ... })` is applied to a protocol
+/// requirement. The closure body would be captured verbatim by
+/// `@preservedInInterface` and re-parsed at each witness site during
+/// cross-module inheritance. The parsed `ClosureExpr` carries a stale parent
+/// `DeclContext` that trips the compiler's `PreCheckTarget` invariant. Named
+/// factory references (`@ValidateRemoteCall(.myValidator)`) are unaffected -
+/// they don't require preserving an inline expression tree - so users can
+/// factor the body into a static factory on `RemoteCallValidator`.
+private func closureOnProtocolRequirement(
+  node: AttributeSyntax
+) -> DiagnosticsError {
+  DiagnosticsError(diagnostics: [
+    Diagnostic(
+      node: Syntax(node),
+      message: DistributedValidationDiagnostic(
+        message:
+          "'@ValidateRemoteCall' on a protocol requirement cannot take an inline closure; use a named 'RemoteCallValidator' factory (e.g. '@ValidateRemoteCall(.myValidator)') so the value can be referenced across modules",
+        id: .closureOnProtocolRequirement))
   ])
 }
 
