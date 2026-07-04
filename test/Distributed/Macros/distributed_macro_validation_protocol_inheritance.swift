@@ -47,7 +47,7 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: #endif
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-  // CHECK-NEXT: private static let __daval_openDoor_record: Distributed._DistributedValidationRecord = (
+  // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC8openDoor11EntitlementfMp_23__daval_openDoor_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK-NEXT: 0x6476616c,
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in

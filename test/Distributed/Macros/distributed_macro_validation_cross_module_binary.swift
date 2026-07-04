@@ -55,7 +55,7 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: #endif
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-  // CHECK-NEXT: private static let __daval_openDoor_record: Distributed._DistributedValidationRecord = (
+  // CHECK-NEXT: private static let $s48distributed_macro_validation_cross_module_binary6MyHomeC8openDoor11EntitlementfMp_23__daval_openDoor_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK-NEXT: 0x6476616c,
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in
@@ -67,7 +67,7 @@ distributed actor MyHome: HomeAdmin {
   // from the protocol. The section record must reproduce the qualified
   // policy expression from the producer source.
   distributed func openDoorAnyOf() -> Bool { true }
-  // CHECK: private static let __daval_openDoorAnyOf_record: Distributed._DistributedValidationRecord = (
+  // CHECK: private static let $s48distributed_macro_validation_cross_module_binary6MyHomeC13openDoorAnyOf11EntitlementfMp_28__daval_openDoorAnyOf_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK: try Distributed.DistributedValidation.evaluate((Distributed.EntitlementPolicy.anyOf([
   // CHECK-NEXT: .entitlement("com.example.cross-module"),
   // CHECK-NEXT: .entitlement("com.example.admin"),
@@ -79,7 +79,7 @@ distributed actor MyHome: HomeAdmin {
   // type even though the producer source did not spell out `Distributed.
   // EntitlementPolicy` in front of `.anyOf`.
   distributed func openDoorShortAnyOf() -> Bool { true }
-  // CHECK: private static let __daval_openDoorShortAnyOf_record: Distributed._DistributedValidationRecord = (
+  // CHECK: private static let $s48distributed_macro_validation_cross_module_binary6MyHomeC18openDoorShortAnyOf11EntitlementfMp_33__daval_openDoorShortAnyOf_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK: try Distributed.DistributedValidation.evaluate((.anyOf([
   // CHECK-NEXT: .entitlement("com.example.short-form-a"),
   // CHECK-NEXT: .entitlement("com.example.short-form-b"),
@@ -90,6 +90,6 @@ distributed actor MyHome: HomeAdmin {
   // producer module's extension on `RemoteCallValidator` (which the client
   // imports transitively via `import AdminProtocol`).
   distributed func openDoorCustom() -> Bool { true }
-  // CHECK: private static let __daval_openDoorCustom_record: Distributed._DistributedValidationRecord = (
+  // CHECK: private static let $s48distributed_macro_validation_cross_module_binary6MyHomeC14openDoorCustom18ValidateRemoteCallfMp_29__daval_openDoorCustom_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator(.requireCustomEntitlement)
 }

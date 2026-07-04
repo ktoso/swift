@@ -37,7 +37,12 @@ distributed actor MyHome {
   // CHECK-NEXT: #endif
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-  // CHECK-NEXT: private static let __daval_openDoor_record: Distributed._DistributedValidationRecord = (
+  // The record name is compiler-issued via `context.makeUniqueName(...)`
+  // seeded with `__daval_<method>_record`. This gives each expansion a
+  // conflict-free name so stacked or witness+protocol-inherited attributes
+  // can coexist on the same declaration. The mangled shape is
+  // `$s<module><type><method>{Entitlement|ValidateRemoteCall}fMp_23__daval_<method>_recordfMu_`.
+  // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC8openDoor11EntitlementfMp_23__daval_openDoor_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK-NEXT: 0x6476616c,
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in
@@ -63,7 +68,7 @@ distributed actor MyHome {
   // CHECK-NEXT: #endif
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-  // CHECK-NEXT: private static let __daval_openWindow_record: Distributed._DistributedValidationRecord = (
+  // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC10openWindow18ValidateRemoteCallfMp_25__daval_openWindow_recordfMu_: Distributed._DistributedValidationRecord = (
   // CHECK-NEXT: 0x6476616c,
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in

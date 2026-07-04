@@ -146,10 +146,16 @@ private func emitValidationPeers(
   validatorExpression: String,
   in context: some MacroExpansionContext
 ) -> [DeclSyntax] {
-  // A single section-placed static record per attachment. Since the annotated
-  // declaration is guaranteed to be a distributed func/var (a member of a
-  // nominal type), the record is emitted as `static let`.
-  let recordName = TokenSyntax.identifier(
+  // A single section-placed static record per attachment. Multiple attributes
+  // on the same distributed member (`@Entitlement("a"); @Entitlement("b")`,
+  // or a witness-local attr + a protocol-inherited clone of the same kind)
+  // each invoke this function, so the record name must be unique per
+  // expansion to avoid an "invalid redeclaration of '__daval_..._record'"
+  // error. `makeUniqueName` seeds the shared prefix into a compiler-issued
+  // fresh identifier. The runtime finds matching records by
+  // `(actorTypeID, methodID)` hash on the record fields, not by symbol name,
+  // so the name uniqueness is invisible to lookup.
+  let recordName = context.makeUniqueName(
     "__daval_\(sanitizeIdentifier(targetName))_record")
 
   // FNV-1a-64 of the enclosing type's simple name and the target's simple

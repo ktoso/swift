@@ -217,32 +217,55 @@ internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
-  /// Look up the ``RemoteCallValidator`` attached to the given target on the
-  /// given actor type. Returns `nil` if no matching record is registered in
-  /// any loaded image (i.e. the target has no
+  /// Look up the composed ``RemoteCallValidator`` attached to the given
+  /// target on the given actor type. Returns `nil` if no matching record is
+  /// registered in any loaded image (i.e. the target has no
   /// `@Entitlement`/`@ValidateRemoteCall`).
   ///
-  /// The first matching record wins. Multiple records for the same
-  /// `(actorTypeID, methodID)` can arise from stacked attributes; a future
-  /// revision may evaluate all matches in source order rather than
-  /// returning early.
+  /// Multiple records for the same `(actorTypeID, methodID)` arise from
+  /// stacked attributes on the same distributed member, and from the
+  /// compiler's cross-module inheritance of a protocol requirement's
+  /// attribute onto the conforming actor's witness (the witness ends up
+  /// with both its own attribute and the inherited one). All matching
+  /// records compose as **AllOf**: every validator must accept before the
+  /// call runs.
+  ///
+  /// The returned validator's `check()` invokes each collected validator in
+  /// section-scan order; the first thrown error propagates and short-
+  /// circuits the rest. Two images contributing records for the same key
+  /// have unspecified inter-image order, so the specific record whose error
+  /// surfaces first is not guaranteed to be stable across platforms - but
+  /// the AllOf outcome (accept iff every check accepts) is.
   public static func lookup(
     actorTypeID: UInt64,
     methodID: UInt64
   ) -> RemoteCallValidator? {
+    var collected: [RemoteCallValidator] = []
 #if canImport(Darwin)
-    return _lookupMachO(actorTypeID: actorTypeID, methodID: methodID)
+    _collectMachO(actorTypeID: actorTypeID, methodID: methodID,
+                  into: &collected)
 #elseif os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32)
-    return _lookupELF(actorTypeID: actorTypeID, methodID: methodID)
+    _collectELF(actorTypeID: actorTypeID, methodID: methodID,
+                into: &collected)
 #elseif os(Windows)
-    return _lookupCOFF(actorTypeID: actorTypeID, methodID: methodID)
+    _collectCOFF(actorTypeID: actorTypeID, methodID: methodID,
+                 into: &collected)
 #else
-    // Platform with no known section-walking strategy. Returning nil means
-    // the Distributed runtime treats the target as un-validated: no false
-    // positives, no false negatives on the "no validation registered" case,
-    // but any validated target passes through without a check.
-    return nil
+    // Platform with no known section-walking strategy. Leaving `collected`
+    // empty means the Distributed runtime treats the target as un-validated:
+    // no false positives, no false negatives on the "no validation
+    // registered" case, but any validated target passes through without a
+    // check.
 #endif
+    if collected.isEmpty { return nil }
+    if collected.count == 1 { return collected[0] }
+    // Bind to a `let` so the Sendable closure captures an immutable copy.
+    let validators = collected
+    return RemoteCallValidator {
+      for validator in validators {
+        try validator.check()
+      }
+    }
   }
 
   /// Preflight hook called from `DistributedActorSystem.executeDistributedTarget`
@@ -308,42 +331,43 @@ private let _machHeader64FlagsOffset = 24
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
-  /// Walk `__DATA_CONST,__swift5_daval` in every loaded image, invoking the
-  /// accessor of the first record whose `context` (actorTypeID) and
-  /// `reserved2` (methodID) fields match.
+  /// Walk `__DATA_CONST,__swift5_daval` in every loaded image, appending a
+  /// `RemoteCallValidator` for every record whose `context` (actorTypeID)
+  /// and `reserved2` (methodID) fields match.
   ///
   /// Not registered for `_dyld_register_func_for_add_image`: this is a
   /// per-call linear scan for the first cut. A cache keyed by
   /// `(actorTypeID, methodID)` and populated from an image-load callback is
   /// a follow-up performance change.
-  fileprivate static func _lookupMachO(
+  fileprivate static func _collectMachO(
     actorTypeID: UInt64,
-    methodID: UInt64
-  ) -> RemoteCallValidator? {
+    methodID: UInt64,
+    into collected: inout [RemoteCallValidator]
+  ) {
     let imageCount = _dyld_image_count()
     for imageIndex in 0..<imageCount {
       guard let mh = unsafe _dyld_get_image_header(imageIndex) else { continue }
-      guard let validator = unsafe _lookupInImage(
+      unsafe _collectInImage(
         mh: mh,
         actorTypeID: actorTypeID,
-        methodID: methodID)
-      else { continue }
-      return validator
+        methodID: methodID,
+        into: &collected)
     }
-    return nil
   }
 
-  /// Search one image's `__swift5_daval` section for a matching record.
-  private static func _lookupInImage(
+  /// Search one image's `__swift5_daval` section for matching records and
+  /// append each materialized validator to `collected`.
+  private static func _collectInImage(
     mh: UnsafeRawPointer,
     actorTypeID: UInt64,
-    methodID: UInt64
-  ) -> RemoteCallValidator? {
+    methodID: UInt64,
+    into collected: inout [RemoteCallValidator]
+  ) {
     // Skip images in the shared cache. System libraries never register
     // records and walking them is expensive.
     let flags = unsafe mh.load(fromByteOffset: _machHeader64FlagsOffset,
                                as: UInt32.self)
-    guard 0 == (flags & _MH_DYLIB_IN_CACHE) else { return nil }
+    guard 0 == (flags & _MH_DYLIB_IN_CACHE) else { return }
 
     var size: UInt = 0
     let start: UnsafeRawPointer? = "__swift5_daval".withCString { sectname in
@@ -351,7 +375,7 @@ extension DistributedValidation {
         unsafe _getsectiondata(mh, segname, sectname, &size)
       }
     }
-    guard let start = unsafe start, size > 0 else { return nil }
+    guard let start = unsafe start, size > 0 else { return }
 
     let stride = unsafe MemoryLayout<_DistributedValidationRecord>.stride
     let count = Int(size) / stride
@@ -367,7 +391,7 @@ extension DistributedValidation {
       else { continue }
 
       // Materialize the validator via the accessor. The `type` argument is a
-      // pointer to `RemoteCallValidator.self` — the accessor uses it as a
+      // pointer to `RemoteCallValidator.self` - the accessor uses it as a
       // self-check to reject mismatches when multiple copies of the runtime
       // are loaded (currently unused; kept for ABI symmetry).
       var validator: RemoteCallValidator = RemoteCallValidator({ })
@@ -381,9 +405,8 @@ extension DistributedValidation {
             0)
         }
       }
-      if ok { return validator }
+      if ok { collected.append(validator) }
     }
-    return nil
   }
 }
 
@@ -416,10 +439,11 @@ private var _swift5_daval_stop: UInt8
 
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
-  fileprivate static func _lookupELF(
+  fileprivate static func _collectELF(
     actorTypeID: UInt64,
-    methodID: UInt64
-  ) -> RemoteCallValidator? {
+    methodID: UInt64,
+    into collected: inout [RemoteCallValidator]
+  ) {
     let start = unsafe withUnsafePointer(to: &_swift5_daval_start) {
       UnsafeRawPointer($0)
     }
@@ -427,9 +451,10 @@ extension DistributedValidation {
       UnsafeRawPointer($0)
     }
     let byteCount = unsafe stop - start
-    return unsafe _scanValidationSection(
+    unsafe _scanValidationSection(
       start: start, byteCount: byteCount,
-      actorTypeID: actorTypeID, methodID: methodID)
+      actorTypeID: actorTypeID, methodID: methodID,
+      into: &collected)
   }
 }
 
@@ -456,10 +481,11 @@ private var _swift5_daval_stop_win: UInt8
 
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
-  fileprivate static func _lookupCOFF(
+  fileprivate static func _collectCOFF(
     actorTypeID: UInt64,
-    methodID: UInt64
-  ) -> RemoteCallValidator? {
+    methodID: UInt64,
+    into collected: inout [RemoteCallValidator]
+  ) {
     let start = unsafe withUnsafePointer(to: &_swift5_daval_start_win) {
       UnsafeRawPointer($0)
     }
@@ -467,9 +493,10 @@ extension DistributedValidation {
       UnsafeRawPointer($0)
     }
     let byteCount = unsafe stop - start
-    return unsafe _scanValidationSection(
+    unsafe _scanValidationSection(
       start: start, byteCount: byteCount,
-      actorTypeID: actorTypeID, methodID: methodID)
+      actorTypeID: actorTypeID, methodID: methodID,
+      into: &collected)
   }
 }
 
@@ -481,8 +508,9 @@ extension DistributedValidation {
 #if os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32) || os(Windows)
 
 /// Iterate the `_DistributedValidationRecord` stride-array packed in
-/// `[start, start + byteCount)` and invoke the accessor of the first record
-/// whose `(context, reserved2)` matches `(actorTypeID, methodID)`.
+/// `[start, start + byteCount)` and append a materialized
+/// `RemoteCallValidator` to `collected` for every record whose
+/// `(context, reserved2)` matches `(actorTypeID, methodID)`.
 ///
 /// Extracted so ELF and COFF walkers share the record-matching logic;
 /// they differ only in how they compute the section's bounds.
@@ -491,9 +519,10 @@ private func _scanValidationSection(
   start: UnsafeRawPointer,
   byteCount: Int,
   actorTypeID: UInt64,
-  methodID: UInt64
-) -> RemoteCallValidator? {
-  guard byteCount > 0 else { return nil }
+  methodID: UInt64,
+  into collected: inout [RemoteCallValidator]
+) {
+  guard byteCount > 0 else { return }
   let stride = unsafe MemoryLayout<_DistributedValidationRecord>.stride
   let count = byteCount / stride
 
@@ -518,9 +547,8 @@ private func _scanValidationSection(
           0)
       }
     }
-    if ok { return validator }
+    if ok { collected.append(validator) }
   }
-  return nil
 }
 
 #endif

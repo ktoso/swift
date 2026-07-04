@@ -961,6 +961,7 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
 
   auto cloneOnto = [&](ValueDecl *witness, CustomAttr *reqAttr,
                        StringRef macroName) {
+    CustomAttr *added = nullptr;
     // Same-module clone: the requirement's `TypeExpr` and `ArgumentList`
     // already carry valid source locations. Reuse them verbatim; the peer
     // macro plugin will walk the same `AttributeSyntax` the user wrote on
@@ -973,24 +974,47 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
                                         reqAttr->getArgs(),
                                         /*implicit=*/true);
       witness->getAttrs().add(cloned);
-      return;
+      added = cloned;
+    } else {
+      // Cross-module clone: `reqAttr` was deserialized from another module
+      // and has no valid `AtLoc`. Synthesize a real attribute source buffer
+      // at the witness's location and parse it, so the attached-macro
+      // plugin can walk a real `AttributeSyntax` (its
+      // `swift_Macros_expandAttachedMacro` entrypoint requires that).
+      //
+      // The arg-list source text is preserved on the requirement's
+      // `CustomAttr` by `@preservedInInterface` serialization; we
+      // deliberately do NOT clear `preservedArgText` in
+      // `materializePreservedCustomAttrArgs` so it's available here.
+      StringRef argText = reqAttr->getPreservedArgText();
+      if (auto *synthesized =
+              synthesizeCustomAttrForWitness(witness, macroName, argText)) {
+        witness->getAttrs().add(synthesized);
+        added = synthesized;
+      }
     }
 
-    // Cross-module clone: `reqAttr` was deserialized from another module and
-    // has no valid `AtLoc`. Synthesize a real attribute source buffer at the
-    // witness's location and parse it, so the attached-macro plugin can
-    // walk a real `AttributeSyntax` (its `swift_Macros_expandAttachedMacro`
-    // entrypoint requires that).
-    //
-    // The arg-list source text is preserved on the requirement's
-    // `CustomAttr` by `@preservedInInterface` serialization; we deliberately
-    // do NOT clear `preservedArgText` in `materializePreservedCustomAttrArgs`
-    // so it's available here.
-    StringRef argText = reqAttr->getPreservedArgText();
+    if (!added) return;
 
-    if (auto *synthesized =
-            synthesizeCustomAttrForWitness(witness, macroName, argText)) {
-      witness->getAttrs().add(synthesized);
+    // `ExpandPeerMacroRequest` for this witness may have already run and been
+    // cached (typically triggered by earlier per-member requests) BEFORE we
+    // added the inherited attribute above. The cached result would not
+    // include the newly-added attr, so its section record would never be
+    // emitted. Trigger peer expansion directly on the freshly added attr to
+    // materialize its section record. Multi-record composition (both the
+    // witness-local and inherited attributes firing) is done AllOf-style by
+    // `DistributedValidation.lookup` at runtime.
+    //
+    // Known limitation: if the witness already carries a same-KIND attribute
+    // (e.g. local `@Entitlement(A)` + inherited `@Entitlement(B)`), only one
+    // of the two records will actually be produced because the plugin's
+    // expansion machinery caches per-(macro, decl) and the second call is a
+    // no-op. Different-kind stacking works (e.g. local `@Entitlement` +
+    // inherited `@ValidateRemoteCall`). Follow-up P0-11 tracks the
+    // same-kind case; it needs a change deeper in the macro-expansion
+    // request infrastructure.
+    if (auto *macro = added->getResolvedMacro()) {
+      (void)swift::expandPeers(added, macro, witness);
     }
   };
 
