@@ -6,7 +6,7 @@
 //
 // End-to-end cross-module test: `@Entitlement("...")` is written on a
 // `distributed func` requirement inside a protocol declared in module
-// `HomeAdminAPI`. The client module never sees the source of that protocol
+// `AdminProtocol`. The client module never sees the source of that protocol
 // (only the emitted `.swiftmodule`), yet the compiler inherits the
 // `@Entitlement` attribute onto the conforming actor's witness and emits
 // the `__daval_*_record` with the same string payload.
@@ -27,7 +27,7 @@
 //
 // Producer: emit only the .swiftmodule (no interface) so the client is
 // forced through the direct-serialize path.
-// RUN: %target-swift-frontend -emit-module -emit-module-path %t/HomeAdminAPI.swiftmodule -module-name HomeAdminAPI -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -I %t %S/Inputs/HomeAdminAPI.swift
+// RUN: %target-swift-frontend -emit-module -emit-module-path %t/AdminProtocol.swiftmodule -module-name AdminProtocol -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -I %t %S/Inputs/AdminProtocol.swift
 //
 // Consumer: type-checks the actor with -dump-macro-expansions so we can
 // FileCheck the emitted section record.
@@ -35,7 +35,7 @@
 
 import Distributed
 import FakeDistributedActorSystems
-import HomeAdminAPI
+import AdminProtocol
 
 @available(SwiftStdlib 6.5, *)
 distributed actor MyHome: HomeAdmin {
@@ -62,4 +62,14 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
   // CHECK-NEXT: try Distributed._DistributedValidation.evaluate(Distributed._EntitlementPolicy.entitlement("com.example.cross-module"))
   // CHECK-NEXT: })
+
+  // Second requirement with a composite `.anyOf(...)` policy inherited
+  // from the protocol. The section record must reproduce the qualified
+  // policy expression from the producer source.
+  distributed func openDoorAnyOf() -> Bool { true }
+  // CHECK: private static let __daval_openDoorAnyOf_record: Distributed._DistributedValidationRecord = (
+  // CHECK: try Distributed._DistributedValidation.evaluate((Distributed._EntitlementPolicy.anyOf([
+  // CHECK-NEXT: .entitlement("com.example.cross-module"),
+  // CHECK-NEXT: .entitlement("com.example.admin"),
+  // CHECK-NEXT: ])) as Distributed._EntitlementPolicy)
 }

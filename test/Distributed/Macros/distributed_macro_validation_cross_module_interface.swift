@@ -5,7 +5,7 @@
 // REQUIRES: distributed
 //
 // End-to-end cross-module test via `.swiftinterface` rebuild: `@Entitlement`
-// on a distributed protocol requirement in module `HomeAdminAPI`. The
+// on a distributed protocol requirement in module `AdminProtocol`. The
 // producer emits both `.swiftmodule` and `.swiftinterface`. We then delete
 // the `.swiftmodule` before the client build so the compiler drives the
 // `ModuleInterfaceBuilder` path, and the client must reconstruct the
@@ -21,8 +21,8 @@
 //
 // Producer: emit BOTH the .swiftmodule and the .swiftinterface, then remove
 // the .swiftmodule so the client must go through the interface.
-// RUN: %target-swift-frontend -emit-module -emit-module-path %t/HomeAdminAPI.swiftmodule -emit-module-interface-path %t/HomeAdminAPI.swiftinterface -module-name HomeAdminAPI -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -enable-library-evolution -I %t %S/Inputs/HomeAdminAPI.swift
-// RUN: rm %t/HomeAdminAPI.swiftmodule
+// RUN: %target-swift-frontend -emit-module -emit-module-path %t/AdminProtocol.swiftmodule -emit-module-interface-path %t/AdminProtocol.swiftinterface -module-name AdminProtocol -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -enable-library-evolution -I %t %S/Inputs/AdminProtocol.swift
+// RUN: rm %t/AdminProtocol.swiftmodule
 //
 // Consumer: force the interface path via -module-cache-path pointing at an
 // empty dir. Should transparently invoke ModuleInterfaceBuilder, cache an
@@ -31,7 +31,7 @@
 
 import Distributed
 import FakeDistributedActorSystems
-import HomeAdminAPI
+import AdminProtocol
 
 @available(SwiftStdlib 6.5, *)
 distributed actor MyHome: HomeAdmin {
@@ -56,4 +56,13 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
   // CHECK-NEXT: try Distributed._DistributedValidation.evaluate(Distributed._EntitlementPolicy.entitlement("com.example.cross-module"))
   // CHECK-NEXT: })
+
+  // Composite policy inherited across the interface-rebuild boundary. The
+  // interface printer normalizes module references to the `Module::Type`
+  // module-selector syntax, so the arg text preserved through the
+  // interface rebuild is the qualified form (unlike the direct
+  // `.swiftmodule` path, which keeps the user's original source text).
+  distributed func openDoorAnyOf() -> Bool { true }
+  // CHECK: private static let __daval_openDoorAnyOf_record: Distributed._DistributedValidationRecord = (
+  // CHECK: try Distributed._DistributedValidation.evaluate((Distributed::_EntitlementPolicy.anyOf([Distributed::_EntitlementPolicy.entitlement("com.example.cross-module"), Distributed::_EntitlementPolicy.entitlement("com.example.admin")])) as Distributed._EntitlementPolicy)
 }

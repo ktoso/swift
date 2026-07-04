@@ -911,10 +911,25 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
     return name == "Entitlement" || name == "ValidateRemoteCall";
   };
 
+  // Attribute's spelled base identifier, e.g. "Entitlement" for
+  // `@Entitlement("...")`. Returns empty StringRef when the attribute has no
+  // decl-ref TypeRepr (should not happen for a well-formed macro attribute).
+  // Deliberately does NOT call `getResolvedMacro()`, which triggers name
+  // resolution on the attribute's argument list - deserialized args have
+  // invalid SourceLocs and crash the constraint solver's decl-ref resolver.
+  auto attrBaseName = [&](CustomAttr *attr) -> StringRef {
+    if (auto *typeRepr = attr->getTypeRepr()) {
+      if (auto *declRefRepr = dyn_cast<DeclRefTypeRepr>(typeRepr)) {
+        return declRefRepr->getNameRef().getBaseName().userFacingName();
+      }
+    }
+    return StringRef();
+  };
+
   auto witnessAlreadyHas = [&](ValueDecl *witness, CustomAttr *reqAttr,
-                               MacroDecl *reqMacro) {
+                               StringRef reqName) {
     for (auto *existing : witness->getAttrs().getAttributes<CustomAttr>()) {
-      if (existing->getResolvedMacro() == reqMacro) {
+      if (attrBaseName(const_cast<CustomAttr *>(existing)) == reqName) {
         auto lhsRange = reqAttr->getArgs()
             ? reqAttr->getArgs()->getSourceRange()
             : SourceRange();
@@ -927,7 +942,8 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
     return false;
   };
 
-  auto cloneOnto = [&](ValueDecl *witness, CustomAttr *reqAttr) {
+  auto cloneOnto = [&](ValueDecl *witness, CustomAttr *reqAttr,
+                       StringRef macroName) {
     // Same-module clone: the requirement's `TypeExpr` and `ArgumentList`
     // already carry valid source locations. Reuse them verbatim; the peer
     // macro plugin will walk the same `AttributeSyntax` the user wrote on
@@ -953,10 +969,6 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
     // `CustomAttr` by `@preservedInInterface` serialization; we deliberately
     // do NOT clear `preservedArgText` in `materializePreservedCustomAttrArgs`
     // so it's available here.
-    auto *macro = reqAttr->getResolvedMacro();
-    if (!macro)
-      return;
-    StringRef macroName = macro->getBaseIdentifier().str();
     StringRef argText = reqAttr->getPreservedArgText();
 
     if (auto *synthesized =
@@ -984,21 +996,25 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
 
       // Fast filter: does the requirement carry any allow-listed
       // `CustomAttr`? Materialize preserved arg-list text on all
-      // `CustomAttr`s here first, since macro overload resolution needs
-      // the argument list to pick between overloads (e.g. the two
-      // `@Entitlement` variants).
+      // `CustomAttr`s here first so the plugin expander sees a proper
+      // `ArgumentList` on the cloned witness attribute.
+      //
+      // The check uses the attribute's spelled type name (via `TypeRepr`)
+      // rather than `getResolvedMacro()`. Macro resolution needs to type
+      // check the argument list; on a deserialized `CustomAttr` those args
+      // have invalid `SourceLoc`s (they came out of `preservedArgText`),
+      // which crashes the constraint solver's decl-ref resolver. The
+      // spelled type name is enough to filter, since we only accept
+      // `@Entitlement` / `@ValidateRemoteCall` which have unique names.
       for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
         materializePreservedCustomAttrArgs(
             const_cast<CustomAttr *>(reqAttr), req->getDeclContext());
       }
       bool hasAny = false;
       for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
-        auto *macro = reqAttr->getResolvedMacro();
-        if (macro) {
-          if (isAllowListed(macro->getBaseIdentifier().str())) {
-            hasAny = true;
-            break;
-          }
+        if (isAllowListed(attrBaseName(const_cast<CustomAttr *>(reqAttr)))) {
+          hasAny = true;
+          break;
         }
       }
       if (!hasAny) continue;
@@ -1011,11 +1027,12 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
         if (!witness->isDistributed()) continue;
 
         for (auto *reqAttr : req->getAttrs().getAttributes<CustomAttr>()) {
-          auto *macro = reqAttr->getResolvedMacro();
-          if (!macro) continue;
-          if (!isAllowListed(macro->getBaseIdentifier().str())) continue;
-          if (witnessAlreadyHas(witness, reqAttr, macro)) continue;
-          cloneOnto(witness, reqAttr);
+          StringRef name = attrBaseName(const_cast<CustomAttr *>(reqAttr));
+          if (!isAllowListed(name)) continue;
+          if (witnessAlreadyHas(witness, const_cast<CustomAttr *>(reqAttr),
+                                name))
+            continue;
+          cloneOnto(witness, const_cast<CustomAttr *>(reqAttr), name);
         }
       }
     }

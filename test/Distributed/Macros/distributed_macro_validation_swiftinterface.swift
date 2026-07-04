@@ -12,8 +12,8 @@
 // text is what a consuming module will re-parse; if @Entitlement doesn't
 // appear there, cross-module inheritance breaks.
 //
-// RUN: %target-swift-frontend -emit-module -emit-module-path %t/HomeAdminAPI.swiftmodule -emit-module-interface-path %t/HomeAdminAPI.swiftinterface -module-name HomeAdminAPI -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -enable-library-evolution -I %t %s
-// RUN: %FileCheck %s < %t/HomeAdminAPI.swiftinterface
+// RUN: %target-swift-frontend -emit-module -emit-module-path %t/AdminProtocol.swiftmodule -emit-module-interface-path %t/AdminProtocol.swiftinterface -module-name AdminProtocol -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -enable-library-evolution -I %t %s
+// RUN: %FileCheck %s < %t/AdminProtocol.swiftinterface
 
 import Distributed
 import FakeDistributedActorSystems

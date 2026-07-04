@@ -48,6 +48,21 @@ public enum _EntitlementPolicy {
   case allOf([_EntitlementPolicy])
 }
 
+// A bare string literal is shorthand for the single-entitlement case:
+//
+//     @Entitlement("open-safe")
+//     @Entitlement(.anyOf(["admin", "operator"]))
+//
+// Both forms are `_EntitlementPolicy`; the literal form desugars to
+// `.entitlement("open-safe")`. This lets the `@Entitlement(String)`
+// overload be removed - there's now a single `_EntitlementPolicy`-taking
+// macro overload that accepts both string literals and structured policies.
+extension _EntitlementPolicy: ExpressibleByStringLiteral {
+  public init(stringLiteral value: String) {
+    self = .entitlement(value)
+  }
+}
+
 // ==== -----------------------------------------------------------------------
 // MARK: Failure surface
 

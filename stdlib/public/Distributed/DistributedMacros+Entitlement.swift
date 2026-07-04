@@ -35,19 +35,25 @@ import _Concurrency
 /// requiring the conformer to restate the attribute. A conforming method
 /// cannot opt-out from an entitlement enforced by a protocol it implements.
 ///
+/// A bare string literal is accepted as sugar for the single-entitlement case
+/// via `_EntitlementPolicy`'s `ExpressibleByStringLiteral` conformance:
+///
+///     @Entitlement("read-only")            // single entitlement
+///     @Entitlement(.anyOf(["a", "b"]))     // structured policy
+///
 /// ### Combining entitlement checks
 /// Applying the @Entitlement attribute multiple times to the same distributed function
 /// is equivalent to requiring all of the spelled out entitlements:
 /// ```
-/// @Requirement("read-only") // AND
-/// @Requirement("all-access")
+/// @Entitlement("read-only") // AND
+/// @Entitlement("all-access")
 /// distributed func verify()
 /// ```
 ///
 /// If you want to express "only one of them must be valid" use the following pattern:
 ///
 /// ```
-/// @Entitlement(.anyOf("read-only", /* OR */ "all-access"))`
+/// @Entitlement(.anyOf(["read-only", /* OR */ "all-access"]))
 /// distributed func verify()
 /// ```
 ///
@@ -55,13 +61,6 @@ import _Concurrency
 ///
 /// - Can only be applied to a `distributed func` or `distributed var`.
 ///   Applying it to any other declaration is a compile-time error.
-@preservedInInterface
-@attached(peer, names: arbitrary)
-public macro Entitlement(_ entitlement: String) =
-  #externalMacro(module: "SwiftMacros", type: "EntitlementMacro")
-
-/// Requires the caller to satisfy the given entitlement policy. See
-/// ``_EntitlementPolicy`` for the composable forms.
 @preservedInInterface
 @attached(peer, names: arbitrary)
 public macro Entitlement(_ policy: _EntitlementPolicy) =
