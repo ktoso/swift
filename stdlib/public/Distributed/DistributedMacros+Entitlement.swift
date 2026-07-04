@@ -62,6 +62,7 @@ import _Concurrency
 /// - Can only be applied to a `distributed func` or `distributed var`.
 ///   Applying it to any other declaration is a compile-time error.
 @preservedInInterface
+@available(SwiftStdlib 6.5, *)
 @attached(peer, names: arbitrary)
 public macro Entitlement(_ policy: EntitlementPolicy) =
   #externalMacro(module: "SwiftMacros", type: "EntitlementMacro")

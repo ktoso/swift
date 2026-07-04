@@ -70,7 +70,7 @@ public macro ValidateRemoteCall(_ validator: sending () throws -> Void) =
 ///     }
 ///
 /// See ``ValidateRemoteCall(_:)-Wrapper`` for the closure form.
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 @preservedInInterface
 @attached(peer, names: arbitrary)
 public macro ValidateRemoteCall(_ validator: RemoteCallValidator) =

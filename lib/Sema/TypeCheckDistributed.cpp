@@ -849,19 +849,36 @@ synthesizeCustomAttrForWitness(ValueDecl *witness, StringRef macroName,
   // `parseExpandedAttributeList` on when the file is parsed, and it teaches
   // `getExportedSourceFile` to bridge to ASTGen so `swift_Macros_...` can
   // find the `AttributeSyntax`.
+  //
+  // `astNode` is set to the witness itself. The `SourceFileKind::SyntheticMacro`
+  // path in `AvailabilityScope::createForSourceFile` reads
+  // `getNodeInEnclosingSourceFile().getStartLoc()` from this field to locate
+  // the buffer inside the enclosing source file for parent-scope inheritance.
+  // Setting it to the witness (rather than the module) yields a valid loc.
   GeneratedSourceInfo sourceInfo{
       GeneratedSourceInfo::AttributeFromClang,
       /*originalSourceRange=*/CharSourceRange(witness->getLoc(), 0),
       SM.getRangeForBuffer(bufferID),
-      /*astNode=*/static_cast<void *>(module),
+      /*astNode=*/ASTNode(witness).getOpaqueValue(),
       /*declContext=*/witness->getDeclContext(),
       /*attachedMacroCustomAttr=*/nullptr};
   SM.setGeneratedSourceInfo(bufferID, sourceInfo);
 
-  // Wrap the buffer in a `Library`-kind SourceFile parented to the witness's
-  // module. `getTopLevelDecls()` will trigger `parseExpandedAttributeList`,
-  // which returns a `MissingDecl` carrying the parsed attribute list.
-  auto *attrSF = new (ctx) SourceFile(*module, SourceFileKind::Library,
+  // Wrap the buffer in a `SyntheticMacro`-kind SourceFile parented to the
+  // witness's module. `getTopLevelDecls()` triggers the parser's dispatch on
+  // `GeneratedSourceInfo::AttributeFromClang`, which calls
+  // `parseExpandedAttributeList` and returns a `MissingDecl` carrying the
+  // parsed attribute list.
+  //
+  // Using `SyntheticMacro` (rather than `Library`) is what makes
+  // `AvailabilityScope::createForSourceFile` walk `SF->getEnclosingSourceFile()`
+  // and inherit the witness's availability context. Without this, the
+  // synthesized buffer's root availability scope defaults to the module's
+  // deployment target, and any reference to `@available(SwiftStdlib X, *)` API
+  // from inside the inherited attribute would fail to type-check even when the
+  // witness itself is in a properly guarded `@available(SwiftStdlib X, *)`
+  // context. See `lib/AST/AvailabilityScope.cpp` `createForSourceFile`.
+  auto *attrSF = new (ctx) SourceFile(*module, SourceFileKind::SyntheticMacro,
                                       bufferID, /*parsingOpts=*/{},
                                       /*isPrimary=*/false);
 

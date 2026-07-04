@@ -124,7 +124,7 @@ public struct _DistributedValidationKind: Sendable, RawRepresentable, Equatable 
 ///       @ValidateRemoteCall(.requireEntitlement("open-safe"))
 ///       distributed func openSafe() -> Bool { true }
 ///     }
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 public struct RemoteCallValidator: Sendable {
   /// The closure invoked on the receive side, before argument decoding, to
   /// validate the incoming remote call. Throwing rejects the call and
@@ -159,7 +159,7 @@ public struct RemoteCallValidator: Sendable {
 /// **ABI-committed**: identical implementations run at macro-expansion time
 /// (in the SwiftMacros plugin) and here at receive time. Changing either
 /// without a coordinated update breaks the lookup.
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 public enum DistributedValidation {
 
   /// FNV-1a-64 of the UTF-8 bytes of a string. Must exactly match the
@@ -192,7 +192,7 @@ public enum DistributedValidation {
 ///
 /// Returns `nil` if the identifier can't be demangled or doesn't look like
 /// a function name.
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
   guard let full = _getFunctionFullNameFromMangledName(mangledName: mangled)
   else { return nil }
@@ -214,7 +214,7 @@ internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
 // ==== -----------------------------------------------------------------------
 // MARK: Section lookup + preflight
 
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
   /// Look up the ``RemoteCallValidator`` attached to the given target on the
@@ -305,7 +305,7 @@ private let _MH_DYLIB_IN_CACHE: UInt32 = 0x80000000
 /// the whole header through a raw pointer to avoid a Mach-O header import.
 private let _machHeader64FlagsOffset = 24
 
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
   /// Walk `__DATA_CONST,__swift5_daval` in every loaded image, invoking the
@@ -414,7 +414,7 @@ private var _swift5_daval_start: UInt8
 @_silgen_name("__stop_swift5_daval")
 private var _swift5_daval_stop: UInt8
 
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
   fileprivate static func _lookupELF(
     actorTypeID: UInt64,
@@ -454,7 +454,7 @@ private var _swift5_daval_start_win: UInt8
 @_silgen_name(".sw5daval$Z")
 private var _swift5_daval_stop_win: UInt8
 
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
   fileprivate static func _lookupCOFF(
     actorTypeID: UInt64,
@@ -486,7 +486,7 @@ extension DistributedValidation {
 ///
 /// Extracted so ELF and COFF walkers share the record-matching logic;
 /// they differ only in how they compute the section's bounds.
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 private func _scanValidationSection(
   start: UnsafeRawPointer,
   byteCount: Int,

@@ -38,21 +38,22 @@ import FakeDistributedActorSystems
 // factories don't need to preserve an inline expression tree, so they work
 // cleanly.
 //
-// The extension is unrestricted: the synthesized inherited-attribute buffer
-// created by `inheritDistributedValidationAttrs` does NOT propagate the
-// enclosing type's `@available(SwiftStdlib 6.5, *)` context, so referenced
-// symbols must resolve at the module's default availability floor. The
-// factory body only calls into stdlib and Distributed symbols available at
-// SwiftStdlib 5.7 or earlier.
+// The extension carries `@available(SwiftStdlib 6.5, *)` because
+// `RemoteCallValidator`, `DistributedValidation.currentEntitlements`, and
+// `EntitlementCheckFailed` are 6.5-available. The synthesized inherited-
+// attribute buffer created at the witness site inherits the witness's
+// availability context (via `SourceFileKind::SyntheticMacro` in
+// `inheritDistributedValidationAttrs`), so as long as the consumer's
+// witness sits inside a `@available(SwiftStdlib 6.5, *)` context the
+// factory reference type-checks with no additional gymnastics.
+@available(SwiftStdlib 6.5, *)
 extension Distributed.RemoteCallValidator {
   public static var requireCustomEntitlement: Distributed.RemoteCallValidator {
     Distributed.RemoteCallValidator {
-      if #available(SwiftStdlib 5.7, *) {
-        guard Distributed.DistributedValidation.currentEntitlements.contains(
-          "com.example.custom-validator"
-        ) else {
-          throw Distributed.EntitlementCheckFailed(missing: "custom-validator")
-        }
+      guard Distributed.DistributedValidation.currentEntitlements.contains(
+        "com.example.custom-validator"
+      ) else {
+        throw Distributed.EntitlementCheckFailed(missing: "custom-validator")
       }
     }
   }

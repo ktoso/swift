@@ -39,6 +39,7 @@ import _Concurrency
 /// Unlike ``RemoteCallValidator``, `EntitlementPolicy` is a closed algebra:
 /// it carries only string identities and composition. Custom-code validation
 /// belongs on `RemoteCallValidator` and is spelled via `@ValidateRemoteCall`.
+@available(SwiftStdlib 6.5, *)
 public enum EntitlementPolicy {
   /// Require exactly this entitlement.
   case entitlement(String)
@@ -62,6 +63,7 @@ public enum EntitlementPolicy {
 // `.entitlement("open-safe")`. This lets the `@Entitlement(String)`
 // overload be removed - there's now a single `EntitlementPolicy`-taking
 // macro overload that accepts both string literals and structured policies.
+@available(SwiftStdlib 6.5, *)
 extension EntitlementPolicy: ExpressibleByStringLiteral {
   public init(stringLiteral value: String) {
     self = .entitlement(value)
@@ -75,6 +77,7 @@ extension EntitlementPolicy: ExpressibleByStringLiteral {
 /// check. The `missing` field names the entitlement whose absence caused
 /// the failure (or `"<anyOf>"` when a composite `.anyOf` policy exhausted
 /// its options).
+@available(SwiftStdlib 6.5, *)
 public struct EntitlementCheckFailed: Error, Codable, CustomStringConvertible {
   /// The name of the entitlement that the caller lacked. For composite
   /// `.anyOf` policies whose entire branch tree failed, this is `"<anyOf>"`
@@ -92,7 +95,7 @@ public struct EntitlementCheckFailed: Error, Codable, CustomStringConvertible {
 // ==== -----------------------------------------------------------------------
 // MARK: Task-local + evaluator
 
-@available(SwiftStdlib 5.7, *)
+@available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
   /// Currently-granted entitlements for the receiving side of a remote call.

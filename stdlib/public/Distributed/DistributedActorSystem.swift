@@ -428,12 +428,11 @@ extension DistributedActorSystem {
   ) async throws where Act: DistributedActor {
     // Run `@Entitlement`/`@ValidateRemoteCall` validation before decoding
     // arguments. A missing record (no annotation on the target) is a no-op;
-    // a failed policy check throws through `handler.onThrow(...)`.
-    do {
+    // a failed policy check throws directly out of this function - the target
+    // hasn't run yet, so the error is not one the target produced and it does
+    // not go through `handler.onThrow(...)`.
+    if #available(SwiftStdlib 6.5, *) {
       try DistributedValidation.preflight(on: actor, target: target)
-    } catch {
-      try await handler.onThrow(error: error)
-      return
     }
 
     // NOTE: Implementation could be made more efficient because we still risk
