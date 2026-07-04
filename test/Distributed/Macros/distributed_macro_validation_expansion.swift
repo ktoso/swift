@@ -42,7 +42,7 @@ distributed actor MyHome {
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
-  // CHECK-NEXT: try Distributed._DistributedValidation.evaluate(Distributed._EntitlementPolicy.entitlement("com.example.openDoor"))
+  // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.openDoor"))
   // CHECK-NEXT: })
   // CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator.self)
   // CHECK-NEXT: .initialize(to: validator)

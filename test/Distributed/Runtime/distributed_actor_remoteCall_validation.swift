@@ -16,7 +16,7 @@
 // closure actually firing on the receive side of a distributed remote call.
 //
 // The test binary must load the just-built swiftDistributed (which has
-// RemoteCallValidator and _DistributedValidation.preflight), NOT the
+// RemoteCallValidator and DistributedValidation.preflight), NOT the
 // OS-shipped /usr/lib/swift/libswiftDistributed.dylib (ABI-frozen, does
 // not have those symbols yet). We rewrite the LC_LOAD_DYLIB entry with
 // install_name_tool after linking.

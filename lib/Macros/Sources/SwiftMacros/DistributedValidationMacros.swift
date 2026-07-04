@@ -15,7 +15,7 @@
 // distributed func/var:
 //
 //   1. An accessor function that, on demand, materializes a
-//      `_EntitlementPolicy` (or a validator closure) into the caller-provided
+//      `EntitlementPolicy` (or a validator closure) into the caller-provided
 //      out-parameter. Strings and other non-const-expressible Swift values
 //      live inside this function body; SE-0492's constant-expression rule
 //      does not apply to normal function bodies.
@@ -67,7 +67,7 @@ public struct EntitlementMacro: PeerMacro {
     let validatorExpression =
       """
       Distributed.RemoteCallValidator({
-          try Distributed._DistributedValidation.evaluate(\(policyExpression))
+          try Distributed.DistributedValidation.evaluate(\(policyExpression))
         })
       """
     return emitValidationPeers(
@@ -199,33 +199,33 @@ private func sanitizeIdentifier(_ name: String) -> String {
 
 /// Extracts the argument expression from `@Entitlement("...")` or
 /// `@Entitlement(<policy>)` and returns Swift source text that constructs a
-/// `_EntitlementPolicy`. The single-string form is sugar for
+/// `EntitlementPolicy`. The single-string form is sugar for
 /// `.entitlement("...")`.
 private func entitlementPolicyExpression(from node: AttributeSyntax) -> String {
   guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
     let first = arguments.first
   else {
-    // Should not happen for a well-formed `@Entitlement(...)` — the compiler
+    // Should not happen for a well-formed `@Entitlement(...)` - the compiler
     // would have rejected the attribute before invoking the macro. Emit a
     // placeholder that keeps the generated code well-formed.
-    return #"Distributed._EntitlementPolicy.entitlement("")"#
+    return #"Distributed.EntitlementPolicy.entitlement("")"#
   }
 
   let argText = first.expression.trimmedDescription
 
   if first.expression.is(StringLiteralExprSyntax.self) {
-    return "Distributed._EntitlementPolicy.entitlement(\(argText))"
+    return "Distributed.EntitlementPolicy.entitlement(\(argText))"
   }
 
   // Anything else is either an explicit `.entitlement(...)`, `.anyOf(...)`,
-  // `.allOf(...)`, or an already-typed `_EntitlementPolicy` value. Wrap so
+  // `.allOf(...)`, or an already-typed `EntitlementPolicy` value. Wrap so
   // implicit-member syntax (`.anyOf(...)`) resolves against the enum type.
-  return "(\(argText)) as Distributed._EntitlementPolicy"
+  return "(\(argText)) as Distributed.EntitlementPolicy"
 }
 
 /// Extracts the validator function-or-closure argument from
 /// `@ValidateRemoteCall(<expr>)` and returns Swift source text usable as the
-/// argument to `_EntitlementPolicy.custom(...)`.
+/// argument to `EntitlementPolicy.custom(...)`.
 private func customValidatorExpression(from node: AttributeSyntax) -> String {
   guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
     let first = arguments.first
@@ -439,6 +439,15 @@ private func isProtocolRequirementContext(
 /// records. Small, deterministic, distinct implementations in the plugin
 /// (macro-expansion time) and the runtime must agree exactly, so keep this
 /// unchanged once the ABI ships.
+///
+/// PAIRED IMPLEMENTATION: must remain byte-identical to
+/// `DistributedValidation.fnv1a64(of:)` in
+/// `stdlib/public/Distributed/DistributedValidation.swift`.
+/// Drift is caught by
+/// `test/Distributed/Runtime/distributed_validation_hash_stability.swift`
+/// (golden-vector runtime test) and by the hex literals in
+/// `test/Distributed/Macros/distributed_macro_validation_expansion.swift`
+/// (macro-expansion CHECK lines).
 private func fnv1a64(of s: String) -> UInt64 {
   var hash: UInt64 = 0xcbf29ce484222325 // FNV-1a-64 offset basis
   for byte in s.utf8 {

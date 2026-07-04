@@ -21,7 +21,7 @@ import _Concurrency
 // ==== -----------------------------------------------------------------------
 // MARK: @Entitlement
 //
-// See `DistributedValidation+Entitlement.swift` for the `_EntitlementPolicy`
+// See `DistributedValidation+Entitlement.swift` for the `EntitlementPolicy`
 // enum these macros produce, the receive-side task-local set, and the
 // evaluator that turns a policy tree into an accept/reject decision.
 
@@ -36,7 +36,7 @@ import _Concurrency
 /// cannot opt-out from an entitlement enforced by a protocol it implements.
 ///
 /// A bare string literal is accepted as sugar for the single-entitlement case
-/// via `_EntitlementPolicy`'s `ExpressibleByStringLiteral` conformance:
+/// via `EntitlementPolicy`'s `ExpressibleByStringLiteral` conformance:
 ///
 ///     @Entitlement("read-only")            // single entitlement
 ///     @Entitlement(.anyOf(["a", "b"]))     // structured policy
@@ -63,7 +63,7 @@ import _Concurrency
 ///   Applying it to any other declaration is a compile-time error.
 @preservedInInterface
 @attached(peer, names: arbitrary)
-public macro Entitlement(_ policy: _EntitlementPolicy) =
+public macro Entitlement(_ policy: EntitlementPolicy) =
   #externalMacro(module: "SwiftMacros", type: "EntitlementMacro")
 
 #endif

@@ -54,7 +54,7 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
-  // CHECK-NEXT: try Distributed._DistributedValidation.evaluate(Distributed._EntitlementPolicy.entitlement("com.example.cross-module"))
+  // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.cross-module"))
   // CHECK-NEXT: })
 
   // Composite policy inherited across the interface-rebuild boundary. The
@@ -64,5 +64,18 @@ distributed actor MyHome: HomeAdmin {
   // `.swiftmodule` path, which keeps the user's original source text).
   distributed func openDoorAnyOf() -> Bool { true }
   // CHECK: private static let __daval_openDoorAnyOf_record: Distributed._DistributedValidationRecord = (
-  // CHECK: try Distributed._DistributedValidation.evaluate((Distributed::_EntitlementPolicy.anyOf([Distributed::_EntitlementPolicy.entitlement("com.example.cross-module"), Distributed::_EntitlementPolicy.entitlement("com.example.admin")])) as Distributed._EntitlementPolicy)
+  // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf([Distributed::EntitlementPolicy.entitlement("com.example.cross-module"), Distributed::EntitlementPolicy.entitlement("com.example.admin")])) as Distributed.EntitlementPolicy)
+
+  // Short-form composite policy inherited across the interface-rebuild
+  // boundary. In the source module the user wrote a bare `.anyOf([...])`
+  // with no explicit type prefix. The interface printer resolves the
+  // implicit-member syntax against the macro parameter type at print time
+  // and emits the fully-qualified form (`Distributed::EntitlementPolicy.
+  // anyOf([Distributed::EntitlementPolicy.entitlement(...), ...])`), which
+  // the client's macro plugin then wraps in `(...) as Distributed.
+  // EntitlementPolicy` at witness synthesis. Both binary and interface
+  // paths produce the same runtime policy.
+  distributed func openDoorShortAnyOf() -> Bool { true }
+  // CHECK: private static let __daval_openDoorShortAnyOf_record: Distributed._DistributedValidationRecord = (
+  // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf([Distributed::EntitlementPolicy.entitlement("com.example.short-form-a"), Distributed::EntitlementPolicy.entitlement("com.example.short-form-b")])) as Distributed.EntitlementPolicy)
 }

@@ -430,7 +430,7 @@ extension DistributedActorSystem {
     // arguments. A missing record (no annotation on the target) is a no-op;
     // a failed policy check throws through `handler.onThrow(...)`.
     do {
-      try _DistributedValidation.preflight(on: actor, target: target)
+      try DistributedValidation.preflight(on: actor, target: target)
     } catch {
       try await handler.onThrow(error: error)
       return

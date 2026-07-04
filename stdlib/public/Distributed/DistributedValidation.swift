@@ -14,12 +14,14 @@
 //
 //   - The ABI of records placed in the `swift5_daval` section by the
 //     macros: `_DistributedValidationAccessor`, `_DistributedValidationRecord`,
-//     `_DistributedValidationKind` FourCC.
+//     `_DistributedValidationKind` FourCC. These record-shape typealiases
+//     stay underscored because they name the wire ABI of the section, not
+//     user-facing API.
 //   - `RemoteCallValidator`: the receive-side value the accessor produces,
 //     wrapping the closure the runtime ultimately invokes.
-//   - `_DistributedValidation`: FNV-1a-64 hash + demangling helper + the
+//   - `DistributedValidation`: FNV-1a-64 hash + demangling helper + the
 //     per-platform section walker + the `executeDistributedTarget` preflight
-//     hook. Generic — parameterized only in `RemoteCallValidator`; no
+//     hook. Generic - parameterized only in `RemoteCallValidator`; no
 //     entitlement-specific state or logic lives here.
 //
 // The record layout mirrors swift-testing's TestContentRecord verbatim so
@@ -27,7 +29,7 @@
 // in the first field differs. See:
 //   ~/code/swift-testing/Documentation/ABI/TestContent.md
 //
-// Entitlement-specific pieces (`_EntitlementPolicy`, `_EntitlementCheckFailed`,
+// Entitlement-specific pieces (`EntitlementPolicy`, `EntitlementCheckFailed`,
 // the receive-side task-local entitlement set, the entitlement evaluator)
 // live in `DistributedValidation+Entitlement.swift`.
 //
@@ -102,15 +104,15 @@ public struct _DistributedValidationKind: Sendable, RawRepresentable, Equatable 
 ///     extension RemoteCallValidator {
 ///       public static var requireAdminRole: RemoteCallValidator {
 ///         RemoteCallValidator {
-///           guard _DistributedValidation.currentEntitlements.contains("admin")
-///           else { throw _EntitlementCheckFailed(missing: "admin") }
+///           guard DistributedValidation.currentEntitlements.contains("admin")
+///           else { throw EntitlementCheckFailed(missing: "admin") }
 ///         }
 ///       }
 ///
 ///       public static func requireEntitlement(_ name: String) -> RemoteCallValidator {
 ///         RemoteCallValidator {
-///           guard _DistributedValidation.currentEntitlements.contains(name)
-///           else { throw _EntitlementCheckFailed(missing: name) }
+///           guard DistributedValidation.currentEntitlements.contains(name)
+///           else { throw EntitlementCheckFailed(missing: name) }
 ///         }
 ///       }
 ///     }
@@ -149,8 +151,8 @@ public struct RemoteCallValidator: Sendable {
 /// section, hashes identities, and materializes validation policies for a
 /// given `(actorTypeID, methodID)` pair.
 ///
-/// Policy-specific state and behavior — the entitlement task-local, the
-/// policy evaluator — live as extensions in
+/// Policy-specific state and behavior - the entitlement task-local, the
+/// policy evaluator - live as extensions in
 /// `DistributedValidation+Entitlement.swift`.
 ///
 /// The FNV-1a-64 hash function and the `swift5_daval` record layout are
@@ -158,11 +160,19 @@ public struct RemoteCallValidator: Sendable {
 /// (in the SwiftMacros plugin) and here at receive time. Changing either
 /// without a coordinated update breaks the lookup.
 @available(SwiftStdlib 5.7, *)
-public enum _DistributedValidation {
+public enum DistributedValidation {
 
   /// FNV-1a-64 of the UTF-8 bytes of a string. Must exactly match the
   /// `fnv1a64` helper in
   /// `lib/Macros/Sources/SwiftMacros/DistributedValidationMacros.swift`.
+  ///
+  /// PAIRED IMPLEMENTATION: byte-identical to the plugin-side helper.
+  /// Drift is caught by
+  /// `test/Distributed/Runtime/distributed_validation_hash_stability.swift`
+  /// (golden vectors run against this runtime function) and by the hex
+  /// literals in
+  /// `test/Distributed/Macros/distributed_macro_validation_expansion.swift`
+  /// (macro-expansion CHECK lines exercise the plugin side).
   @inlinable
   public static func fnv1a64(of string: String) -> UInt64 {
     var hash: UInt64 = 0xcbf29ce484222325 // FNV-1a-64 offset basis
@@ -205,7 +215,7 @@ internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
 // MARK: Section lookup + preflight
 
 @available(SwiftStdlib 5.7, *)
-extension _DistributedValidation {
+extension DistributedValidation {
 
   /// Look up the ``RemoteCallValidator`` attached to the given target on the
   /// given actor type. Returns `nil` if no matching record is registered in
@@ -293,7 +303,7 @@ private let _MH_DYLIB_IN_CACHE: UInt32 = 0x80000000
 private let _machHeader64FlagsOffset = 24
 
 @available(SwiftStdlib 5.7, *)
-extension _DistributedValidation {
+extension DistributedValidation {
 
   /// Walk `__DATA_CONST,__swift5_daval` in every loaded image, invoking the
   /// accessor of the first record whose `context` (actorTypeID) and

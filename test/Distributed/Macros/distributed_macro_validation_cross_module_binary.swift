@@ -60,7 +60,7 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: 0,
   // CHECK-NEXT: { outValue, type, hint, reserved in
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
-  // CHECK-NEXT: try Distributed._DistributedValidation.evaluate(Distributed._EntitlementPolicy.entitlement("com.example.cross-module"))
+  // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.cross-module"))
   // CHECK-NEXT: })
 
   // Second requirement with a composite `.anyOf(...)` policy inherited
@@ -68,8 +68,20 @@ distributed actor MyHome: HomeAdmin {
   // policy expression from the producer source.
   distributed func openDoorAnyOf() -> Bool { true }
   // CHECK: private static let __daval_openDoorAnyOf_record: Distributed._DistributedValidationRecord = (
-  // CHECK: try Distributed._DistributedValidation.evaluate((Distributed._EntitlementPolicy.anyOf([
+  // CHECK: try Distributed.DistributedValidation.evaluate((Distributed.EntitlementPolicy.anyOf([
   // CHECK-NEXT: .entitlement("com.example.cross-module"),
   // CHECK-NEXT: .entitlement("com.example.admin"),
-  // CHECK-NEXT: ])) as Distributed._EntitlementPolicy)
+  // CHECK-NEXT: ])) as Distributed.EntitlementPolicy)
+
+  // Third requirement with a bare `.anyOf(...)` short-form. The macro plugin
+  // wraps the preserved arg text in `(...) as Distributed.EntitlementPolicy`
+  // at the witness site, so implicit-member syntax resolves against the enum
+  // type even though the producer source did not spell out `Distributed.
+  // EntitlementPolicy` in front of `.anyOf`.
+  distributed func openDoorShortAnyOf() -> Bool { true }
+  // CHECK: private static let __daval_openDoorShortAnyOf_record: Distributed._DistributedValidationRecord = (
+  // CHECK: try Distributed.DistributedValidation.evaluate((.anyOf([
+  // CHECK-NEXT: .entitlement("com.example.short-form-a"),
+  // CHECK-NEXT: .entitlement("com.example.short-form-b"),
+  // CHECK-NEXT: ])) as Distributed.EntitlementPolicy)
 }
