@@ -2350,8 +2350,16 @@ class CustomAttr final : public DeclAttribute {
   /// Source text of the argument list, preserved by serialization when the
   /// attribute refers to a macro that opted in via `@preservedInInterface`.
   /// Non-empty on a deserialized `CustomAttr` before its `ArgumentList` has
-  /// been materialized by Sema; empty otherwise. See `CustomAttr::getArgs`
-  /// and Sema's `materializePreservedCustomAttrArgs`.
+  /// been materialized by Sema; remains non-empty AFTER materialization
+  /// because `inheritDistributedValidationAttrs` in
+  /// `lib/Sema/TypeCheckDistributed.cpp` re-reads it during cross-module
+  /// witness synthesis to reconstruct a fresh CustomAttr with valid source
+  /// locations. Do NOT clear on `materializePreservedCustomAttrArgs`;
+  /// clearing here breaks cross-module `@Entitlement` / `@ValidateRemoteCall`
+  /// inheritance silently. Only `clearPreservedArgText()` explicit callers
+  /// should reset it, and only when the CustomAttr is guaranteed not to be
+  /// re-consulted by cross-module inheritance.
+  /// See `CustomAttr::getArgs` and Sema's `materializePreservedCustomAttrArgs`.
   StringRef preservedArgText;
 
   mutable unsigned isArgUnsafeBit : 1;

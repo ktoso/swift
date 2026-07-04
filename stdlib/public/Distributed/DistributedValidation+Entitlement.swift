@@ -76,8 +76,12 @@ extension EntitlementPolicy: ExpressibleByStringLiteral {
 /// the failure (or `"<anyOf>"` when a composite `.anyOf` policy exhausted
 /// its options).
 public struct EntitlementCheckFailed: Error, Codable, CustomStringConvertible {
+  /// The name of the entitlement that the caller lacked. For composite
+  /// `.anyOf` policies whose entire branch tree failed, this is `"<anyOf>"`
+  /// rather than a specific entitlement name.
   public var missing: String
 
+  /// Constructs the error naming a specific missing entitlement.
   public init(missing: String) { self.missing = missing }
 
   public var description: String {

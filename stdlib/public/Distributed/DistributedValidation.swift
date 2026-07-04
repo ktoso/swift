@@ -232,12 +232,15 @@ extension DistributedValidation {
   ) -> RemoteCallValidator? {
 #if canImport(Darwin)
     return _lookupMachO(actorTypeID: actorTypeID, methodID: methodID)
+#elseif os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32)
+    return _lookupELF(actorTypeID: actorTypeID, methodID: methodID)
+#elseif os(Windows)
+    return _lookupCOFF(actorTypeID: actorTypeID, methodID: methodID)
 #else
-    // TODO: ELF and COFF walkers are follow-ups. Returning nil means the
-    // Distributed runtime treats the target as un-validated; no false
+    // Platform with no known section-walking strategy. Returning nil means
+    // the Distributed runtime treats the target as un-validated: no false
     // positives, no false negatives on the "no validation registered" case,
-    // but any validated target passes through without a check on these
-    // platforms until this is filled in.
+    // but any validated target passes through without a check.
     return nil
 #endif
   }
@@ -382,6 +385,142 @@ extension DistributedValidation {
     }
     return nil
   }
+}
+
+#endif
+
+// ==== -----------------------------------------------------------------------
+// MARK: ELF / Wasm section walker
+
+#if os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32)
+
+// Linker-emitted sentinels bracketing the `swift5_daval` section within the
+// current image. `__start_<section>` and `__stop_<section>` are auto-generated
+// by GNU-style linkers for sections whose names are valid C identifiers, which
+// `swift5_daval` is. This gives us the section bounds without needing an
+// image-list walk API or a stdlib-runtime API extension (unlike
+// `swift_enumerateAllMetadataSections`, which requires plumbing through
+// SwiftShims).
+//
+// Trade-off: this covers only records emitted into the current image. Records
+// emitted from dynamically-loaded libraries (dlopen'd, or linked into other
+// shared objects) are not visible via these sentinels; a future revision can
+// switch to `dl_iterate_phdr` or the SwiftShims metadata-section enumeration
+// once cross-image lookup is needed. For a v1 where the distributed actor and
+// its `@Entitlement` records are typically in the same image, this suffices.
+@_silgen_name("__start_swift5_daval")
+private var _swift5_daval_start: UInt8
+
+@_silgen_name("__stop_swift5_daval")
+private var _swift5_daval_stop: UInt8
+
+@available(SwiftStdlib 5.7, *)
+extension DistributedValidation {
+  fileprivate static func _lookupELF(
+    actorTypeID: UInt64,
+    methodID: UInt64
+  ) -> RemoteCallValidator? {
+    let start = unsafe withUnsafePointer(to: &_swift5_daval_start) {
+      UnsafeRawPointer($0)
+    }
+    let stop = unsafe withUnsafePointer(to: &_swift5_daval_stop) {
+      UnsafeRawPointer($0)
+    }
+    let byteCount = unsafe stop - start
+    return unsafe _scanValidationSection(
+      start: start, byteCount: byteCount,
+      actorTypeID: actorTypeID, methodID: methodID)
+  }
+}
+
+#endif
+
+// ==== -----------------------------------------------------------------------
+// MARK: COFF section walker (Windows)
+
+#if os(Windows)
+
+// COFF bracket sentinels: `.sw5daval$A` and `.sw5daval$Z` sandwich the payload
+// records in `.sw5daval$B` so the linker collates them into a contiguous
+// range. Same pattern as `.sw5prt$A/$B/$Z` in `SwiftRT-COFF.cpp`.
+//
+// TODO: this only sees the current image's records. Cross-DLL lookup on
+// Windows requires walking `HMODULE`s (see swift-testing's
+// `SectionBounds.swift` Windows implementation) and is deferred.
+
+@_silgen_name(".sw5daval$A")
+private var _swift5_daval_start_win: UInt8
+
+@_silgen_name(".sw5daval$Z")
+private var _swift5_daval_stop_win: UInt8
+
+@available(SwiftStdlib 5.7, *)
+extension DistributedValidation {
+  fileprivate static func _lookupCOFF(
+    actorTypeID: UInt64,
+    methodID: UInt64
+  ) -> RemoteCallValidator? {
+    let start = unsafe withUnsafePointer(to: &_swift5_daval_start_win) {
+      UnsafeRawPointer($0)
+    }
+    let stop = unsafe withUnsafePointer(to: &_swift5_daval_stop_win) {
+      UnsafeRawPointer($0)
+    }
+    let byteCount = unsafe stop - start
+    return unsafe _scanValidationSection(
+      start: start, byteCount: byteCount,
+      actorTypeID: actorTypeID, methodID: methodID)
+  }
+}
+
+#endif
+
+// ==== -----------------------------------------------------------------------
+// MARK: Shared section-scanning helper
+
+#if os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32) || os(Windows)
+
+/// Iterate the `_DistributedValidationRecord` stride-array packed in
+/// `[start, start + byteCount)` and invoke the accessor of the first record
+/// whose `(context, reserved2)` matches `(actorTypeID, methodID)`.
+///
+/// Extracted so ELF and COFF walkers share the record-matching logic;
+/// they differ only in how they compute the section's bounds.
+@available(SwiftStdlib 5.7, *)
+private func _scanValidationSection(
+  start: UnsafeRawPointer,
+  byteCount: Int,
+  actorTypeID: UInt64,
+  methodID: UInt64
+) -> RemoteCallValidator? {
+  guard byteCount > 0 else { return nil }
+  let stride = unsafe MemoryLayout<_DistributedValidationRecord>.stride
+  let count = byteCount / stride
+
+  for i in 0..<count {
+    let recordPtr = unsafe start.advanced(by: i * stride)
+      .assumingMemoryBound(to: _DistributedValidationRecord.self)
+    let record = unsafe recordPtr.pointee
+
+    guard unsafe record.kind == _DistributedValidationKind.validation.rawValue,
+          unsafe UInt64(record.context) == actorTypeID,
+          unsafe UInt64(record.reserved2) == methodID
+    else { continue }
+
+    var validator: RemoteCallValidator = RemoteCallValidator({ })
+    var validatorType: Any.Type = RemoteCallValidator.self
+    let ok = withUnsafeMutablePointer(to: &validator) { outPtr in
+      withUnsafePointer(to: &validatorType) { typePtr in
+        unsafe record.accessor(
+          UnsafeMutableRawPointer(outPtr),
+          UnsafeRawPointer(typePtr),
+          nil,
+          0)
+      }
+    }
+    if ok { return validator }
+  }
+  return nil
 }
 
 #endif
