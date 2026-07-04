@@ -445,3 +445,194 @@ The distributed-target accessor's *linking identity* is always the regular distr
 The SIL function the accessor actually dispatches to is selected by `IRGenModule::emitDistributedTargetAccessor` and passed to `DistributedAccessor` / `AccessorTarget` as `dispatchTo`. When the target has a `@Resolvable` parameter or result, the accessor needs to dispatch through the proxy-adapter thunk; we locate it and pass it as `dispatchTo`. When no adapter is needed, `dispatchTo` is `nil` and the accessor calls the regular distributed thunk directly.
 
 There is one residual IRGen-side fixup: `argumentTypesBuffer` on the recipient is filled by `__getParameterTypeInfo` from demangling the regular distributed thunk's mangled name, which still says `any P` / `some P`. Since `any P` does not conform to `Codable`, `decodeNextArgument` would trap if invoked with that metadata. The accessor therefore overrides the runtime-loaded `argumentTy` with a compile-time reference to `$P`'s metadata before calling `decodeNextArgument` (see the `@Resolvable protocol param: override runtime-loaded metadata` block in `decodeArguments`).
+
+## Receive-side call validation: `@Entitlement` and `@ValidateRemoteCall`
+
+> WIP: this section describes machinery that is landing on
+> `wip-remote-call-validation`. The paragraphs below track the branch's
+> current state; they will be edited into a final shape (and cross-linked
+> with the stdlib DocC docs) before the branch is squashed for PR.
+
+Distributed actor systems that expose methods over untrusted transport often need to reject a call before it decodes, based on caller identity or capability. Two attached peer macros express this at the source level:
+
+- `@Entitlement(_ policy: EntitlementPolicy)` — declarative check against a task-local set of granted entitlements. Composes with `.anyOf` / `.allOf` and desugars a bare string literal to `.entitlement(...)`.
+- `@ValidateRemoteCall(_ validator: RemoteCallValidator)` — a named reusable validator recipe, or (on concrete methods only) an inline closure. Fires before argument decoding.
+
+Both apply to a `distributed func` or `distributed var` and can also be written on a protocol requirement, in which case the compiler inherits them onto every conforming actor's witness without the user restating anything.
+
+### Runtime shape
+
+Each attached macro emits two peer declarations next to the target distributed member:
+
+1. An **accessor** - a normal Swift function that materializes a `RemoteCallValidator` into a caller-supplied out-pointer. Strings, closures, arbitrary Swift expressions live here (regular function body context, not an SE-0492 constant expression context).
+2. A **section-placed record tuple** - a `_DistributedValidationRecord` in `swift5_daval`, marked `@used`, whose fields are permitted SE-0492 constant expressions: FourCC kind, two FNV-1a-64 identity hashes, and a direct closure literal pointing at the accessor.
+
+```
+   distributed actor MyActor
+   ├── distributed func openDoor()             ← user-written
+   ├── static let __daval_openDoor_record: ... ← macro-emitted record
+   └── (accessor is the closure inside record) ← macro-emitted accessor
+```
+
+Section names by object format:
+
+| Format | Section                             | Bounds source                                       |
+|--------|-------------------------------------|-----------------------------------------------------|
+| Mach-O | `__DATA_CONST,__swift5_daval`       | `getsectiondata` + `_dyld_get_image_header` walk    |
+| ELF    | `swift5_daval`                      | Linker-generated `__start_/__stop_` sentinel pair   |
+| Wasm   | `swift5_daval`                      | Same sentinel pair as ELF                           |
+| COFF   | `.sw5daval$B` (with `$A/$Z` bounds) | Bracket sentinels                                   |
+
+Record layout is a five-field tuple mirroring swift-testing's `TestContentRecord` byte-for-byte so offline tooling can share a parser across sections. Only the FourCC differs (`'dval'` for distributed validation).
+
+The record's static-let name is compiler-issued via `context.makeUniqueName("__daval_<method>_record")` so multiple attributes on the same distributed member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. Runtime lookup matches on `(actorTypeID, methodID)` hash fields, not on the symbol name, so the mangled uniqueness is invisible to it.
+
+### Receive-side preflight
+
+`DistributedActorSystem.executeDistributedTarget(on:target:...)` calls `DistributedValidation.preflight(on:target:)` before decoding arguments:
+
+```
+executeDistributedTarget
+        │
+        │ if #available(SwiftStdlib 6.5, *)
+        ▼
+   preflight(on:target:)
+        │
+        │ hash (Act.self simple name, target.identifier simple name)
+        │       via FNV-1a-64 → (actorTypeID, methodID)
+        ▼
+   lookup(actorTypeID:methodID:)
+        │
+        │ walks swift5_daval section in each loaded image,
+        │ collects EVERY record matching (actorTypeID, methodID),
+        │ wraps them in one composite RemoteCallValidator
+        ▼
+   composite RemoteCallValidator.check()
+        │
+        │ iterates collected validators in section-scan order,
+        │ throws on the first failure (AllOf semantics)
+        ▼
+   error propagates back to caller
+```
+
+The FNV-1a-64 hash implementation is **ABI-committed** and paired byte-for-byte between the macro plugin (emits compile-time hex literals in the record) and the runtime (hashes at receive time). A golden-vector drift test (`test/Distributed/Runtime/distributed_validation_hash_stability.swift`) locks both sides.
+
+Failed preflight throws **directly** out of `executeDistributedTarget` - it does NOT go through `handler.onThrow(...)`. The target function has not run yet, so the error is not one the target produced.
+
+Multiple records for the same `(actorTypeID, methodID)` compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). Section-scan order across records for the same key is implementation-defined, so the specific record whose error surfaces first is not guaranteed across images - but the AllOf outcome (accept iff every check accepts) is.
+
+### Attribute inheritance across modules
+
+The macros work identically whether written on a `distributed func` / `distributed var` directly, or on a protocol requirement that a distributed actor conforms to. In the protocol case the compiler transparently clones the attribute onto the concrete witness during conformance checking, and macro expansion runs on the witness as if the user had written the annotation there.
+
+```
+   Module A (producer)                         Module B (consumer)
+
+   protocol HomeAdmin:                         distributed actor MyHome:
+     DistributedActor {                          HomeAdmin {
+                                                    typealias ActorSystem = ...
+     @Entitlement("home.admin")
+     distributed func openDoor() -> Bool         distributed func openDoor() -> Bool {
+                                                    true
+   }                                              }
+                                                }
+                                                    ▲
+                                                    │ compiler inherits
+                                                    │ @Entitlement onto witness,
+                                                    │ macro expands the section
+                                                    │ record here
+```
+
+Two mechanisms make this work: **`@preservedInInterface`** carries the attribute's argument text across module boundaries, and **`inheritDistributedValidationAttrs`** re-attaches it to the witness during conformance checking.
+
+#### `@preservedInInterface`
+
+An opt-in decl-attribute (`include/swift/AST/DeclAttr.def`) placed on the macro declaration itself. Two consequences:
+
+- **Serialization** (`lib/Serialization/Serialization.cpp`): the extended `CustomDeclAttrLayout` stores the attribute's argument-list source text alongside the attribute record. `SWIFTMODULE_VERSION_MINOR` was bumped 1007 → 1008 for this layout change.
+- **Interface printing** (`lib/AST/ASTPrinter.cpp`): the printer force-emits the argument list for `@preservedInInterface` macros, even in minimal-interface mode.
+
+At deserialization time, `materializePreservedCustomAttrArgs` (`lib/Sema/TypeCheckMacros.cpp`) re-parses the preserved text on demand into a real `ArgumentList`. The text is deliberately NOT cleared after materialization; `inheritDistributedValidationAttrs` reads it again during witness synthesis.
+
+#### `inheritDistributedValidationAttrs`
+
+Runs from `checkDistributedActor` (`lib/Sema/TypeCheckDistributed.cpp`). For each `distributed func` / `distributed var` on the conforming actor, walks the protocol's requirements and clones allow-listed macro attributes (`@Entitlement`, `@ValidateRemoteCall`) onto the witness.
+
+The clone has two paths:
+
+**Same-module clone.** The requirement's `CustomAttr` carries valid source locations. Just build a new `CustomAttr` reusing the same `TypeExpr` and `ArgumentList`, `owner` retargeted to the witness. The peer macro plugin then walks the same `AttributeSyntax` node the user wrote on the protocol and emits the section record against the witness.
+
+**Cross-module clone.** The requirement's `CustomAttr` was deserialized; its `AtLoc` is invalid and the plugin cannot find an `AttributeSyntax` node to walk. `synthesizeCustomAttrForWitness` builds a fresh source buffer containing `@<MacroName><preservedArgText>`, wraps it in a `SyntheticMacro`-kind `SourceFile`, and parses it. The resulting `CustomAttr` has valid locations pointing into the synthesized buffer and the plugin can walk it normally.
+
+The synthesized buffer's `SourceFileKind` and `GeneratedSourceInfo::Kind` carry independent obligations:
+
+- `SourceFileKind::SyntheticMacro` — makes `AvailabilityScope::createForSourceFile` walk `getEnclosingSourceFile()` and inherit availability from the witness's `DeclContext`. Without this, any reference to `@available(SwiftStdlib X, *)` API from inside the inherited attribute fails to type-check.
+- `GeneratedSourceInfo::AttributeFromClang` — the only kind whose parser dispatch calls `parseExpandedAttributeList`. Despite the name (chosen historically for ClangImporter's `__attribute__((swift_attr))` handling), the code path is not Clang-specific.
+
+After adding the cloned attribute to the witness, `inheritDistributedValidationAttrs` directly invokes `expandPeers` on it. `ExpandPeerMacroRequest` for the witness is often cached (by earlier per-member requests) BEFORE the clone happens, and the cached result does not include the newly-added attribute; the direct call materializes the section record for the inherited attribute. Known limitation: this only handles the different-KIND case (e.g. local `@Entitlement` + inherited `@ValidateRemoteCall`). Same-KIND on both sides (local `@Entitlement(A)` + inherited `@Entitlement(B)`) still yields one record because the plugin's expansion machinery caches per-(macro, decl). Follow-up work will lift this.
+
+### Public API
+
+All 6.5-available. The record-shape typealiases stay underscored because they name the wire ABI of the section, not user-facing API.
+
+```swift
+public enum EntitlementPolicy: ExpressibleByStringLiteral {
+  case entitlement(String)
+  case anyOf([EntitlementPolicy])   // empty is vacuously false
+  case allOf([EntitlementPolicy])   // empty is vacuously true
+}
+
+public struct EntitlementCheckFailed: Error, Codable, CustomStringConvertible {
+  public var missing: String
+}
+
+public struct RemoteCallValidator: Sendable {
+  public var check: @Sendable () throws -> Void
+  public init(_ check: @escaping @Sendable () throws -> Void)
+  public init(_ validator: RemoteCallValidator)    // pass-through
+}
+
+public enum DistributedValidation {
+  @TaskLocal public static var currentEntitlements: Set<String>
+  public static func evaluate(_ policy: EntitlementPolicy) throws
+  public static func preflight<Act: DistributedActor>(
+    on actor: Act, target: RemoteCallTarget) throws
+  public static func lookup(
+    actorTypeID: UInt64, methodID: UInt64) -> RemoteCallValidator?
+  public static func fnv1a64(of string: String) -> UInt64
+}
+
+@preservedInInterface
+@attached(peer, names: arbitrary)
+public macro Entitlement(_ policy: EntitlementPolicy)
+
+@preservedInInterface
+@attached(peer, names: arbitrary)
+public macro ValidateRemoteCall(_ validator: sending () throws -> Void)
+
+@preservedInInterface
+@attached(peer, names: arbitrary)
+public macro ValidateRemoteCall(_ validator: RemoteCallValidator)
+```
+
+### Actor-system responsibilities
+
+The distributed actor system implementer sets the task-local `DistributedValidation.currentEntitlements` set before calling `executeDistributedTarget`. The design pattern is "carry entitlements in the envelope / service context": on the receive side, decode the caller's identity from the wire envelope, resolve to a set of granted entitlements, and:
+
+```swift
+try await DistributedValidation.$currentEntitlements.withValue(
+  callerEntitlements
+) {
+  try await self.executeDistributedTarget(
+    on: actor, target: target, invocationDecoder: &decoder, handler: handler)
+}
+```
+
+An empty set is treated as "caller has no entitlements". A missing section record (target has no annotation) is a no-op: `preflight` returns without doing anything.
+
+### Known limitations (v1)
+
+- **Section walker sees only the current image on ELF/Wasm/COFF.** `dlopen`'d libraries and secondary DLLs are not scanned. Darwin walks all loaded images via dyld APIs.
+- **Simple-name identity hashing.** Two distributed actors named identically in different modules would collide in the record lookup. A future revision will switch to full mangled-name hashes on both sides.
+- **Same-kind attribute stacking across protocol/witness produces only one record.** Local `@Entitlement(A)` + inherited `@Entitlement(B)` on the same witness materializes only one section record because the plugin's expansion machinery caches per-(macro, decl). Different-kind stacking (local `@Entitlement` + inherited `@ValidateRemoteCall`) works.
+- **`@ValidateRemoteCall({...})` inline closure on a protocol requirement is rejected at macro-expansion time.** Cross-module closure re-parse trips a `PreCheckTarget` invariant. Named factory extensions on `RemoteCallValidator` are the supported spelling for cross-module use.
