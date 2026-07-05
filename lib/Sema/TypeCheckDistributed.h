@@ -61,6 +61,19 @@ bool checkDistributedActorProperty(VarDecl *decl, bool diagnose);
 void diagnoseDistributedFunctionInNonDistributedActorProtocol(
   const ProtocolDecl *proto, InFlightDiagnostic &diag);
 
+/// Clone allow-listed distributed-validation attributes (`@Entitlement`,
+/// `@ValidateRemoteCall`) from a conformed protocol's requirements onto the
+/// concrete witnesses on \p nominal.
+///
+/// Idempotent: re-invocations skip attributes already present on a witness
+/// (deduped by spelled name + argument source range). Called both from
+/// `TypeChecker::checkDistributedActor` and from the top of
+/// `ExpandPeerMacroRequest::evaluate` (the latter guarantees a witness's
+/// peer expansion always observes the merged local+inherited attribute
+/// list, which is what makes same-kind attribute stacking across the
+/// protocol/witness boundary work).
+void inheritDistributedValidationAttrs(NominalTypeDecl *nominal);
+
 /// Emit a FixIt suggesting to add Codable to the nominal type.
 void addCodableFixIt(const NominalTypeDecl *nominal, InFlightDiagnostic &diag);
 

@@ -14,6 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TypeCheckDistributed.h"
 #include "TypeCheckMacros.h"
 #include "TypeCheckType.h"
 #include "TypeChecker.h"
@@ -529,6 +530,25 @@ ArrayRef<unsigned> ExpandSynthesizedMemberMacroRequest::evaluate(
 
 ArrayRef<unsigned>
 ExpandPeerMacroRequest::evaluate(Evaluator &evaluator, Decl *decl) const {
+  // Before iterating this decl's peer-macro attributes, make sure any
+  // `@Entitlement` / `@ValidateRemoteCall` inherited from a conformed
+  // distributed protocol requirement have been cloned onto it. This request
+  // is evaluated exactly once per decl (its result is externally cached), and
+  // the clone must be observed by the `forEachAttachedMacro` walk below, so
+  // doing it here - at the very top of the single evaluation - guarantees the
+  // section records for BOTH a witness-local attribute and a same-kind
+  // inherited one are emitted. `inheritDistributedValidationAttrs` is
+  // idempotent and uses `ExcludeMacroExpansions` on its own lookups, so it
+  // cannot recurse back into this request.
+  if (auto *vd = dyn_cast<ValueDecl>(decl)) {
+    if (vd->isDistributed()) {
+      if (auto *nominal = vd->getDeclContext()->getSelfNominalTypeDecl()) {
+        if (nominal->isDistributedActor())
+          swift::inheritDistributedValidationAttrs(nominal);
+      }
+    }
+  }
+
   SmallVector<unsigned, 2> bufferIDs;
   decl->forEachAttachedMacro(MacroRole::Peer,
       [&](CustomAttr *attr, MacroDecl *macro) {

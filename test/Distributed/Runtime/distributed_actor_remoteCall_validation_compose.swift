@@ -15,27 +15,26 @@
 // End-to-end runtime test that observes AllOf composition of multiple
 // validation records emitted for the same distributed method.
 //
-// Two situations produce multiple records for the same
+// Three situations produce multiple records for the same
 // `(actorTypeID, methodID)`:
 //   1. Stacked attributes on the witness in source
 //      (`@Entitlement("a"); @Entitlement("b") distributed func ...`).
-//   2. Attribute of a KIND-DIFFERENT to any locally-written attribute
-//      inherited from a conformed protocol requirement. The compiler
-//      clones the requirement's `CustomAttr` onto the witness's attribute
-//      list and directly triggers peer expansion on the freshly added
-//      attr, so both a local `@Entitlement` and an inherited
-//      `@ValidateRemoteCall` yield one record each on the witness.
+//   2. Attribute inherited from a conformed protocol requirement while
+//      the witness also carries its own attribute of a DIFFERENT kind
+//      (local `@Entitlement` + inherited `@ValidateRemoteCall`, or the
+//      other way round).
+//   3. Attribute inherited from a conformed protocol requirement while
+//      the witness also carries its own attribute of the SAME kind
+//      (local `@Entitlement(A)` + inherited `@Entitlement(B)`, or two
+//      `@ValidateRemoteCall`s).
 //
-// SAME-kind stacking across the protocol/witness boundary
-// (local `@Entitlement("A")` + inherited `@Entitlement("B")`) is a v1
-// limitation: only one of the two records is materialized because the
-// macro-expansion machinery caches per-(macro, decl). Follow-up work will
-// lift this; the tests below cover only the shapes that fire today.
-//
-// Runtime `DistributedValidation.lookup` iterates every matching record
-// against `(actorTypeID, methodID)` and returns a composite validator
-// whose `check()` runs each in section-scan order, throwing on the first
-// failure.
+// The compiler clones the requirement's `CustomAttr` onto the witness's
+// attribute list; peer macro expansion later runs per-attribute and
+// emits one record per attribute. Runtime lookup
+// (`DistributedValidation.lookup`) walks all matching records and wraps
+// them in a composite `RemoteCallValidator` whose `check()` runs every
+// validator in section-scan order and throws on the first failure -
+// AllOf semantics.
 //
 // The test binary must load the just-built swiftDistributed (which has
 // RemoteCallValidator and the composed lookup), NOT the OS-shipped
@@ -53,8 +52,9 @@ import FakeDistributedActorSystems
 
 typealias DefaultDistributedActorSystem = FakeRoundtripActorSystem
 
-// A validator whose closure leaves a visible trace tagged with its name so
-// we can prove both the protocol-inherited and witness-local checks fired.
+// Named validator factories whose closures leave a visible trace tagged
+// with the factory name so we can prove both the protocol-inherited and
+// witness-local checks fired.
 @available(SwiftStdlib 6.5, *)
 extension RemoteCallValidator {
   public static var traceProto: RemoteCallValidator {
@@ -103,11 +103,49 @@ protocol GuardedMixedProtocol: DistributedActor
 @available(SwiftStdlib 6.5, *)
 distributed actor InheritsAndAddsLocal: GuardedMixedProtocol {
   // Witness carries `@Entitlement`; protocol contributes
-  // `@ValidateRemoteCall(.traceProto)` via inheritance. Different kinds, so
+  // `@ValidateRemoteCall(.traceProto)` via inheritance. Different kinds,
   // both records materialize: the entitlement check AND the trace closure
-  // fire (AllOf order).
+  // fire.
   @Entitlement("admin")
   distributed func inheritedAndLocal() -> String { "inherited+local ok" }
+}
+
+// ==== ------------------------------------------------------------------------
+// MARK: Same-kind compose via protocol + witness — @Entitlement + @Entitlement
+
+@available(SwiftStdlib 6.5, *)
+protocol GuardedByProtocolEntitlement: DistributedActor
+  where ActorSystem == FakeRoundtripActorSystem {
+  @Entitlement("proto")
+  distributed func compound() -> String
+}
+
+@available(SwiftStdlib 6.5, *)
+distributed actor ProtocolPlusLocal: GuardedByProtocolEntitlement {
+  // Both witness AND inherited attribute are `@Entitlement`. Two records
+  // land in the section against `(ProtocolPlusLocal, compound)`. AllOf
+  // composition requires BOTH "local" and "proto" to be granted.
+  @Entitlement("local")
+  distributed func compound() -> String { "compound ok" }
+}
+
+// ==== ------------------------------------------------------------------------
+// MARK: Same-kind compose via protocol + witness — @ValidateRemoteCall x 2
+
+@available(SwiftStdlib 6.5, *)
+protocol GuardedByProtocolValidator: DistributedActor
+  where ActorSystem == FakeRoundtripActorSystem {
+  @ValidateRemoteCall(.traceProto)
+  distributed func doubleValidator() -> String
+}
+
+@available(SwiftStdlib 6.5, *)
+distributed actor DoubleValidatorActor: GuardedByProtocolValidator {
+  // Both witness AND inherited attribute are `@ValidateRemoteCall`. Both
+  // named-factory closures fire; both trace lines appear on the accept
+  // path.
+  @ValidateRemoteCall(.traceWitness)
+  distributed func doubleValidator() -> String { "double ok" }
 }
 
 @available(SwiftStdlib 6.5, *)
@@ -121,14 +159,17 @@ struct Main {
     let stackedRemote = try StackedActor.resolve(id: stacked.id, using: system)
 
     print("--- StackedActor.both with {\"first\", \"second\"} (both accept)")
+    // CHECK: --- StackedActor.both with {"first", "second"} (both accept)
     try await DistributedValidation.$currentEntitlements.withValue(
       ["first", "second"]
     ) {
       let v = try await stackedRemote.both()
       print("result=\(v)")
+      // CHECK: result=both ok
     }
 
     print("--- StackedActor.both with {\"first\"} (missing 'second' rejects)")
+    // CHECK: --- StackedActor.both with {"first"} (missing 'second' rejects)
     do {
       try await DistributedValidation.$currentEntitlements.withValue(["first"]) {
         _ = try await stackedRemote.both()
@@ -136,9 +177,12 @@ struct Main {
       }
     } catch {
       print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'second'
     }
 
     print("--- StackedActor.both with {\"second\"} (missing 'first' rejects)")
+    // CHECK: --- StackedActor.both with {"second"} (missing 'first' rejects)
     do {
       try await DistributedValidation.$currentEntitlements.withValue(["second"]) {
         _ = try await stackedRemote.both()
@@ -146,6 +190,8 @@ struct Main {
       }
     } catch {
       print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'first'
     }
 
     // Section-scan order across records for the same key is
@@ -153,6 +199,7 @@ struct Main {
     // case just verifies rejection; which of the two missing entitlements
     // is named in the first-thrown error is not asserted.
     print("--- StackedActor.both with {} (both missing; rejects)")
+    // CHECK: --- StackedActor.both with {} (both missing; rejects)
     do {
       try await DistributedValidation.$currentEntitlements.withValue([]) {
         _ = try await stackedRemote.both()
@@ -160,19 +207,28 @@ struct Main {
       }
     } catch {
       print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement
     }
 
     // ==== MixedActor -------------------------------------------------------
     let mixed = MixedActor(actorSystem: system)
     let mixedRemote = try MixedActor.resolve(id: mixed.id, using: system)
 
+    // The witness trace runs alongside the entitlement check. Order of
+    // section-scan across the two records is implementation-defined so
+    // we just require both appear in the accept case.
     print("--- MixedActor.mixed with {\"admin\"} (both accept)")
+    // CHECK: --- MixedActor.mixed with {"admin"} (both accept)
     try await DistributedValidation.$currentEntitlements.withValue(["admin"]) {
       let v = try await mixedRemote.mixed()
       print("result=\(v)")
+      // CHECK-DAG: [validator] witness check ran
+      // CHECK-DAG: result=mixed ok
     }
 
     print("--- MixedActor.mixed with {} (entitlement rejects)")
+    // CHECK: --- MixedActor.mixed with {} (entitlement rejects)
     do {
       try await DistributedValidation.$currentEntitlements.withValue([]) {
         _ = try await mixedRemote.mixed()
@@ -180,19 +236,27 @@ struct Main {
       }
     } catch {
       print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'admin'
     }
 
     // ==== InheritsAndAddsLocal --------------------------------------------
     let mixIn = InheritsAndAddsLocal(actorSystem: system)
     let mixInRemote = try InheritsAndAddsLocal.resolve(id: mixIn.id, using: system)
 
+    // Both the inherited `@ValidateRemoteCall(.traceProto)` closure AND the
+    // witness-local `@Entitlement("admin")` fire on the accept path.
     print("--- InheritsAndAddsLocal.inheritedAndLocal with {\"admin\"} (both accept)")
+    // CHECK: --- InheritsAndAddsLocal.inheritedAndLocal with {"admin"} (both accept)
     try await DistributedValidation.$currentEntitlements.withValue(["admin"]) {
       let v = try await mixInRemote.inheritedAndLocal()
       print("result=\(v)")
+      // CHECK-DAG: [validator] proto check ran
+      // CHECK-DAG: result=inherited+local ok
     }
 
     print("--- InheritsAndAddsLocal.inheritedAndLocal with {} (witness entitlement rejects)")
+    // CHECK: --- InheritsAndAddsLocal.inheritedAndLocal with {} (witness entitlement rejects)
     do {
       try await DistributedValidation.$currentEntitlements.withValue([]) {
         _ = try await mixInRemote.inheritedAndLocal()
@@ -200,52 +264,79 @@ struct Main {
       }
     } catch {
       print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'admin'
     }
 
+    // ==== ProtocolPlusLocal (same-kind @Entitlement + @Entitlement) --------
+    let plus = ProtocolPlusLocal(actorSystem: system)
+    let plusRemote = try ProtocolPlusLocal.resolve(id: plus.id, using: system)
+
+    // Same-kind protocol + witness: both `@Entitlement`s must be granted.
+    print("--- ProtocolPlusLocal.compound with {\"local\", \"proto\"} (both accept)")
+    // CHECK: --- ProtocolPlusLocal.compound with {"local", "proto"} (both accept)
+    try await DistributedValidation.$currentEntitlements.withValue(
+      ["local", "proto"]
+    ) {
+      let v = try await plusRemote.compound()
+      print("result=\(v)")
+      // CHECK: result=compound ok
+    }
+
+    print("--- ProtocolPlusLocal.compound with {\"local\"} (missing 'proto' rejects)")
+    // CHECK: --- ProtocolPlusLocal.compound with {"local"} (missing 'proto' rejects)
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue(["local"]) {
+        _ = try await plusRemote.compound()
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'proto'
+    }
+
+    print("--- ProtocolPlusLocal.compound with {\"proto\"} (missing 'local' rejects)")
+    // CHECK: --- ProtocolPlusLocal.compound with {"proto"} (missing 'local' rejects)
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue(["proto"]) {
+        _ = try await plusRemote.compound()
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'local'
+    }
+
+    print("--- ProtocolPlusLocal.compound with {} (both missing; rejects)")
+    // CHECK: --- ProtocolPlusLocal.compound with {} (both missing; rejects)
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue([]) {
+        _ = try await plusRemote.compound()
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement
+    }
+
+    // ==== DoubleValidatorActor (same-kind @ValidateRemoteCall x 2) ---------
+    let dv = DoubleValidatorActor(actorSystem: system)
+    let dvRemote = try DoubleValidatorActor.resolve(id: dv.id, using: system)
+
+    // Same-kind protocol + witness: both `@ValidateRemoteCall` closures fire.
+    print("--- DoubleValidatorActor.doubleValidator (both traces fire)")
+    // CHECK: --- DoubleValidatorActor.doubleValidator (both traces fire)
+    let dvr = try await dvRemote.doubleValidator()
+    print("result=\(dvr)")
+    // CHECK-DAG: [validator] proto check ran
+    // CHECK-DAG: [validator] witness check ran
+    // CHECK-DAG: result=double ok
+
     print("--- done")
+    // CHECK: --- done
   }
 }
 
-// CHECK: --- StackedActor.both with {"first", "second"} (both accept)
-// CHECK: result=both ok
-
-// CHECK: --- StackedActor.both with {"first"} (missing 'second' rejects)
-// CHECK-NOT: result=unexpected-success
-// CHECK: caught=Remote call rejected: missing entitlement 'second'
-
-// CHECK: --- StackedActor.both with {"second"} (missing 'first' rejects)
-// CHECK-NOT: result=unexpected-success
-// CHECK: caught=Remote call rejected: missing entitlement 'first'
-
-// CHECK: --- StackedActor.both with {} (both missing; rejects)
-// CHECK-NOT: result=unexpected-success
-// CHECK: caught=Remote call rejected: missing entitlement
-
-// The witness trace runs alongside the entitlement check. Order of
-// section-scan across the two records is implementation-defined so
-// we don't `-NEXT` the trace to the result line, just require both
-// appear in the accept case.
-// CHECK: --- MixedActor.mixed with {"admin"} (both accept)
-// CHECK-DAG: [validator] witness check ran
-// CHECK-DAG: result=mixed ok
-
-// CHECK: --- MixedActor.mixed with {} (entitlement rejects)
-// CHECK-NOT: result=unexpected-success
-// CHECK: caught=Remote call rejected: missing entitlement 'admin'
-
-// CHECK: --- InheritsAndAddsLocal.inheritedAndLocal with {"admin"} (both accept)
-// The inherited `@ValidateRemoteCall(.traceProto)` peer expansion does not
-// fire on the witness today: `ExpandPeerMacroRequest` for the witness is
-// cached before `inheritDistributedValidationAttrs` clones the attr, and
-// the direct `expandPeers` retry in `TypeCheckDistributed.cpp` gets deduped
-// by the plugin's per-(macro, decl) expansion cache. The witness-local
-// `@Entitlement("admin")` DOES fire (checked below via the reject case).
-// Once the inherited-peer expansion also materializes on the witness, add a
-// CHECK-DAG for "[validator] proto check ran" alongside the result line.
-// CHECK: result=inherited+local ok
-
-// CHECK: --- InheritsAndAddsLocal.inheritedAndLocal with {} (witness entitlement rejects)
-// CHECK-NOT: result=unexpected-success
-// CHECK: caught=Remote call rejected: missing entitlement 'admin'
-
-// CHECK: --- done

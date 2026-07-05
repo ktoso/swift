@@ -110,3 +110,122 @@ Added: _$s11Distributed26_distributedStubFatalError8functions5NeverOSS_tF
 Added: _$s11Distributed0A5ActorPAAE9whenLocalyqd__Sgqd__xYiYaYbqd_0_YKXEYaqd_0_YKs8SendableRd__s5ErrorRd_0_r0_lF
 // async function pointer to (extension in Distributed):Distributed.DistributedActor.whenLocal<A, B where A1: Swift.Sendable, B1: Swift.Error>(@Sendable (isolated A) async throws(B1) -> A1) async throws(B1) -> A1?
 Added: _$s11Distributed0A5ActorPAAE9whenLocalyqd__Sgqd__xYiYaYbqd_0_YKXEYaqd_0_YKs8SendableRd__s5ErrorRd_0_r0_lFTu
+// ==== @Entitlement / @ValidateRemoteCall distributed call validation ====
+// (added by the wip-remote-call-validation branch)
+
+// static Distributed._DistributedValidationKind.validation.getter : Distributed._DistributedValidationKind
+Added: _$s11Distributed01_A14ValidationKindV10validationACvgZ
+// property descriptor for static Distributed._DistributedValidationKind.validation : Distributed._DistributedValidationKind
+Added: _$s11Distributed01_A14ValidationKindV10validationACvpZMV
+// Distributed._DistributedValidationKind.init(rawValue: Swift.UInt32) -> Distributed._DistributedValidationKind
+Added: _$s11Distributed01_A14ValidationKindV8rawValueACs6UInt32V_tcfC
+// Distributed._DistributedValidationKind.rawValue.getter : Swift.UInt32
+Added: _$s11Distributed01_A14ValidationKindV8rawValues6UInt32Vvg
+// Distributed._DistributedValidationKind.rawValue.modify : Swift.UInt32
+Added: _$s11Distributed01_A14ValidationKindV8rawValues6UInt32VvM
+// property descriptor for Distributed._DistributedValidationKind.rawValue : Swift.UInt32
+Added: _$s11Distributed01_A14ValidationKindV8rawValues6UInt32VvpMV
+// Distributed._DistributedValidationKind.rawValue.setter : Swift.UInt32
+Added: _$s11Distributed01_A14ValidationKindV8rawValues6UInt32Vvs
+// type metadata accessor for Distributed._DistributedValidationKind
+Added: _$s11Distributed01_A14ValidationKindVMa
+// nominal type descriptor for Distributed._DistributedValidationKind
+Added: _$s11Distributed01_A14ValidationKindVMn
+// type metadata for Distributed._DistributedValidationKind
+Added: _$s11Distributed01_A14ValidationKindVN
+// protocol conformance descriptor for Distributed._DistributedValidationKind : Swift.Equatable in Distributed
+Added: _$s11Distributed01_A14ValidationKindVSQAAMc
+// protocol conformance descriptor for Distributed._DistributedValidationKind : Swift.RawRepresentable in Distributed
+Added: _$s11Distributed01_A14ValidationKindVSYAAMc
+// static Distributed.DistributedValidation.currentEntitlements.getter : Swift.Set<Swift.String>
+Added: _$s11Distributed0A10ValidationO19currentEntitlementsShySSGvgZ
+// property descriptor for static Distributed.DistributedValidation.currentEntitlements : Swift.Set<Swift.String>
+Added: _$s11Distributed0A10ValidationO19currentEntitlementsShySSGvpZMV
+// static Distributed.DistributedValidation.$currentEntitlements.getter : Swift.TaskLocal<Swift.Set<Swift.String>>
+Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvgZ
+// property descriptor for static Distributed.DistributedValidation.$currentEntitlements : Swift.TaskLocal<Swift.Set<Swift.String>>
+Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvpZMV
+// static Distributed.DistributedValidation.lookup(actorTypeID: Swift.UInt64, methodID: Swift.UInt64) -> Distributed.RemoteCallValidator?
+Added: _$s11Distributed0A10ValidationO6lookup11actorTypeID06methodF0AA19RemoteCallValidatorVSgs6UInt64V_AKtFZ
+// static Distributed.DistributedValidation.fnv1a64(of: Swift.String) -> Swift.UInt64
+Added: _$s11Distributed0A10ValidationO7fnv1a642ofs6UInt64VSS_tFZ
+// static Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy) throws -> ()
+Added: _$s11Distributed0A10ValidationO8evaluateyyAA17EntitlementPolicyOKFZ
+// static Distributed.DistributedValidation.preflight<A where A: Distributed.DistributedActor>(on: A, target: Distributed.RemoteCallTarget) throws -> ()
+Added: _$s11Distributed0A10ValidationO9preflight2on6targetyx_AA16RemoteCallTargetVtKAA0A5ActorRzlFZ
+// type metadata accessor for Distributed.DistributedValidation
+Added: _$s11Distributed0A10ValidationOMa
+// nominal type descriptor for Distributed.DistributedValidation
+Added: _$s11Distributed0A10ValidationOMn
+// type metadata for Distributed.DistributedValidation
+Added: _$s11Distributed0A10ValidationON
+// enum case for Distributed.EntitlementPolicy.entitlement(Distributed.EntitlementPolicy.Type) -> (Swift.String) -> Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyO11entitlementyACSScACmFWC
+// Distributed.EntitlementPolicy.init(stringLiteral: Swift.String) -> Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyO13stringLiteralACSS_tcfC
+// enum case for Distributed.EntitlementPolicy.allOf(Distributed.EntitlementPolicy.Type) -> ([Distributed.EntitlementPolicy]) -> Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyO5allOfyACSayACGcACmFWC
+// enum case for Distributed.EntitlementPolicy.anyOf(Distributed.EntitlementPolicy.Type) -> ([Distributed.EntitlementPolicy]) -> Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyO5anyOfyACSayACGcACmFWC
+// type metadata accessor for Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyOMa
+// nominal type descriptor for Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyOMn
+// type metadata for Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyON
+// protocol conformance descriptor for Distributed.EntitlementPolicy : Swift.ExpressibleByStringLiteral in Distributed
+Added: _$s11Distributed17EntitlementPolicyOs26ExpressibleByStringLiteralAAMc
+// protocol conformance descriptor for Distributed.EntitlementPolicy : Swift.ExpressibleByUnicodeScalarLiteral in Distributed
+Added: _$s11Distributed17EntitlementPolicyOs33ExpressibleByUnicodeScalarLiteralAAMc
+// protocol conformance descriptor for Distributed.EntitlementPolicy : Swift.ExpressibleByExtendedGraphemeClusterLiteral in Distributed
+Added: _$s11Distributed17EntitlementPolicyOs43ExpressibleByExtendedGraphemeClusterLiteralAAMc
+// Distributed.RemoteCallValidator.check.getter : @Sendable () throws -> ()
+Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvg
+// Distributed.RemoteCallValidator.check.modify : @Sendable () throws -> ()
+Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvM
+// property descriptor for Distributed.RemoteCallValidator.check : @Sendable () throws -> ()
+Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvpMV
+// Distributed.RemoteCallValidator.check.setter : @Sendable () throws -> ()
+Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvs
+// type metadata accessor for Distributed.RemoteCallValidator
+Added: _$s11Distributed19RemoteCallValidatorVMa
+// nominal type descriptor for Distributed.RemoteCallValidator
+Added: _$s11Distributed19RemoteCallValidatorVMn
+// type metadata for Distributed.RemoteCallValidator
+Added: _$s11Distributed19RemoteCallValidatorVN
+// Distributed.RemoteCallValidator.init(Distributed.RemoteCallValidator) -> Distributed.RemoteCallValidator
+Added: _$s11Distributed19RemoteCallValidatorVyA2CcfC
+// Distributed.RemoteCallValidator.init(@Sendable () throws -> ()) -> Distributed.RemoteCallValidator
+Added: _$s11Distributed19RemoteCallValidatorVyACyyYbKccfC
+// Distributed.EntitlementCheckFailed.description.getter : Swift.String
+Added: _$s11Distributed22EntitlementCheckFailedV11descriptionSSvg
+// property descriptor for Distributed.EntitlementCheckFailed.description : Swift.String
+Added: _$s11Distributed22EntitlementCheckFailedV11descriptionSSvpMV
+// Distributed.EntitlementCheckFailed.init(from: Swift.Decoder) throws -> Distributed.EntitlementCheckFailed
+Added: _$s11Distributed22EntitlementCheckFailedV4fromACs7Decoder_p_tKcfC
+// Distributed.EntitlementCheckFailed.encode(to: Swift.Encoder) throws -> ()
+Added: _$s11Distributed22EntitlementCheckFailedV6encode2toys7Encoder_p_tKF
+// Distributed.EntitlementCheckFailed.init(missing: Swift.String) -> Distributed.EntitlementCheckFailed
+Added: _$s11Distributed22EntitlementCheckFailedV7missingACSS_tcfC
+// Distributed.EntitlementCheckFailed.missing.getter : Swift.String
+Added: _$s11Distributed22EntitlementCheckFailedV7missingSSvg
+// Distributed.EntitlementCheckFailed.missing.modify : Swift.String
+Added: _$s11Distributed22EntitlementCheckFailedV7missingSSvM
+// property descriptor for Distributed.EntitlementCheckFailed.missing : Swift.String
+Added: _$s11Distributed22EntitlementCheckFailedV7missingSSvpMV
+// Distributed.EntitlementCheckFailed.missing.setter : Swift.String
+Added: _$s11Distributed22EntitlementCheckFailedV7missingSSvs
+// type metadata accessor for Distributed.EntitlementCheckFailed
+Added: _$s11Distributed22EntitlementCheckFailedVMa
+// nominal type descriptor for Distributed.EntitlementCheckFailed
+Added: _$s11Distributed22EntitlementCheckFailedVMn
+// type metadata for Distributed.EntitlementCheckFailed
+Added: _$s11Distributed22EntitlementCheckFailedVN
+// protocol conformance descriptor for Distributed.EntitlementCheckFailed : Swift.CustomStringConvertible in Distributed
+Added: _$s11Distributed22EntitlementCheckFailedVs23CustomStringConvertibleAAMc
+// protocol conformance descriptor for Distributed.EntitlementCheckFailed : Swift.Error in Distributed
+Added: _$s11Distributed22EntitlementCheckFailedVs5ErrorAAMc
+// protocol conformance descriptor for Distributed.EntitlementCheckFailed : Swift.Decodable in Distributed
+Added: _$s11Distributed22EntitlementCheckFailedVSeAAMc
+// protocol conformance descriptor for Distributed.EntitlementCheckFailed : Swift.Encodable in Distributed
+Added: _$s11Distributed22EntitlementCheckFailedVSEAAMc

@@ -916,7 +916,7 @@ synthesizeCustomAttrForWitness(ValueDecl *witness, StringRef macroName,
 /// `distributed func openDoor()` witness. No signature matching yet;
 /// distributed funcs with overloads across protocol/actor pairs would
 /// need more care (follow-up if it becomes a real case).
-static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
+void swift::inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
   // Only concrete conformers (protocols themselves have nothing to
   // inherit onto).
   if (isa<ProtocolDecl>(nominal))
@@ -961,7 +961,6 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
 
   auto cloneOnto = [&](ValueDecl *witness, CustomAttr *reqAttr,
                        StringRef macroName) {
-    CustomAttr *added = nullptr;
     // Same-module clone: the requirement's `TypeExpr` and `ArgumentList`
     // already carry valid source locations. Reuse them verbatim; the peer
     // macro plugin will walk the same `AttributeSyntax` the user wrote on
@@ -974,47 +973,23 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
                                         reqAttr->getArgs(),
                                         /*implicit=*/true);
       witness->getAttrs().add(cloned);
-      added = cloned;
-    } else {
-      // Cross-module clone: `reqAttr` was deserialized from another module
-      // and has no valid `AtLoc`. Synthesize a real attribute source buffer
-      // at the witness's location and parse it, so the attached-macro
-      // plugin can walk a real `AttributeSyntax` (its
-      // `swift_Macros_expandAttachedMacro` entrypoint requires that).
-      //
-      // The arg-list source text is preserved on the requirement's
-      // `CustomAttr` by `@preservedInInterface` serialization; we
-      // deliberately do NOT clear `preservedArgText` in
-      // `materializePreservedCustomAttrArgs` so it's available here.
-      StringRef argText = reqAttr->getPreservedArgText();
-      if (auto *synthesized =
-              synthesizeCustomAttrForWitness(witness, macroName, argText)) {
-        witness->getAttrs().add(synthesized);
-        added = synthesized;
-      }
+      return;
     }
 
-    if (!added) return;
-
-    // `ExpandPeerMacroRequest` for this witness may have already run and been
-    // cached (typically triggered by earlier per-member requests) BEFORE we
-    // added the inherited attribute above. The cached result would not
-    // include the newly-added attr, so its section record would never be
-    // emitted. Trigger peer expansion directly on the freshly added attr to
-    // materialize its section record. Multi-record composition (both the
-    // witness-local and inherited attributes firing) is done AllOf-style by
-    // `DistributedValidation.lookup` at runtime.
+    // Cross-module clone: `reqAttr` was deserialized from another module
+    // and has no valid `AtLoc`. Synthesize a real attribute source buffer
+    // at the witness's location and parse it, so the attached-macro
+    // plugin can walk a real `AttributeSyntax` (its
+    // `swift_Macros_expandAttachedMacro` entrypoint requires that).
     //
-    // Known limitation: if the witness already carries a same-KIND attribute
-    // (e.g. local `@Entitlement(A)` + inherited `@Entitlement(B)`), only one
-    // of the two records will actually be produced because the plugin's
-    // expansion machinery caches per-(macro, decl) and the second call is a
-    // no-op. Different-kind stacking works (e.g. local `@Entitlement` +
-    // inherited `@ValidateRemoteCall`). Follow-up P0-11 tracks the
-    // same-kind case; it needs a change deeper in the macro-expansion
-    // request infrastructure.
-    if (auto *macro = added->getResolvedMacro()) {
-      (void)swift::expandPeers(added, macro, witness);
+    // The arg-list source text is preserved on the requirement's
+    // `CustomAttr` by `@preservedInInterface` serialization; we
+    // deliberately do NOT clear `preservedArgText` in
+    // `materializePreservedCustomAttrArgs` so it's available here.
+    StringRef argText = reqAttr->getPreservedArgText();
+    if (auto *synthesized =
+            synthesizeCustomAttrForWitness(witness, macroName, argText)) {
+      witness->getAttrs().add(synthesized);
     }
   };
 
@@ -1063,7 +1038,29 @@ static void inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
       // Find the corresponding witness on the nominal by full DeclName.
       // A `distributed` requirement can only be satisfied by a `distributed`
       // witness (enforced elsewhere), so we further filter by that.
-      for (auto *candidate : nominal->lookupDirect(req->getName())) {
+      //
+      // `ExcludeMacroExpansions` is CRITICAL here. Without it, `lookupDirect`
+      // fires `populateLookupTableEntryFromMacroExpansions` which calls
+      // `visitAuxiliaryDecls` which evaluates and CACHES
+      // `ExpandPeerMacroRequest{witness}` under the pre-clone attribute
+      // list. Our subsequent `cloneOnto` call adds the inherited attribute
+      // but the request cache is already stale - downstream consumers read
+      // the cached array and never see the inherited attribute's section
+      // record. Skipping macro-expanded candidates here defers peer
+      // expansion until after all inherited attrs are attached; the first
+      // legitimate `ExpandPeerMacroRequest` then sees the merged list.
+      //
+      // Trade-off: this lookup will not find a distributed-func witness
+      // that is itself synthesized by a peer macro. Distributed funcs are
+      // essentially always user-written today, so this is acceptable; if
+      // it becomes a real case, fall back to a full lookup when the
+      // excluded lookup returns empty.
+      using LookupFlags = NominalTypeDecl::LookupDirectFlags;
+      auto lookupFlags = OptionSet<LookupFlags>()
+          | LookupFlags::ExcludeMacroExpansions;
+      for (auto *candidate : nominal->lookupDirect(req->getName(),
+                                                    SourceLoc(),
+                                                    lookupFlags)) {
         auto *witness = candidate;
         if (!witness->isDistributed()) continue;
 
@@ -1109,11 +1106,30 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
   (void)nominal->getDefaultInitializer();
 
   // ==== Clone allow-listed validation attributes from protocol requirements
-  // ==== onto their witnesses BEFORE the member walk triggers peer macro
-  // ==== expansion. This is what makes @Entitlement / @ValidateRemoteCall on
-  // ==== a protocol requirement produce a section record on the concrete
-  // ==== witness — the macro reads the witness's attributes and expands as
-  // ==== if the user had written the annotation there directly.
+  // ==== onto their witnesses. This is what makes @Entitlement /
+  // ==== @ValidateRemoteCall on a protocol requirement produce a section
+  // ==== record on the concrete witness - the macro reads the witness's
+  // ==== attributes and expands as if the user had written the annotation
+  // ==== there directly.
+  //
+  // NOTE: this is a belt-and-suspenders call. The actual guarantee that a
+  // witness's peer expansion sees the merged (local + inherited) attribute
+  // list comes from a hook at the top of `ExpandPeerMacroRequest::evaluate`
+  // (see `lib/Sema/TypeCheckMacros.cpp`), which calls
+  // `inheritDistributedValidationAttrs` before iterating the witness's
+  // attributes. That hook is what makes SAME-KIND stacking work (local
+  // `@Entitlement(A)` + inherited `@Entitlement(B)` on the same witness):
+  // when the witness already carries a local same-kind attribute, its peer
+  // request fires early (during the `getDefaultInitializer()` `init` lookup)
+  // and would otherwise cache a stale single-record result. The hook clones
+  // the inherited attribute in-line so the very first evaluation emits both
+  // records.
+  //
+  // This explicit call is kept because it runs AFTER `getDefaultInitializer`
+  // so it does not force early expansion of a cross-module synthesized
+  // attribute (which would trip an availability check before the actor's
+  // availability scope is fully built); `inheritDistributedValidationAttrs`
+  // is idempotent (dedupes via `witnessAlreadyHas`).
   inheritDistributedValidationAttrs(nominal);
 
   for (auto member : nominal->getMembers()) {
