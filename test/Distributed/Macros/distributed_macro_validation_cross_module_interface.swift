@@ -12,7 +12,7 @@
 // requirement's `@Entitlement("...")` `CustomAttr` from the interface. The
 // witness on the conforming actor inherits it via source-buffer synthesis
 // in `inheritDistributedValidationAttrs` and the peer macro emits the
-// `__daval_*_record` on the witness.
+// validation accessor on the witness.
 //
 // RUN: %empty-directory(%t)
 // RUN: %empty-directory(%t/ModuleCache)
@@ -41,18 +41,15 @@ distributed actor MyHome: HomeAdmin {
   // (imported, deserialized-from-interface-rebuild) protocol requirement.
   distributed func openDoor() -> Bool { true }
   // CHECK: #if objectFormat(MachO)
-  // CHECK-NEXT: @section("__DATA_CONST,__swift5_daval")
+  // CHECK-NEXT: @section("__DATA_CONST,__swift5_davala")
   // CHECK-NEXT: #elseif objectFormat(ELF) || objectFormat(Wasm)
-  // CHECK-NEXT: @section("swift5_daval")
+  // CHECK-NEXT: @section("swift5_davala")
   // CHECK-NEXT: #elseif objectFormat(COFF)
-  // CHECK-NEXT: @section(".sw5daval$B")
+  // CHECK-NEXT: @section(".sw5davala$B")
   // CHECK-NEXT: #endif
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-  // CHECK-NEXT: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC8openDoor11EntitlementfMp_23__daval_openDoor_recordfMu_: Distributed._DistributedValidationRecord = (
-  // CHECK-NEXT: 0x6476616c,
-  // CHECK-NEXT: 0,
-  // CHECK-NEXT: { outValue, type, hint, reserved in
+  // CHECK-NEXT: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC8openDoor11EntitlementfMp_25__daval_openDoor_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
   // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.cross-module"))
   // CHECK-NEXT: })
@@ -63,7 +60,7 @@ distributed actor MyHome: HomeAdmin {
   // interface rebuild is the qualified form (unlike the direct
   // `.swiftmodule` path, which keeps the user's original source text).
   distributed func openDoorAnyOf() -> Bool { true }
-  // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC13openDoorAnyOf11EntitlementfMp_28__daval_openDoorAnyOf_recordfMu_: Distributed._DistributedValidationRecord = (
+  // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC13openDoorAnyOf11EntitlementfMp_30__daval_openDoorAnyOf_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf([Distributed::EntitlementPolicy.entitlement("com.example.cross-module"), Distributed::EntitlementPolicy.entitlement("com.example.admin")])) as Distributed.EntitlementPolicy)
 
   // Short-form composite policy inherited across the interface-rebuild
@@ -76,7 +73,7 @@ distributed actor MyHome: HomeAdmin {
   // EntitlementPolicy` at witness synthesis. Both binary and interface
   // paths produce the same runtime policy.
   distributed func openDoorShortAnyOf() -> Bool { true }
-  // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC18openDoorShortAnyOf11EntitlementfMp_33__daval_openDoorShortAnyOf_recordfMu_: Distributed._DistributedValidationRecord = (
+  // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC18openDoorShortAnyOf11EntitlementfMp_35__daval_openDoorShortAnyOf_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf([Distributed::EntitlementPolicy.entitlement("com.example.short-form-a"), Distributed::EntitlementPolicy.entitlement("com.example.short-form-b")])) as Distributed.EntitlementPolicy)
 
   // `@ValidateRemoteCall(.requireCustomEntitlement)` inherited across the
@@ -86,6 +83,6 @@ distributed actor MyHome: HomeAdmin {
   // interface printer normalizes the implicit-member syntax to
   // `Distributed::RemoteCallValidator.requireCustomEntitlement`.
   distributed func openDoorCustom() -> Bool { true }
-  // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC14openDoorCustom18ValidateRemoteCallfMp_29__daval_openDoorCustom_recordfMu_: Distributed._DistributedValidationRecord = (
+  // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC14openDoorCustom18ValidateRemoteCallfMp_31__daval_openDoorCustom_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator(Distributed::RemoteCallValidator.requireCustomEntitlement)
 }

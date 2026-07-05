@@ -145,10 +145,8 @@ Added: _$s11Distributed0A10ValidationO19currentEntitlementsShySSGvpZMV
 Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvgZ
 // property descriptor for static Distributed.DistributedValidation.$currentEntitlements : Swift.TaskLocal<Swift.Set<Swift.String>>
 Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvpZMV
-// static Distributed.DistributedValidation.lookup(actorTypeID: Swift.UInt64, methodID: Swift.UInt64) -> Distributed.RemoteCallValidator?
-Added: _$s11Distributed0A10ValidationO6lookup11actorTypeID06methodF0AA19RemoteCallValidatorVSgs6UInt64V_AKtFZ
-// static Distributed.DistributedValidation.fnv1a64(of: Swift.String) -> Swift.UInt64
-Added: _$s11Distributed0A10ValidationO7fnv1a642ofs6UInt64VSS_tFZ
+// static Distributed.DistributedValidation.lookup(targetIdentifier: Swift.String) -> Distributed.RemoteCallValidator?
+Added: _$s11Distributed0A10ValidationO6lookup16targetIdentifierAA19RemoteCallValidatorVSgSS_tFZ
 // static Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy) throws -> ()
 Added: _$s11Distributed0A10ValidationO8evaluateyyAA17EntitlementPolicyOKFZ
 // static Distributed.DistributedValidation.preflight<A where A: Distributed.DistributedActor>(on: A, target: Distributed.RemoteCallTarget) throws -> ()

@@ -655,15 +655,26 @@ private:
   std::string FunctionName;
 
   bool IsDistributed: 1;
+  bool HasValidation: 1;
 
   CanSILFunctionType Type;
   llvm::Constant *Address;
 
+  /// For a distributed function carrying `@Entitlement` /
+  /// `@ValidateRemoteCall`: the address of each macro-emitted validation
+  /// accessor global. IRGen emits one `swift5_daval` record per accessor,
+  /// each sharing this record's mangled-name string.
+  llvm::SmallVector<llvm::Constant *, 1> ValidationAccessors;
+
   explicit AccessibleFunction(std::string recordName, std::string funcName,
                               bool isDistributed, CanSILFunctionType type,
-                              llvm::Constant *addr)
+                              llvm::Constant *addr,
+                              llvm::ArrayRef<llvm::Constant *> validationAccessors)
       : RecordName(recordName), FunctionName(funcName),
-        IsDistributed(isDistributed), Type(type), Address(addr) {}
+        IsDistributed(isDistributed),
+        HasValidation(!validationAccessors.empty()), Type(type), Address(addr),
+        ValidationAccessors(validationAccessors.begin(),
+                            validationAccessors.end()) {}
 
 public:
   StringRef getRecordName() const { return RecordName; }
@@ -671,15 +682,20 @@ public:
 
   bool isDistributed() const { return IsDistributed; }
 
+  bool hasValidation() const { return HasValidation; }
+  llvm::ArrayRef<llvm::Constant *> getValidationAccessors() const {
+    return ValidationAccessors;
+  }
+
   CanSILFunctionType getType() const { return Type; }
 
   llvm::Constant *getAddress() const { return Address; }
 
   static AccessibleFunction forSILFunction(IRGenModule &IGM, SILFunction *func);
-  static AccessibleFunction forDistributed(std::string recordName,
-                                           std::string accessorName,
-                                           CanSILFunctionType type,
-                                           llvm::Constant *address);
+  static AccessibleFunction
+  forDistributed(std::string recordName, std::string accessorName,
+                 CanSILFunctionType type, llvm::Constant *address,
+                 llvm::ArrayRef<llvm::Constant *> validationAccessors);
 };
 
 enum class CStringSectionType {

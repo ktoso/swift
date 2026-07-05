@@ -11,20 +11,22 @@
 //
 // Implements the @Entitlement and @ValidateRemoteCall attached peer macros.
 //
-// Each attached macro emits two peer declarations next to the target
-// distributed func/var:
+// Each attached macro emits ONE peer declaration next to the target
+// distributed func/var: an accessor function that, on demand, materializes a
+// `RemoteCallValidator` (wrapping an entitlement policy or a custom validator)
+// into the caller-provided out-parameter. Strings and other
+// non-const-expressible Swift values live inside this function body; SE-0492's
+// constant-expression rule does not apply to normal function bodies.
 //
-//   1. An accessor function that, on demand, materializes a
-//      `EntitlementPolicy` (or a validator closure) into the caller-provided
-//      out-parameter. Strings and other non-const-expressible Swift values
-//      live inside this function body; SE-0492's constant-expression rule
-//      does not apply to normal function bodies.
-//
-//   2. A section-placed record tuple in `swift5_daval` (Mach-O:
-//      `__DATA_CONST,__swift5_daval`; ELF/Wasm: `swift5_daval`; COFF:
-//      `.sw5daval$B`), marked `@used`, whose fields (kind FourCC, hash
-//      literals, direct func-ref to the accessor) are all permitted SE-0492
-//      constant expressions.
+// The `swift5_daval` section record that identifies the target and points at
+// this accessor is NOT emitted here - the compiler (IRGen) emits it, in
+// `emitDistributedTargetAccessor` (lib/IRGen/GenDistributed.cpp), next to the
+// target's accessible-function record. IRGen emits the record rather than the
+// macro because the record's identity is the target's full mangled
+// distributed-thunk name (collision-free, and stored once by sharing the exact
+// string the accessible-function record already carries), and a macro can
+// express neither a pointer in a `@section` constant (SE-0492) nor the mangled
+// name.
 //
 // See ~/code/swift-testing/Documentation/ABI/TestContent.md for the ABI
 // pattern this file follows.
@@ -71,7 +73,6 @@ public struct EntitlementMacro: PeerMacro {
         })
       """
     return emitValidationPeers(
-      enclosingTypeName: enclosingTypeName(from: context),
       targetName: targetName,
       validatorExpression: validatorExpression,
       in: context)
@@ -120,7 +121,6 @@ public struct ValidateRemoteCallMacro: PeerMacro {
     let validatorExpression =
       "Distributed.RemoteCallValidator(\(argExpression))"
     return emitValidationPeers(
-      enclosingTypeName: enclosingTypeName(from: context),
       targetName: targetName,
       validatorExpression: validatorExpression,
       in: context)
@@ -130,77 +130,65 @@ public struct ValidateRemoteCallMacro: PeerMacro {
 // ==== -----------------------------------------------------------------------
 // MARK: Peer emission
 
-/// Emits the section-placed record for a single @Entitlement /
-/// @ValidateRemoteCall attachment. The record's `accessor` field is a
-/// **literal closure** (SE-0492 permits closures with no captures as
-/// constant expressions; a coerced-to-`@convention(c)` static-method
-/// reference does NOT coerce, hence a closure).
+/// Emits the validation accessor for a single @Entitlement /
+/// @ValidateRemoteCall attachment. The accessor is a **literal closure**
+/// coerced to `_DistributedValidationAccessor` (SE-0492 permits captureless
+/// closures as constant expressions; a coerced-to-`@convention(c)`
+/// static-method reference does NOT coerce, hence a closure).
+///
+/// The identifying `swift5_daval` record is emitted by IRGen, not here (see
+/// this file's header). IRGen relative-points that record at the accessor
+/// emitted by this function.
 ///
 /// - Parameter validatorExpression: a Swift expression (as source text) that
 ///   constructs the `RemoteCallValidator` value the accessor should return.
 ///   Strings, closures, and arbitrary Swift expressions are all fine here
 ///   because the accessor body is a normal Swift function context.
 private func emitValidationPeers(
-  enclosingTypeName: String,
   targetName: String,
   validatorExpression: String,
   in context: some MacroExpansionContext
 ) -> [DeclSyntax] {
-  // A single section-placed static record per attachment. Multiple attributes
-  // on the same distributed member (`@Entitlement("a"); @Entitlement("b")`,
-  // or a witness-local attr + a protocol-inherited clone of the same kind)
-  // each invoke this function, so the record name must be unique per
-  // expansion to avoid an "invalid redeclaration of '__daval_..._record'"
-  // error. `makeUniqueName` seeds the shared prefix into a compiler-issued
-  // fresh identifier. The runtime finds matching records by
-  // `(actorTypeID, methodID)` hash on the record fields, not by symbol name,
-  // so the name uniqueness is invisible to lookup.
-  let recordName = context.makeUniqueName(
-    "__daval_\(sanitizeIdentifier(targetName))_record")
+  // The accessor name is compiler-issued via `makeUniqueName`. Multiple
+  // attributes on the same distributed member (`@Entitlement("a");
+  // @Entitlement("b")`, or a witness-local attr + a protocol-inherited clone
+  // of the same kind) each invoke this function, so the name must be unique
+  // per expansion to avoid an "invalid redeclaration" error. IRGen finds the
+  // accessors by walking the target's peer declarations (not by name), and
+  // emits one record per accessor; the runtime composes them AllOf.
+  let accessorName = context.makeUniqueName(
+    "__daval_\(sanitizeIdentifier(targetName))_accessor")
 
-  // FNV-1a-64 of the enclosing type's simple name and the target's simple
-  // name. These are the on-disk ABI identifiers; the runtime hashes
-  // `_mangledTypeName(Act.self)` and `RemoteCallTarget.identifier` the same
-  // way at receive time. Simple names are a v1 approximation; a
-  // follow-up will switch to full mangled names for uniqueness under
-  // overloading and namespacing.
-  let actorTypeIDLiteral = hexLiteral(fnv1a64(of: enclosingTypeName))
-  let methodIDLiteral = hexLiteral(fnv1a64(of: targetName))
-
-  let sectionAttrs: DeclSyntax =
+  // The accessor lives in its own section so `@section` guarantees SE-0492
+  // static initialization: the captureless closure is lowered to a constant
+  // C function pointer placed in the section at load time, which the record's
+  // relative pointer resolves to. This section is never stride-walked - the
+  // runtime reaches each accessor only through the relative pointer in its
+  // `swift5_daval` record - so its layout is unconstrained.
+  let accessorSectionAttrs: DeclSyntax =
     """
     #if objectFormat(MachO)
-    @section("__DATA_CONST,__swift5_daval")
+    @section("__DATA_CONST,__swift5_davala")
     #elseif objectFormat(ELF) || objectFormat(Wasm)
-    @section("swift5_daval")
+    @section("swift5_davala")
     #elseif objectFormat(COFF)
-    @section(".sw5daval$B")
+    @section(".sw5davala$B")
     #endif
     @used
     """
 
-  // Record fields must be permitted SE-0492 constant expressions:
-  //   - integer literals (kind, reserved1, actorTypeID, methodID)
-  //   - a literal closure with no captures (the accessor)
-  let record: DeclSyntax =
+  let accessor: DeclSyntax =
     """
-    \(sectionAttrs)
+    \(accessorSectionAttrs)
     @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-    private static let \(recordName): Distributed._DistributedValidationRecord = (
-      0x6476616c,
-      0,
-      { outValue, type, hint, reserved in
+    private static let \(accessorName): Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
         let validator: Distributed.RemoteCallValidator = \(raw: validatorExpression)
         outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator.self)
           .initialize(to: validator)
         return true
-      },
-      \(raw: actorTypeIDLiteral),
-      \(raw: methodIDLiteral)
-    )
+      }
     """
-
-  return [record]
+  return [accessor]
 }
 
 /// Reduces a Swift identifier to characters safe for compositing into another
@@ -429,34 +417,15 @@ private func closureOnProtocolRequirement(
 }
 
 // ==== -----------------------------------------------------------------------
-// MARK: Identity hashing
-
-/// Extracts the simple name of the enclosing nominal type from the macro's
-/// lexical context. Since `@Entitlement`/`@ValidateRemoteCall` may only be
-/// applied to members of a distributed actor, the immediate lexical parent
-/// is always a nominal type. Returns an empty string if no enclosing type is
-/// found (should not happen in valid code; used as a defensive default).
-private func enclosingTypeName(from context: some MacroExpansionContext) -> String {
-  for parent in context.lexicalContext {
-    if let d = parent.as(ActorDeclSyntax.self) { return d.name.text }
-    if let d = parent.as(ClassDeclSyntax.self) { return d.name.text }
-    if let d = parent.as(StructDeclSyntax.self) { return d.name.text }
-    if let d = parent.as(EnumDeclSyntax.self) { return d.name.text }
-    if let d = parent.as(ProtocolDeclSyntax.self) { return d.name.text }
-    if let e = parent.as(ExtensionDeclSyntax.self) {
-      return e.extendedType.trimmedDescription
-    }
-  }
-  return ""
-}
+// MARK: Lexical-context helpers
 
 /// Returns true when the attached-macro's target is inside a protocol
 /// declaration (i.e. the attribute is on a protocol requirement, not on a
 /// concrete method of a distributed actor).
 ///
-/// Protocol requirements don't produce section records themselves — the
+/// Protocol requirements don't produce section records themselves - the
 /// compiler's conformance-checking clones allow-listed attributes onto the
-/// concrete witnesses, where peer expansion then emits the record.
+/// concrete witnesses, where peer expansion then emits the accessor.
 private func isProtocolRequirementContext(
   _ context: some MacroExpansionContext
 ) -> Bool {
@@ -472,42 +441,4 @@ private func isProtocolRequirementContext(
     if parent.is(ExtensionDeclSyntax.self) { return false }
   }
   return false
-}
-
-/// FNV-1a-64 of the UTF-8 bytes of a string. This is the ABI-committed hash
-/// function for `actorTypeID` and `methodID` in the `swift5_daval` section
-/// records. Small, deterministic, distinct implementations in the plugin
-/// (macro-expansion time) and the runtime must agree exactly, so keep this
-/// unchanged once the ABI ships.
-///
-/// PAIRED IMPLEMENTATION: must remain byte-identical to
-/// `DistributedValidation.fnv1a64(of:)` in
-/// `stdlib/public/Distributed/DistributedValidation.swift`.
-/// Drift is caught by
-/// `test/Distributed/Runtime/distributed_validation_hash_stability.swift`
-/// (golden-vector runtime test) and by the hex literals in
-/// `test/Distributed/Macros/distributed_macro_validation_expansion.swift`
-/// (macro-expansion CHECK lines).
-private func fnv1a64(of s: String) -> UInt64 {
-  var hash: UInt64 = 0xcbf29ce484222325 // FNV-1a-64 offset basis
-  for byte in s.utf8 {
-    hash ^= UInt64(byte)
-    hash &*= 0x100000001b3         // FNV-1a-64 prime, wrapping multiply
-  }
-  return hash
-}
-
-/// Formats a UInt64 as a fixed-width hex integer literal, e.g.
-/// `0xdead_beef_cafe_babe`. The underscores make the emitted source
-/// human-readable in `-dump-macro-expansions` output; Swift's integer
-/// literal parser ignores them.
-private func hexLiteral(_ value: UInt64) -> String {
-  let digits: [Character] = Array("0123456789abcdef")
-  var hex = ""
-  for i in stride(from: 60, through: 0, by: -4) {
-    let nibble = Int((value >> UInt64(i)) & 0xf)
-    hex.append(digits[nibble])
-    if i > 0 && i % 16 == 0 { hex.append("_") }
-  }
-  return "0x\(hex)"
 }

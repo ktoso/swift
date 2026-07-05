@@ -12,22 +12,29 @@
 //
 // Runtime-side machinery for @Entitlement / @ValidateRemoteCall:
 //
-//   - The ABI of records placed in the `swift5_daval` section by the
-//     macros: `_DistributedValidationAccessor`, `_DistributedValidationRecord`,
+//   - The ABI of records placed in the `swift5_daval` section by the compiler
+//     (IRGen): `_DistributedValidationAccessor`, `_DistributedValidationRecord`,
 //     `_DistributedValidationKind` FourCC. These record-shape typealiases
 //     stay underscored because they name the wire ABI of the section, not
 //     user-facing API.
 //   - `RemoteCallValidator`: the receive-side value the accessor produces,
 //     wrapping the closure the runtime ultimately invokes.
-//   - `DistributedValidation`: FNV-1a-64 hash + demangling helper + the
-//     per-platform section walker + the `executeDistributedTarget` preflight
-//     hook. Generic - parameterized only in `RemoteCallValidator`; no
-//     entitlement-specific state or logic lives here.
+//   - `DistributedValidation`: the per-platform section walker + the
+//     `executeDistributedTarget` preflight hook. Generic - parameterized only
+//     in `RemoteCallValidator`; no entitlement-specific state or logic lives
+//     here.
 //
-// The record layout mirrors swift-testing's TestContentRecord verbatim so
-// offline tooling can share parsing code across sections; only the FourCC
-// in the first field differs. See:
-//   ~/code/swift-testing/Documentation/ABI/TestContent.md
+// A record identifies its target by the target's full mangled distributed-
+// thunk name, which it relative-points at. That string is the SAME one the
+// target's accessible-function record carries (emitted once by IRGen), and it
+// is exactly the `RemoteCallTarget.identifier` the receive side already holds.
+// So lookup is a byte-for-byte name match - collision-free (full mangled name,
+// not a simple-name hash) with no string stored twice.
+//
+// The record layout follows the same relative-pointer shape as the
+// accessible-function record; only the FourCC in the first field and the
+// section differ. See ~/code/swift-testing/Documentation/ABI/TestContent.md
+// for the related offline-tooling record pattern.
 //
 // Entitlement-specific pieces (`EntitlementPolicy`, `EntitlementCheckFailed`,
 // the receive-side task-local entitlement set, the entitlement evaluator)
@@ -52,23 +59,31 @@ public typealias _DistributedValidationAccessor = @convention(c) (
   _ reserved: UInt
 ) -> CBool
 
-/// One record placed in the `swift5_daval` section by an @Entitlement or
-/// @ValidateRemoteCall macro expansion. Field order matches swift-testing's
-/// `TestContentRecord` verbatim: `reserved1: UInt32` sits between `kind` and
-/// `accessor` to preserve natural alignment of the following pointer-sized
-/// fields on 64-bit targets (no compiler-inserted padding, 32-byte stride).
+/// One record placed in the `swift5_daval` section by the compiler (IRGen),
+/// next to the target's accessible-function record. The compiler emits the
+/// record - not the macro - because two of its fields are relative pointers,
+/// which a `@section` constant cannot express, and because the identity is the
+/// target's full mangled distributed-thunk name, which the macro cannot see.
 ///
-/// The `accessor` field is a non-optional C function pointer. A record whose
-/// `kind` field is `0` (`_DistributedValidationKind` reserved value) is
-/// ignored by the runtime; there is therefore no need to make `accessor`
-/// itself nullable, and doing so would preclude SE-0492 static
-/// initialization (optionals are not permitted constant expressions).
+/// Fields (all 4 bytes; total stride 32-bit-uniform 16 bytes):
+///   - `kind`: `_DistributedValidationKind` FourCC. A record whose kind is not
+///     `.validation` is ignored.
+///   - `flags`: reserved (currently 0).
+///   - `relativeName`: a `RelativeDirectPointer<CChar>` to the target's mangled
+///     distributed-thunk name - the SAME string the accessible-function record
+///     carries, and equal to `RemoteCallTarget.identifier`.
+///   - `relativeAccessor`: a `RelativeDirectPointer` to the macro-emitted
+///     `_DistributedValidationAccessor` global (in `swift5_davala`). Loading
+///     through it yields the C function pointer to invoke.
+///
+/// The two relative pointers are signed byte offsets from the address of their
+/// own field (see `_relativePointer`). They are decoded manually because Swift
+/// cannot express `RelativeDirectPointer` as a stored tuple element.
 public typealias _DistributedValidationRecord = (
   kind: UInt32,
-  reserved1: UInt32,
-  accessor: _DistributedValidationAccessor,
-  context: UInt,
-  reserved2: UInt
+  flags: UInt32,
+  relativeName: Int32,
+  relativeAccessor: Int32
 )
 
 /// FourCC discriminator identifying the interpretation of a record found in
@@ -148,67 +163,29 @@ public struct RemoteCallValidator: Sendable {
 // MARK: Runtime namespace
 
 /// Namespace for runtime-side machinery that walks the `swift5_daval`
-/// section, hashes identities, and materializes validation policies for a
-/// given `(actorTypeID, methodID)` pair.
+/// section and materializes validation policies for a given distributed
+/// target, identified by its mangled distributed-thunk name
+/// (`RemoteCallTarget.identifier`).
 ///
 /// Policy-specific state and behavior - the entitlement task-local, the
 /// policy evaluator - live as extensions in
 /// `DistributedValidation+Entitlement.swift`.
 ///
-/// The FNV-1a-64 hash function and the `swift5_daval` record layout are
-/// **ABI-committed**: identical implementations run at macro-expansion time
-/// (in the SwiftMacros plugin) and here at receive time. Changing either
-/// without a coordinated update breaks the lookup.
+/// The `swift5_daval` record layout is **ABI-committed**: the compiler emits
+/// records here and this walker reads them; the two must agree.
 @available(SwiftStdlib 6.5, *)
-public enum DistributedValidation {
+public enum DistributedValidation {}
 
-  /// FNV-1a-64 of the UTF-8 bytes of a string. Must exactly match the
-  /// `fnv1a64` helper in
-  /// `lib/Macros/Sources/SwiftMacros/DistributedValidationMacros.swift`.
-  ///
-  /// PAIRED IMPLEMENTATION: byte-identical to the plugin-side helper.
-  /// Drift is caught by
-  /// `test/Distributed/Runtime/distributed_validation_hash_stability.swift`
-  /// (golden vectors run against this runtime function) and by the hex
-  /// literals in
-  /// `test/Distributed/Macros/distributed_macro_validation_expansion.swift`
-  /// (macro-expansion CHECK lines exercise the plugin side).
-  @inlinable
-  public static func fnv1a64(of string: String) -> UInt64 {
-    var hash: UInt64 = 0xcbf29ce484222325 // FNV-1a-64 offset basis
-    for byte in string.utf8 {
-      hash ^= UInt64(byte)
-      hash &*= 0x100000001b3          // FNV-1a-64 prime, wrapping multiply
-    }
-    return hash
-  }
-}
-
-/// Extract a distributed target's simple func name from its mangled
-/// identifier. E.g. `"$s4main7GreeterC5greetSSyF"` -> `"greet"`. Uses the
-/// existing stdlib demangler `_getFunctionFullNameFromMangledName`, which
-/// returns something like `"main.Greeter.greet()"`; we take the identifier
-/// between the last `.` and the first `(`.
-///
-/// Returns `nil` if the identifier can't be demangled or doesn't look like
-/// a function name.
+/// Decode a `RelativeDirectPointer` stored at `field`: a signed 32-bit byte
+/// offset from the field's own address. `swift5_daval` records use these (as
+/// the accessible-function records do) so they need no load-time relocations.
 @available(SwiftStdlib 6.5, *)
-internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
-  guard let full = _getFunctionFullNameFromMangledName(mangledName: mangled)
-  else { return nil }
-
-  // Strip an argument list `(...)`, if present.
-  let bareName: Substring
-  if let paren = full.firstIndex(of: "(") {
-    bareName = full[..<paren]
-  } else {
-    bareName = Substring(full)
-  }
-  // Take the identifier after the last `.` (module + type qualifier).
-  if let dot = bareName.lastIndex(of: ".") {
-    return String(bareName[bareName.index(after: dot)...])
-  }
-  return String(bareName)
+@inline(__always)
+internal func _relativePointer(
+  at field: UnsafeRawPointer
+) -> UnsafeRawPointer {
+  let offset = unsafe Int(field.load(as: Int32.self))
+  return unsafe field + offset
 }
 
 // ==== -----------------------------------------------------------------------
@@ -217,39 +194,35 @@ internal func _extractSimpleFuncName(fromMangled mangled: String) -> String? {
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
-  /// Look up the composed ``RemoteCallValidator`` attached to the given
-  /// target on the given actor type. Returns `nil` if no matching record is
-  /// registered in any loaded image (i.e. the target has no
+  /// Look up the composed ``RemoteCallValidator`` for the distributed target
+  /// identified by `targetIdentifier` (its mangled distributed-thunk name,
+  /// i.e. `RemoteCallTarget.identifier`). Returns `nil` if no matching record
+  /// is registered in any loaded image (i.e. the target has no
   /// `@Entitlement`/`@ValidateRemoteCall`).
   ///
-  /// Multiple records for the same `(actorTypeID, methodID)` arise from
-  /// stacked attributes on the same distributed member, and from the
-  /// compiler's cross-module inheritance of a protocol requirement's
-  /// attribute onto the conforming actor's witness (the witness ends up
-  /// with both its own attribute and the inherited one). All matching
-  /// records compose as **AllOf**: every validator must accept before the
-  /// call runs.
+  /// Multiple records for the same target arise from stacked attributes on the
+  /// same distributed member, and from the compiler's cross-module inheritance
+  /// of a protocol requirement's attribute onto the conforming actor's witness
+  /// (the witness ends up with both its own attribute and the inherited one).
+  /// All matching records compose as **AllOf**: every validator must accept
+  /// before the call runs.
   ///
   /// The returned validator's `check()` invokes each collected validator in
   /// section-scan order; the first thrown error propagates and short-
-  /// circuits the rest. Two images contributing records for the same key
+  /// circuits the rest. Two images contributing records for the same target
   /// have unspecified inter-image order, so the specific record whose error
   /// surfaces first is not guaranteed to be stable across platforms - but
   /// the AllOf outcome (accept iff every check accepts) is.
   public static func lookup(
-    actorTypeID: UInt64,
-    methodID: UInt64
+    targetIdentifier: String
   ) -> RemoteCallValidator? {
     var collected: [RemoteCallValidator] = []
 #if canImport(Darwin)
-    _collectMachO(actorTypeID: actorTypeID, methodID: methodID,
-                  into: &collected)
+    _collectMachO(targetIdentifier: targetIdentifier, into: &collected)
 #elseif os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32)
-    _collectELF(actorTypeID: actorTypeID, methodID: methodID,
-                into: &collected)
+    _collectELF(targetIdentifier: targetIdentifier, into: &collected)
 #elseif os(Windows)
-    _collectCOFF(actorTypeID: actorTypeID, methodID: methodID,
-                 into: &collected)
+    _collectCOFF(targetIdentifier: targetIdentifier, into: &collected)
 #else
     // Platform with no known section-walking strategy. Leaving `collected`
     // empty means the Distributed runtime treats the target as un-validated:
@@ -269,21 +242,13 @@ extension DistributedValidation {
   }
 
   /// Preflight hook called from `DistributedActorSystem.executeDistributedTarget`
-  /// before argument decoding. Extracts the simple func name from the
-  /// mangled `target.identifier`, hashes `(actor type name, func name)` into
-  /// `(actorTypeID, methodID)`, looks up the validator in the daval section,
-  /// and invokes `check()`. No-op if no validation record is registered
-  /// for the target.
+  /// before argument decoding. Looks up the composed validator for
+  /// `target.identifier` in the `swift5_daval` section and invokes `check()`.
+  /// No-op if no validation record is registered for the target.
   public static func preflight<Act: DistributedActor>(
     on actor: Act, target: RemoteCallTarget
   ) throws {
-    guard let simpleName = _extractSimpleFuncName(fromMangled: target.identifier)
-    else { return }
-
-    let actorTypeID = fnv1a64(of: _typeName(Act.self, qualified: false))
-    let methodID = fnv1a64(of: simpleName)
-
-    guard let validator = lookup(actorTypeID: actorTypeID, methodID: methodID)
+    guard let validator = lookup(targetIdentifier: target.identifier)
     else { return }
 
     try validator.check()
@@ -332,16 +297,15 @@ private let _machHeader64FlagsOffset = 24
 extension DistributedValidation {
 
   /// Walk `__DATA_CONST,__swift5_daval` in every loaded image, appending a
-  /// `RemoteCallValidator` for every record whose `context` (actorTypeID)
-  /// and `reserved2` (methodID) fields match.
+  /// `RemoteCallValidator` for every record whose name matches
+  /// `targetIdentifier`.
   ///
   /// Not registered for `_dyld_register_func_for_add_image`: this is a
-  /// per-call linear scan for the first cut. A cache keyed by
-  /// `(actorTypeID, methodID)` and populated from an image-load callback is
-  /// a follow-up performance change.
+  /// per-call linear scan for the first cut. A cache keyed by the target
+  /// identifier and populated from an image-load callback is a follow-up
+  /// performance change.
   fileprivate static func _collectMachO(
-    actorTypeID: UInt64,
-    methodID: UInt64,
+    targetIdentifier: String,
     into collected: inout [RemoteCallValidator]
   ) {
     let imageCount = _dyld_image_count()
@@ -349,8 +313,7 @@ extension DistributedValidation {
       guard let mh = unsafe _dyld_get_image_header(imageIndex) else { continue }
       unsafe _collectInImage(
         mh: mh,
-        actorTypeID: actorTypeID,
-        methodID: methodID,
+        targetIdentifier: targetIdentifier,
         into: &collected)
     }
   }
@@ -359,8 +322,7 @@ extension DistributedValidation {
   /// append each materialized validator to `collected`.
   private static func _collectInImage(
     mh: UnsafeRawPointer,
-    actorTypeID: UInt64,
-    methodID: UInt64,
+    targetIdentifier: String,
     into collected: inout [RemoteCallValidator]
   ) {
     // Skip images in the shared cache. System libraries never register
@@ -377,36 +339,10 @@ extension DistributedValidation {
     }
     guard let start = unsafe start, size > 0 else { return }
 
-    let stride = unsafe MemoryLayout<_DistributedValidationRecord>.stride
-    let count = Int(size) / stride
-
-    for i in 0..<count {
-      let recordPtr = unsafe start.advanced(by: i * stride)
-        .assumingMemoryBound(to: _DistributedValidationRecord.self)
-      let record = unsafe recordPtr.pointee
-
-      guard unsafe record.kind == _DistributedValidationKind.validation.rawValue,
-            unsafe UInt64(record.context) == actorTypeID,
-            unsafe UInt64(record.reserved2) == methodID
-      else { continue }
-
-      // Materialize the validator via the accessor. The `type` argument is a
-      // pointer to `RemoteCallValidator.self` - the accessor uses it as a
-      // self-check to reject mismatches when multiple copies of the runtime
-      // are loaded (currently unused; kept for ABI symmetry).
-      var validator: RemoteCallValidator = RemoteCallValidator({ })
-      var validatorType: Any.Type = RemoteCallValidator.self
-      let ok = withUnsafeMutablePointer(to: &validator) { outPtr in
-        withUnsafePointer(to: &validatorType) { typePtr in
-          unsafe record.accessor(
-            UnsafeMutableRawPointer(outPtr),
-            UnsafeRawPointer(typePtr),
-            nil,
-            0)
-        }
-      }
-      if ok { collected.append(validator) }
-    }
+    unsafe _scanValidationSection(
+      start: start, byteCount: Int(size),
+      targetIdentifier: targetIdentifier,
+      into: &collected)
   }
 }
 
@@ -440,8 +376,7 @@ private var _swift5_daval_stop: UInt8
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
   fileprivate static func _collectELF(
-    actorTypeID: UInt64,
-    methodID: UInt64,
+    targetIdentifier: String,
     into collected: inout [RemoteCallValidator]
   ) {
     let start = unsafe withUnsafePointer(to: &_swift5_daval_start) {
@@ -453,7 +388,7 @@ extension DistributedValidation {
     let byteCount = unsafe stop - start
     unsafe _scanValidationSection(
       start: start, byteCount: byteCount,
-      actorTypeID: actorTypeID, methodID: methodID,
+      targetIdentifier: targetIdentifier,
       into: &collected)
   }
 }
@@ -482,8 +417,7 @@ private var _swift5_daval_stop_win: UInt8
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
   fileprivate static func _collectCOFF(
-    actorTypeID: UInt64,
-    methodID: UInt64,
+    targetIdentifier: String,
     into collected: inout [RemoteCallValidator]
   ) {
     let start = unsafe withUnsafePointer(to: &_swift5_daval_start_win) {
@@ -495,7 +429,7 @@ extension DistributedValidation {
     let byteCount = unsafe stop - start
     unsafe _scanValidationSection(
       start: start, byteCount: byteCount,
-      actorTypeID: actorTypeID, methodID: methodID,
+      targetIdentifier: targetIdentifier,
       into: &collected)
   }
 }
@@ -505,21 +439,22 @@ extension DistributedValidation {
 // ==== -----------------------------------------------------------------------
 // MARK: Shared section-scanning helper
 
-#if os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32) || os(Windows)
+#if canImport(Darwin) || os(Linux) || os(FreeBSD) || os(Android) || arch(wasm32) || os(Windows)
 
 /// Iterate the `_DistributedValidationRecord` stride-array packed in
 /// `[start, start + byteCount)` and append a materialized
-/// `RemoteCallValidator` to `collected` for every record whose
-/// `(context, reserved2)` matches `(actorTypeID, methodID)`.
+/// `RemoteCallValidator` to `collected` for every record whose name (decoded
+/// from its `relativeName` field) equals `targetIdentifier`.
 ///
-/// Extracted so ELF and COFF walkers share the record-matching logic;
-/// they differ only in how they compute the section's bounds.
+/// All platform walkers share this; they differ only in how they compute the
+/// section's bounds. The two pointer fields are `RelativeDirectPointer`s
+/// (signed 32-bit self-relative offsets) so the records carry no load-time
+/// relocations; they are decoded via `_relativePointer`.
 @available(SwiftStdlib 6.5, *)
 private func _scanValidationSection(
   start: UnsafeRawPointer,
   byteCount: Int,
-  actorTypeID: UInt64,
-  methodID: UInt64,
+  targetIdentifier: String,
   into collected: inout [RemoteCallValidator]
 ) {
   guard byteCount > 0 else { return }
@@ -528,19 +463,37 @@ private func _scanValidationSection(
 
   for i in 0..<count {
     let recordPtr = unsafe start.advanced(by: i * stride)
-      .assumingMemoryBound(to: _DistributedValidationRecord.self)
-    let record = unsafe recordPtr.pointee
 
-    guard unsafe record.kind == _DistributedValidationKind.validation.rawValue,
-          unsafe UInt64(record.context) == actorTypeID,
-          unsafe UInt64(record.reserved2) == methodID
-    else { continue }
+    // Field `kind` (offset 0).
+    let kind = unsafe recordPtr.load(as: UInt32.self)
+    guard kind == _DistributedValidationKind.validation.rawValue else { continue }
 
+    // Field `relativeName` (offset 8): the target's mangled distributed-thunk
+    // name. This is the same string the accessible-function record carries and
+    // equals `RemoteCallTarget.identifier`, so a byte match is a precise,
+    // collision-free identity check.
+    let nameField = unsafe recordPtr + 8
+    let namePtr = unsafe _relativePointer(at: nameField)
+      .assumingMemoryBound(to: CChar.self)
+    let recordedName = unsafe String(cString: namePtr)
+    guard recordedName == targetIdentifier else { continue }
+
+    // Field `relativeAccessor` (offset 12): points at the macro-emitted
+    // accessor global; load through it for the C function pointer.
+    let accField = unsafe recordPtr + 12
+    let accessor = unsafe _relativePointer(at: accField)
+      .assumingMemoryBound(to: _DistributedValidationAccessor.self)
+      .pointee
+
+    // Materialize the validator via the accessor. The `type` argument is a
+    // pointer to `RemoteCallValidator.self` - the accessor uses it as a
+    // self-check to reject mismatches when multiple copies of the runtime are
+    // loaded (currently unused; kept for ABI symmetry).
     var validator: RemoteCallValidator = RemoteCallValidator({ })
     var validatorType: Any.Type = RemoteCallValidator.self
     let ok = withUnsafeMutablePointer(to: &validator) { outPtr in
       withUnsafePointer(to: &validatorType) { typePtr in
-        unsafe record.accessor(
+        unsafe accessor(
           UnsafeMutableRawPointer(outPtr),
           UnsafeRawPointer(typePtr),
           nil,

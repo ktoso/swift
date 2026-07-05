@@ -4590,15 +4590,17 @@ AccessibleFunction AccessibleFunction::forSILFunction(IRGenModule &IGM,
       /*recordName=*/LinkEntity::forAccessibleFunctionRecord(func)
           .mangleAsString(IGM.Context),
       /*funcName=*/LinkEntity::forSILFunction(func).mangleAsString(IGM.Context),
-      /*isDistributed=*/false, func->getLoweredFunctionType(), funcAddr);
+      /*isDistributed=*/false, func->getLoweredFunctionType(), funcAddr,
+      /*validationAccessors=*/{});
 }
 
-AccessibleFunction AccessibleFunction::forDistributed(std::string recordName,
-                                                      std::string accessorName,
-                                                      CanSILFunctionType type,
-                                                      llvm::Constant *address) {
+AccessibleFunction AccessibleFunction::forDistributed(
+    std::string recordName, std::string accessorName, CanSILFunctionType type,
+    llvm::Constant *address,
+    llvm::ArrayRef<llvm::Constant *> validationAccessors) {
   return AccessibleFunction(recordName, accessorName,
-                            /*isDistributed=*/true, type, address);
+                            /*isDistributed=*/true, type, address,
+                            validationAccessors);
 }
 
 void IRGenModule::addAccessibleFunction(AccessibleFunction func) {
@@ -4826,6 +4828,62 @@ llvm::Constant *IRGenModule::emitTypeMetadataRecords(bool asContiguousArray) {
   return nullptr;
 }
 
+/// The object-file section holding distributed-actor validation records
+/// (`@Entitlement` / `@ValidateRemoteCall`), scanned at receive time by the
+/// Distributed runtime. Each record is matched against
+/// `RemoteCallTarget.identifier` by the mangled-thunk name it relative-points
+/// at - the SAME string the target's accessible-function record carries, so
+/// the identity is collision-free and stored once.
+static StringRef getDistributedValidationSectionName(IRGenModule &IGM) {
+  switch (IGM.TargetInfo.OutputObjectFormat) {
+  case llvm::Triple::DXContainer:
+  case llvm::Triple::GOFF:
+  case llvm::Triple::SPIRV:
+  case llvm::Triple::UnknownObjectFormat:
+    llvm_unreachable("Don't know how to emit distributed validation records "
+                     "for the selected object format.");
+  case llvm::Triple::MachO:
+    return "__DATA_CONST, __swift5_daval, regular, no_dead_strip";
+  case llvm::Triple::ELF:
+  case llvm::Triple::Wasm:
+    return "swift5_daval";
+  case llvm::Triple::XCOFF:
+  case llvm::Triple::COFF:
+    return ".sw5daval$B";
+  }
+  llvm_unreachable("unhandled object format");
+}
+
+/// Emit one distributed-validation record into the `swift5_daval` section:
+///   { i32 kind ('dval'), i32 flags (reserved), rel Name, rel Accessor }.
+/// \p name is the shared mangled-thunk name global (also referenced by the
+/// target's accessible-function record). \p accessor is a macro-emitted
+/// validation-accessor global this record relative-points at. The layout
+/// mirrors `_DistributedValidationRecord` in DistributedValidation.swift.
+static void emitDistributedValidationRecord(IRGenModule &IGM,
+                                            StringRef sectionName,
+                                            llvm::Constant *name,
+                                            llvm::Constant *accessor,
+                                            const llvm::Twine &symbolName) {
+  ConstantInitBuilder builder(IGM);
+  auto fields = builder.beginStruct();
+  // 'dval' FourCC == _DistributedValidationKind.validation.rawValue.
+  fields.addInt32(0x6476616c);
+  // Flags: reserved for future use.
+  fields.addInt32(0);
+  // Name: shared with the accessible-function record (stored once).
+  fields.addRelativeAddress(name);
+  // Accessor: the macro-emitted validation accessor.
+  fields.addRelativeAddress(accessor);
+
+  auto *var = fields.finishAndCreateGlobal(symbolName, Alignment(4),
+                                           /*constant=*/true,
+                                           llvm::GlobalValue::PrivateLinkage);
+  var->setSection(sectionName);
+  disableAddressSanitizer(IGM, var);
+  IGM.addUsedGlobal(var);
+}
+
 void IRGenModule::emitAccessibleFunction(StringRef sectionName,
                                          const AccessibleFunction &func) {
   auto var = new llvm::GlobalVariable(
@@ -4840,12 +4898,10 @@ void IRGenModule::emitAccessibleFunction(StringRef sectionName,
       builder.beginStruct(AccessibleFunctionRecordTy);
 
   // -- Field: Name (record name)
-  {
-    llvm::Constant *name = getAddrOfGlobalString(
-        func.getFunctionName(), CStringSectionType::Default,
-        /*willBeRelativelyAddressed=*/true);
-    fields.addRelativeAddress(name);
-  }
+  llvm::Constant *name = getAddrOfGlobalString(
+      func.getFunctionName(), CStringSectionType::Default,
+      /*willBeRelativelyAddressed=*/true);
+  fields.addRelativeAddress(name);
 
   // -- Field: GenericEnvironment
   llvm::Constant *genericEnvironment = nullptr;
@@ -4872,6 +4928,7 @@ void IRGenModule::emitAccessibleFunction(StringRef sectionName,
   // -- Field: Flags
   AccessibleFunctionFlags flags;
   flags.setDistributed(func.isDistributed());
+  flags.setHasValidation(func.hasValidation());
   fields.addInt32(flags.getOpaqueValue());
 
   // ---- End of 'TargetAccessibleFunctionRecord' fields
@@ -4881,6 +4938,21 @@ void IRGenModule::emitAccessibleFunction(StringRef sectionName,
   var->setAlignment(llvm::MaybeAlign(4));
   disableAddressSanitizer(*this, var);
   addUsedGlobal(var);
+
+  // Emit one `swift5_daval` validation record per associated validation
+  // accessor. Each shares this record's mangled-thunk `name` string (so the
+  // identity is stored once) and relative-points at a macro-emitted accessor.
+  // The runtime matches records by that name against
+  // `RemoteCallTarget.identifier` and composes all matches AllOf.
+  if (func.hasValidation()) {
+    StringRef davalSection = getDistributedValidationSectionName(*this);
+    unsigned idx = 0;
+    for (llvm::Constant *accessor : func.getValidationAccessors()) {
+      emitDistributedValidationRecord(*this, davalSection, name, accessor,
+                                      func.getRecordName() + "_daval" +
+                                          llvm::Twine(idx++));
+    }
+  }
 }
 
 void IRGenModule::emitAccessibleFunctions() {

@@ -42,6 +42,7 @@
 #include "swift/AST/ParameterList.h"
 #include "swift/IRGen/Linking.h"
 #include "swift/SIL/SILFunction.h"
+#include "swift/SIL/SILGlobalVariable.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Alignment.h"
 
@@ -463,11 +464,63 @@ void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
 
   IRGenMangler mangler(Context);
 
+  // Collect the macro-emitted validation accessor peers of this distributed
+  // func. `@Entitlement` / `@ValidateRemoteCall` each expand to one accessor
+  // peer: a static `let` of type `_DistributedValidationAccessor` whose
+  // compiler-issued unique name embeds "__daval_..._accessor". Stacked and
+  // protocol-inherited attributes each contribute their own accessor. We emit
+  // one `swift5_daval` record per accessor (in `emitAccessibleFunction`), all
+  // sharing this target's mangled-thunk name string, and the runtime composes
+  // them AllOf.
+  llvm::SmallVector<VarDecl *, 1> accessorDecls;
+  // The accessor record is emitted for the synthesized distributed thunk, but
+  // the `@Entitlement` / `@ValidateRemoteCall` peer accessors are attached to
+  // the ORIGINAL distributed func. Recover the original so visitAuxiliaryDecls
+  // reaches the peers.
+  AbstractFunctionDecl const *declForPeers = targetDecl;
+  if (targetDecl->isDistributedThunk()) {
+    if (auto *nominal = targetDecl->getDeclContext()->getSelfNominalTypeDecl()) {
+      for (auto *member : nominal->getMembers()) {
+        auto *afd = dyn_cast<AbstractFunctionDecl>(member);
+        if (afd && afd->isDistributed() &&
+            afd->getDistributedThunk() == dyn_cast<FuncDecl>(targetDecl)) {
+          declForPeers = afd;
+          break;
+        }
+      }
+    }
+  }
+  declForPeers->visitAuxiliaryDecls([&](Decl *peer) {
+    if (auto *vd = dyn_cast<VarDecl>(peer)) {
+      if (vd->isStatic() && vd->hasName() &&
+          vd->getBaseIdentifier().str().contains("__daval_"))
+        accessorDecls.push_back(vd);
+    }
+  });
+
+  llvm::SmallVector<llvm::Constant *, 1> validationAccessors;
+  if (!accessorDecls.empty()) {
+    llvm::SmallDenseMap<VarDecl *, llvm::Constant *, 2> found;
+    for (SILGlobalVariable &g : getSILModule().getSILGlobals()) {
+      VarDecl *d = g.getDecl();
+      if (!d || !llvm::is_contained(accessorDecls, d))
+        continue;
+      auto &ti = getTypeInfo(g.getLoweredType());
+      auto addr = getAddrOfSILGlobalVariable(&g, ti, NotForDefinition);
+      found[d] = cast<llvm::Constant>(addr.getAddress());
+    }
+    // Preserve source order for deterministic record emission.
+    for (VarDecl *vd : accessorDecls)
+      if (llvm::Constant *c = found.lookup(vd))
+        validationAccessors.push_back(c);
+  }
+
   addAccessibleFunction(AccessibleFunction::forDistributed(
       /*recordName=*/mangler.mangleDistributedThunkRecord(targetDecl),
       /*accessorName=*/mangler.mangleDistributedThunk(targetDecl),
       accessor.getTargetType(),
-      getAddrOfAsyncFunctionPointer(accessorRef)));
+      getAddrOfAsyncFunctionPointer(accessorRef),
+      /*validationAccessors=*/validationAccessors));
 }
 
 DistributedAccessor::DistributedAccessor(IRGenFunction &IGF,

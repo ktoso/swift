@@ -462,30 +462,42 @@ Both apply to a `distributed func` or `distributed var` and can also be written 
 
 ### Runtime shape
 
-Each attached macro emits two peer declarations next to the target distributed member:
+Validation is split between the macro and the compiler because neither can emit both halves. The macro can run arbitrary Swift (to build the validator) but cannot see the mangled name or emit a pointer in a `@section` constant (SE-0492); IRGen knows the mangled name and can emit relative pointers but cannot synthesize the validator.
 
-1. An **accessor** - a normal Swift function that materializes a `RemoteCallValidator` into a caller-supplied out-pointer. Strings, closures, arbitrary Swift expressions live here (regular function body context, not an SE-0492 constant expression context).
-2. A **section-placed record tuple** - a `_DistributedValidationRecord` in `swift5_daval`, marked `@used`, whose fields are permitted SE-0492 constant expressions: FourCC kind, two FNV-1a-64 identity hashes, and a direct closure literal pointing at the accessor.
+1. The **macro** emits one **accessor** per attribute - a captureless closure coerced to `_DistributedValidationAccessor` - into its own section (`swift5_davala`). `@section` forces SE-0492 static initialization so the C function pointer is in place at load. The accessor materializes a `RemoteCallValidator` into a caller-supplied out-pointer; strings, closures, arbitrary Swift expressions live here (normal function body, not a constant-expression context).
+2. **IRGen** (`emitDistributedTargetAccessor`, `lib/IRGen/GenDistributed.cpp`) emits the identifying **record** into `swift5_daval`, next to the target's accessible-function record, one per accessor.
+
+Record layout (`_DistributedValidationRecord`, four `i32` fields, 16-byte stride on every target):
+
+| Field | Meaning |
+|-------|---------|
+| `kind` | FourCC `'dval'` |
+| `flags` | reserved (0) |
+| `relativeName` | `RelativeDirectPointer` to the target's mangled distributed-thunk name |
+| `relativeAccessor` | `RelativeDirectPointer` to the macro-emitted accessor |
+
+`relativeName` targets the **same** string global the target's accessible-function record (`swift5_acfuncs`) already carries, so the identity string is stored exactly once. That string is byte-identical to `RemoteCallTarget.identifier`, so receive-side lookup is a byte-for-byte name match: collision-free (the mangled name is module-qualified) and free of duplicated strings.
 
 ```
    distributed actor MyActor
-   ├── distributed func openDoor()             ← user-written
-   ├── static let __daval_openDoor_record: ... ← macro-emitted record
-   └── (accessor is the closure inside record) ← macro-emitted accessor
+   ├── distributed func openDoor()            ← user-written
+   ├── accessible-function record ─┐          ← IRGen, swift5_acfuncs
+   │                                ├── shared mangled-name string ($s…FTE)
+   ├── swift5_daval record ─────────┘          ← IRGen, one per attribute
+   │        └── relativeAccessor ─┐
+   └── __daval_openDoor_accessor ←┘            ← macro, swift5_davala
 ```
 
 Section names by object format:
 
-| Format | Section                             | Bounds source                                       |
-|--------|-------------------------------------|-----------------------------------------------------|
-| Mach-O | `__DATA_CONST,__swift5_daval`       | `getsectiondata` + `_dyld_get_image_header` walk    |
-| ELF    | `swift5_daval`                      | Linker-generated `__start_/__stop_` sentinel pair   |
-| Wasm   | `swift5_daval`                      | Same sentinel pair as ELF                           |
-| COFF   | `.sw5daval$B` (with `$A/$Z` bounds) | Bracket sentinels                                   |
+| Format | Records (`swift5_daval`) | Accessors (`swift5_davala`) | Bounds source |
+|--------|--------------------------|------------------------------|---------------|
+| Mach-O | `__DATA_CONST,__swift5_daval`  | `__DATA_CONST,__swift5_davala`  | `getsectiondata` + `_dyld_get_image_header` walk |
+| ELF    | `swift5_daval`                 | `swift5_davala`                 | Linker `__start_/__stop_` sentinel pair |
+| Wasm   | `swift5_daval`                 | `swift5_davala`                 | Same sentinel pair as ELF |
+| COFF   | `.sw5daval$B` (`$A/$Z` bounds) | `.sw5davala$B`                  | Bracket sentinels |
 
-Record layout is a five-field tuple mirroring swift-testing's `TestContentRecord` byte-for-byte so offline tooling can share a parser across sections. Only the FourCC differs (`'dval'` for distributed validation).
-
-The record's static-let name is compiler-issued via `context.makeUniqueName("__daval_<method>_record")` so multiple attributes on the same distributed member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. Runtime lookup matches on `(actorTypeID, methodID)` hash fields, not on the symbol name, so the mangled uniqueness is invisible to it.
+The runtime walks only `swift5_daval`; it reaches each accessor through the record's `relativeAccessor` (the accessor section is never stride-walked). The accessor's name is compiler-issued via `context.makeUniqueName("__daval_<method>_accessor")` so multiple attributes on the same member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. IRGen finds the accessors by walking the target's peer declarations (`visitAuxiliaryDecls` on the original distributed func, recovered from its synthesized thunk), not by name, and emits one record per accessor.
 
 ### Receive-side preflight
 
@@ -498,14 +510,12 @@ executeDistributedTarget
         ▼
    preflight(on:target:)
         │
-        │ hash (Act.self simple name, target.identifier simple name)
-        │       via FNV-1a-64 → (actorTypeID, methodID)
         ▼
-   lookup(actorTypeID:methodID:)
+   lookup(targetIdentifier: target.identifier)
         │
         │ walks swift5_daval section in each loaded image,
-        │ collects EVERY record matching (actorTypeID, methodID),
-        │ wraps them in one composite RemoteCallValidator
+        │ decodes each record's relativeName, keeps EVERY record whose
+        │ name == target.identifier, wraps them in one composite RemoteCallValidator
         ▼
    composite RemoteCallValidator.check()
         │
@@ -515,11 +525,11 @@ executeDistributedTarget
    error propagates back to caller
 ```
 
-The FNV-1a-64 hash implementation is **ABI-committed** and paired byte-for-byte between the macro plugin (emits compile-time hex literals in the record) and the runtime (hashes at receive time). A golden-vector drift test (`test/Distributed/Runtime/distributed_validation_hash_stability.swift`) locks both sides.
+The identity is the target's full mangled distributed-thunk name (`RemoteCallTarget.identifier`), matched byte-for-byte against each record's `relativeName`. Because that name is the same string the accessible-function record carries, a daval record matches `target.identifier` in exactly the cases the accessible-function lookup does - so validation is consistent with dispatch, for concrete and protocol/`@Resolvable` targets alike, with no independent hashing to drift.
 
 Failed preflight throws **directly** out of `executeDistributedTarget` - it does NOT go through `handler.onThrow(...)`. The target function has not run yet, so the error is not one the target produced.
 
-Multiple records for the same `(actorTypeID, methodID)` compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). Section-scan order across records for the same key is implementation-defined, so the specific record whose error surfaces first is not guaranteed across images - but the AllOf outcome (accept iff every check accepts) is.
+Multiple records for the same target compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). Section-scan order across records for the same target is implementation-defined, so the specific record whose error surfaces first is not guaranteed across images - but the AllOf outcome (accept iff every check accepts) is.
 
 ### Attribute inheritance across modules
 
@@ -598,8 +608,7 @@ public enum DistributedValidation {
   public static func preflight<Act: DistributedActor>(
     on actor: Act, target: RemoteCallTarget) throws
   public static func lookup(
-    actorTypeID: UInt64, methodID: UInt64) -> RemoteCallValidator?
-  public static func fnv1a64(of string: String) -> UInt64
+    targetIdentifier: String) -> RemoteCallValidator?
 }
 
 @preservedInInterface
@@ -633,5 +642,9 @@ An empty set is treated as "caller has no entitlements". A missing section recor
 ### Known limitations (v1)
 
 - **Section walker sees only the current image on ELF/Wasm/COFF.** `dlopen`'d libraries and secondary DLLs are not scanned. Darwin walks all loaded images via dyld APIs.
-- **Simple-name identity hashing.** Two distributed actors named identically in different modules would collide in the record lookup. A future revision will switch to full mangled-name hashes on both sides.
 - **`@ValidateRemoteCall({...})` inline closure on a protocol requirement is rejected at macro-expansion time.** Cross-module closure re-parse trips a `PreCheckTarget` invariant. Named factory extensions on `RemoteCallValidator` are the supported spelling for cross-module use.
+
+### Future directions
+
+- **Enforce validation directly in the distributed accessor.** IRGen already knows, when it emits the distributed thunk accessor, whether the target carries validation attributes. Instead of (or in addition to) the receive-side section scan, IRGen could emit the "resolve and run the validator" sequence inline in the accessor body, making enforcement unbypassable and eliminating the runtime lookup entirely for the enforcement path. The `swift5_daval` records would remain for optional sender-side pre-flight and tooling. This is a larger change and is deferred.
+- **Skip the section scan for un-validated targets.** The accessible-function record now carries a spare `HasValidation` flag bit (`AccessibleFunctionFlags`, set by IRGen whenever a target emits validation records). A small runtime SPI reading that bit could let `preflight` skip the `swift5_daval` walk entirely for targets with no validation, and - by having the accessible-function record point at its validation records - avoid the separate name scan even for validated targets.

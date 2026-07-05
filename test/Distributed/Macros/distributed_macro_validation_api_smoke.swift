@@ -61,9 +61,8 @@ distributed actor SecureHome {
 // Also verify the runtime API is reachable from user code:
 @available(SwiftStdlib 6.5, *)
 func exerciseAPI() {
-  let _ : UInt64 = DistributedValidation.fnv1a64(of: "SecureHome")
   let _ : RemoteCallValidator? = DistributedValidation.lookup(
-    actorTypeID: 0, methodID: 0)
+    targetIdentifier: "")
   DistributedValidation.$currentEntitlements.withValue(["foo"]) {
     let _ = DistributedValidation.currentEntitlements
   }

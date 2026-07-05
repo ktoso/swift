@@ -3063,6 +3063,12 @@ public:
   enum {
     /// Whether this is a "distributed" actor function.
     Distributed = 0,
+
+    /// Whether this distributed function has one or more associated
+    /// validation records in the `swift5_daval` section (emitted for
+    /// `@Entitlement` / `@ValidateRemoteCall`). When clear, the receive-side
+    /// validation scan can be skipped entirely for this target.
+    HasValidation = 1,
   };
 
   explicit AccessibleFunctionFlags(uint32_t bits) : FlagSet(bits) {}
@@ -3070,6 +3076,9 @@ public:
 
   /// Whether the this is a "distributed" actor function.
   FLAGSET_DEFINE_FLAG_ACCESSORS(Distributed, isDistributed, setDistributed)
+
+  /// Whether this distributed function has associated validation records.
+  FLAGSET_DEFINE_FLAG_ACCESSORS(HasValidation, hasValidation, setHasValidation)
 };
 
 } // end namespace swift

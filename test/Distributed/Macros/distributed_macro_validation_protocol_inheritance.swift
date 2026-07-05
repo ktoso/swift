@@ -10,15 +10,14 @@
 
 // Verifies compiler-side attribute inheritance from a distributed protocol
 // requirement onto its witness. The user writes `@Entitlement("...")` only
-// on the protocol requirement; conformance checking (early, in
-// `checkDistributedActor`) clones the attribute onto the concrete witness
-// BEFORE peer macro expansion, so the section record for `MyHome.openDoor`
-// is emitted as if the annotation were written there directly.
+// on the protocol requirement; conformance checking clones the attribute onto
+// the concrete witness BEFORE peer macro expansion, so the validation accessor
+// for `MyHome.openDoor` is emitted as if the annotation were written there
+// directly.
 //
 // Implementation: `inheritDistributedValidationAttrs` in
-// `lib/Sema/TypeCheckDistributed.cpp`, called from `checkDistributedActor`
-// during `visitClassDecl` — before per-member peer macro expansion is
-// triggered.
+// `lib/Sema/TypeCheckDistributed.cpp`, invoked before per-member peer macro
+// expansion is triggered.
 
 import Distributed
 
@@ -34,31 +33,24 @@ distributed actor MyHome: HomeAdmin {
 
   // No `@Entitlement` on the witness. The compiler clones it from the
   // protocol requirement during conformance checking, before peer macro
-  // expansion. The section record below is emitted as if `@Entitlement`
-  // were written here directly, referencing the protocol's entitlement
-  // string.
+  // expansion. The accessor below is emitted as if `@Entitlement` were
+  // written here directly, referencing the protocol's entitlement string.
   distributed func openDoor() -> Bool { true }
   // CHECK: #if objectFormat(MachO)
-  // CHECK-NEXT: @section("__DATA_CONST,__swift5_daval")
+  // CHECK-NEXT: @section("__DATA_CONST,__swift5_davala")
   // CHECK-NEXT: #elseif objectFormat(ELF) || objectFormat(Wasm)
-  // CHECK-NEXT: @section("swift5_daval")
+  // CHECK-NEXT: @section("swift5_davala")
   // CHECK-NEXT: #elseif objectFormat(COFF)
-  // CHECK-NEXT: @section(".sw5daval$B")
+  // CHECK-NEXT: @section(".sw5davala$B")
   // CHECK-NEXT: #endif
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
-  // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC8openDoor11EntitlementfMp_23__daval_openDoor_recordfMu_: Distributed._DistributedValidationRecord = (
-  // CHECK-NEXT: 0x6476616c,
-  // CHECK-NEXT: 0,
-  // CHECK-NEXT: { outValue, type, hint, reserved in
+  // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC8openDoor11EntitlementfMp_25__daval_openDoor_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
   // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.protocol-inherited"))
   // CHECK-NEXT: })
   // CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator.self)
   // CHECK-NEXT: .initialize(to: validator)
   // CHECK-NEXT: return true
-  // CHECK-NEXT: },
-  // CHECK-NEXT: 0x6260_18f9_9f09_d2c0,
-  // CHECK-NEXT: 0x0c2f_228d_cbee_fc75
-  // CHECK-NEXT: )
+  // CHECK-NEXT: }
 }
