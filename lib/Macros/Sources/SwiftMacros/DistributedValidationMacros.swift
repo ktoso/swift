@@ -28,7 +28,7 @@
 // express neither a pointer in a `@section` constant (SE-0492) nor the mangled
 // name.
 //
-// See ~/code/swift-testing/Documentation/ABI/TestContent.md for the ABI
+// See swiftlang/swift-testing's Documentation/ABI/TestContent.md for the ABI
 // pattern this file follows.
 //
 //===----------------------------------------------------------------------===//
@@ -231,7 +231,7 @@ private func entitlementPolicyExpression(from node: AttributeSyntax) -> String {
 
 /// Extracts the validator function-or-closure argument from
 /// `@ValidateRemoteCall(<expr>)` and returns Swift source text usable as the
-/// argument to `EntitlementPolicy.custom(...)`.
+/// argument to `RemoteCallValidator(...)`.
 private func customValidatorExpression(from node: AttributeSyntax) -> String {
   guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
     let first = arguments.first
@@ -253,10 +253,10 @@ private struct AttachmentTarget {
 /// attachment; otherwise throws a diagnostic pinned to `node`.
 ///
 /// Two distinct diagnostics:
-///   - "not a distributed func or var" — the annotated decl is a struct,
+///   - "not a distributed func or var" - the annotated decl is a struct,
 ///     class, actor, enum, protocol, subscript, init, deinit, extension, or
 ///     anything else. No fixit.
-///   - "missing `distributed` modifier" — the decl IS a plain func or var,
+///   - "missing `distributed` modifier" - the decl IS a plain func or var,
 ///     just missing the `distributed` modifier. Fixit inserts `distributed`.
 private func diagnoseAttachmentSite(
   attributeName: String,

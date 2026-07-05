@@ -148,6 +148,18 @@ distributed actor DoubleValidatorActor: GuardedByProtocolValidator {
   distributed func doubleValidator() -> String { "double ok" }
 }
 
+// ==== ------------------------------------------------------------------------
+// MARK: @Entitlement on a distributed computed property (var)
+
+@available(SwiftStdlib 6.5, *)
+distributed actor GuardedVarActor {
+  // `@Entitlement` on a `distributed var`. The record is emitted for the
+  // getter thunk, exercising the IRGen path that recovers the original
+  // storage decl (not only distributed funcs) to reach the accessor peers.
+  @Entitlement("read-secret")
+  distributed var secret: String { "secret ok" }
+}
+
 @available(SwiftStdlib 6.5, *)
 @main
 struct Main {
@@ -334,6 +346,31 @@ struct Main {
     // CHECK-DAG: [validator] proto check ran
     // CHECK-DAG: [validator] witness check ran
     // CHECK-DAG: result=double ok
+
+    // ==== GuardedVarActor (@Entitlement on a distributed var) --------------
+    let vault = GuardedVarActor(actorSystem: system)
+    let vaultRemote = try GuardedVarActor.resolve(id: vault.id, using: system)
+
+    print("--- GuardedVarActor.secret with {\"read-secret\"} (accept)")
+    // CHECK: --- GuardedVarActor.secret with {"read-secret"} (accept)
+    try await DistributedValidation.$currentEntitlements.withValue(["read-secret"]) {
+      let v = try await vaultRemote.secret
+      print("result=\(v)")
+      // CHECK: result=secret ok
+    }
+
+    print("--- GuardedVarActor.secret with {} (rejects)")
+    // CHECK: --- GuardedVarActor.secret with {} (rejects)
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue([]) {
+        _ = try await vaultRemote.secret
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+      // CHECK-NOT: result=unexpected-success
+      // CHECK: caught=Remote call rejected: missing entitlement 'read-secret'
+    }
 
     print("--- done")
     // CHECK: --- done

@@ -475,17 +475,26 @@ void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
   llvm::SmallVector<VarDecl *, 1> accessorDecls;
   // The accessor record is emitted for the synthesized distributed thunk, but
   // the `@Entitlement` / `@ValidateRemoteCall` peer accessors are attached to
-  // the ORIGINAL distributed func. Recover the original so visitAuxiliaryDecls
+  // the ORIGINAL distributed func / var. Recover it so visitAuxiliaryDecls
   // reaches the peers.
-  AbstractFunctionDecl const *declForPeers = targetDecl;
+  Decl const *declForPeers = targetDecl;
   if (targetDecl->isDistributedThunk()) {
+    auto *thunk = dyn_cast<FuncDecl>(targetDecl);
     if (auto *nominal = targetDecl->getDeclContext()->getSelfNominalTypeDecl()) {
       for (auto *member : nominal->getMembers()) {
-        auto *afd = dyn_cast<AbstractFunctionDecl>(member);
-        if (afd && afd->isDistributed() &&
-            afd->getDistributedThunk() == dyn_cast<FuncDecl>(targetDecl)) {
-          declForPeers = afd;
-          break;
+        // The thunk is synthesized from either a distributed func or the
+        // getter of a distributed computed var; the validation peers are
+        // attached to that original decl.
+        if (auto *afd = dyn_cast<AbstractFunctionDecl>(member)) {
+          if (afd->isDistributed() && afd->getDistributedThunk() == thunk) {
+            declForPeers = afd;
+            break;
+          }
+        } else if (auto *asd = dyn_cast<AbstractStorageDecl>(member)) {
+          if (asd->isDistributed() && asd->getDistributedThunk() == thunk) {
+            declForPeers = asd;
+            break;
+          }
         }
       }
     }

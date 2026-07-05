@@ -36,7 +36,7 @@ add_swift_target_library(swiftDistributed ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS
   DistributedValidation.swift
   LocalTestingDistributedActorSystem.swift
 
-  # @Entitlement Proof of Concept:
+  # @Entitlement / @ValidateRemoteCall receive-side validation:
   DistributedValidation+Entitlement.swift
   DistributedMacros+Entitlement.swift
 

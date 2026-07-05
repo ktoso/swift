@@ -448,15 +448,10 @@ There is one residual IRGen-side fixup: `argumentTypesBuffer` on the recipient i
 
 ## Receive-side call validation: `@Entitlement` and `@ValidateRemoteCall`
 
-> WIP: this section describes machinery that is landing on
-> `wip-remote-call-validation`. The paragraphs below track the branch's
-> current state; they will be edited into a final shape (and cross-linked
-> with the stdlib DocC docs) before the branch is squashed for PR.
-
 Distributed actor systems that expose methods over untrusted transport often need to reject a call before it decodes, based on caller identity or capability. Two attached peer macros express this at the source level:
 
-- `@Entitlement(_ policy: EntitlementPolicy)` — declarative check against a task-local set of granted entitlements. Composes with `.anyOf` / `.allOf` and desugars a bare string literal to `.entitlement(...)`.
-- `@ValidateRemoteCall(_ validator: RemoteCallValidator)` — a named reusable validator recipe, or (on concrete methods only) an inline closure. Fires before argument decoding.
+- `@Entitlement(_ policy: EntitlementPolicy)` - declarative check against a task-local set of granted entitlements. Composes with `.anyOf` / `.allOf` and desugars a bare string literal to `.entitlement(...)`.
+- `@ValidateRemoteCall(_ validator: RemoteCallValidator)` - a named reusable validator recipe, or (on concrete methods only) an inline closure. Fires before argument decoding.
 
 Both apply to a `distributed func` or `distributed var` and can also be written on a protocol requirement, in which case the compiler inherits them onto every conforming actor's witness without the user restating anything.
 
@@ -588,8 +583,8 @@ The clone has two paths:
 
 The synthesized buffer's `SourceFileKind` and `GeneratedSourceInfo::Kind` carry independent obligations:
 
-- `SourceFileKind::SyntheticMacro` — makes `AvailabilityScope::createForSourceFile` walk `getEnclosingSourceFile()` and inherit availability from the witness's `DeclContext`. Without this, any reference to `@available(SwiftStdlib X, *)` API from inside the inherited attribute fails to type-check.
-- `GeneratedSourceInfo::AttributeFromClang` — the only kind whose parser dispatch calls `parseExpandedAttributeList`. Despite the name (chosen historically for ClangImporter's `__attribute__((swift_attr))` handling), the code path is not Clang-specific.
+- `SourceFileKind::SyntheticMacro` - makes `AvailabilityScope::createForSourceFile` walk `getEnclosingSourceFile()` and inherit availability from the witness's `DeclContext`. Without this, any reference to `@available(SwiftStdlib X, *)` API from inside the inherited attribute fails to type-check.
+- `GeneratedSourceInfo::AttributeFromClang` - the only kind whose parser dispatch calls `parseExpandedAttributeList`. Despite the name (chosen historically for ClangImporter's `__attribute__((swift_attr))` handling), the code path is not Clang-specific.
 
 The witness's peer expansion must observe the merged (local + inherited) attribute list on its single, cached evaluation. That is guaranteed by a hook at the top of `ExpandPeerMacroRequest::evaluate` (`lib/Sema/TypeCheckMacros.cpp`): before iterating a distributed witness's attributes, it calls `inheritDistributedValidationAttrs` on the enclosing distributed actor, cloning any not-yet-present inherited attributes. Because the request is evaluated exactly once and this runs before `forEachAttachedMacro`, both a witness-local attribute and a same-kind inherited one (e.g. local `@Entitlement("local")` + inherited `@Entitlement("proto")`) each get their own section record. The clone uses `LookupDirectFlags::ExcludeMacroExpansions` on its own witness lookup, so it cannot recurse back into the peer request. `TypeChecker::checkDistributedActor` also calls `inheritDistributedValidationAttrs` directly (after `getDefaultInitializer`, so it never forces early expansion of a cross-module synthesized attribute); the two call sites are idempotent (deduped by spelled name + argument source range).
 

@@ -6021,11 +6021,13 @@ llvm::Error DeclDeserializer::deserializeCustomAttrs() {
         // materialize an `ArgumentList` on demand (see `CustomAttr` header
         // and `materializePreservedCustomAttrArgs` in Sema).
         if (hasArgText && argTextLen > 0) {
+          // `substr` clamps to the blob's actual size, so a truncated or
+          // malformed module cannot make the copy read past the buffer.
           StringRef textOnDisk = blobData.substr(0, argTextLen);
           char *copy = static_cast<char *>(
-              ctx.Allocate(argTextLen, alignof(char)));
-          std::memcpy(copy, textOnDisk.data(), argTextLen);
-          custom->setPreservedArgText(StringRef(copy, argTextLen));
+              ctx.Allocate(textOnDisk.size(), alignof(char)));
+          std::memcpy(copy, textOnDisk.data(), textOnDisk.size());
+          custom->setPreservedArgText(StringRef(copy, textOnDisk.size()));
         }
         AddAttribute(custom);
       }

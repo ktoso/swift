@@ -488,7 +488,7 @@ static bool checkDistributedTargetResultType(
       return true;
     }
 
-    // `@Resolvable protocol` result — skip Codable check, wire uses actor ID
+    // `@Resolvable protocol` result - skip Codable check, wire uses actor ID
     skipCodableCheck = true;
   }
 
@@ -818,7 +818,6 @@ synthesizeCustomAttrForWitness(ValueDecl *witness, StringRef macroName,
   auto *witnessSF = witness->getDeclContext()->getParentSourceFile();
   if (!witnessSF)
     return nullptr;
-  (void)witnessSF;
 
   ASTContext &ctx = witness->getASTContext();
   SourceManager &SM = ctx.SourceMgr;
@@ -901,7 +900,7 @@ synthesizeCustomAttrForWitness(ValueDecl *witness, StringRef macroName,
 /// `@ValidateRemoteCall`) from a protocol requirement onto its witness on
 /// the given nominal type.
 ///
-/// This runs early, from `checkDistributedActor` — before per-member type
+/// This runs early, from `checkDistributedActor` - before per-member type
 /// checking triggers peer macro expansion on the witness. That ordering is
 /// what makes the feature work: by the time the peer macro reads the
 /// witness's attribute list, the inherited attributes are already there,
@@ -911,7 +910,7 @@ synthesizeCustomAttrForWitness(ValueDecl *witness, StringRef macroName,
 /// The clone is marked implicit; `owner` is retargeted to the witness. The
 /// argument list is preserved verbatim.
 ///
-/// Matching is by full `DeclName` (including argument labels) — a
+/// Matching is by full `DeclName` (including argument labels) - a
 /// `distributed func openDoor()` requirement matches a
 /// `distributed func openDoor()` witness. No signature matching yet;
 /// distributed funcs with overloads across protocol/actor pairs would
@@ -945,15 +944,29 @@ void swift::inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
 
   auto witnessAlreadyHas = [&](ValueDecl *witness, CustomAttr *reqAttr,
                                StringRef reqName) {
+    // A cross-module requirement attribute carries its argument list only as
+    // preserved source text (its materialized `ArgumentList` has invalid
+    // source locations), so its args source range can never equal a
+    // previously-synthesized clone's valid range. Compare the preserved text
+    // in that case, and the argument source range otherwise. Both comparisons
+    // key on the argument content, so a witness that legitimately stacks a
+    // local attribute and a same-kind inherited one is not collapsed.
+    StringRef reqPreserved = reqAttr->getPreservedArgText();
     for (auto *existing : witness->getAttrs().getAttributes<CustomAttr>()) {
-      if (attrBaseName(const_cast<CustomAttr *>(existing)) == reqName) {
+      if (attrBaseName(const_cast<CustomAttr *>(existing)) != reqName)
+        continue;
+      if (!reqPreserved.empty()) {
+        if (existing->getPreservedArgText() == reqPreserved)
+          return true;
+      } else {
         auto lhsRange = reqAttr->getArgs()
             ? reqAttr->getArgs()->getSourceRange()
             : SourceRange();
         auto rhsRange = existing->getArgs()
             ? existing->getArgs()->getSourceRange()
             : SourceRange();
-        if (lhsRange == rhsRange) return true;
+        if (lhsRange == rhsRange)
+          return true;
       }
     }
     return false;
@@ -989,6 +1002,10 @@ void swift::inheritDistributedValidationAttrs(NominalTypeDecl *nominal) {
     StringRef argText = reqAttr->getPreservedArgText();
     if (auto *synthesized =
             synthesizeCustomAttrForWitness(witness, macroName, argText)) {
+      // Tag the clone with the same preserved text so a later invocation
+      // recognizes it (its parsed args have a fresh source range that would
+      // never match the requirement's materialized, invalid range).
+      synthesized->setPreservedArgText(argText);
       witness->getAttrs().add(synthesized);
     }
   };

@@ -49,6 +49,7 @@ public macro Resolvable() =
 ///
 /// - Can only be applied to a `distributed func` or `distributed var`.
 ///   Applying it to any other declaration is a compile-time error.
+@available(SwiftStdlib 6.5, *)
 @preservedInInterface
 @attached(peer, names: arbitrary)
 public macro ValidateRemoteCall(_ validator: sending () throws -> Void) =
