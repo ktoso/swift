@@ -4829,11 +4829,11 @@ llvm::Constant *IRGenModule::emitTypeMetadataRecords(bool asContiguousArray) {
 }
 
 /// The object-file section holding distributed-actor validation records
-/// (`@Entitlement` / `@ValidateRemoteCall`), scanned at receive time by the
-/// Distributed runtime. Each record is matched against
-/// `RemoteCallTarget.identifier` by the mangled-thunk name it relative-points
-/// at - the SAME string the target's accessible-function record carries, so
-/// the identity is collision-free and stored once.
+/// (`@Entitlement` / `@ValidateRemoteCall`). These records are NOT
+/// stride-walked at runtime: each target's accessible-function record carries
+/// a tagged relative pointer (in its `Flags` field) to its first validation
+/// record, and the records form a per-target linked list via `relativeNext`.
+/// The section only needs to exist and survive stripping.
 static StringRef getDistributedValidationSectionName(IRGenModule &IGM) {
   switch (IGM.TargetInfo.OutputObjectFormat) {
   case llvm::Triple::DXContainer:
@@ -4855,26 +4855,33 @@ static StringRef getDistributedValidationSectionName(IRGenModule &IGM) {
 }
 
 /// Emit one distributed-validation record into the `swift5_daval` section:
-///   { i32 kind ('dval'), i32 flags (reserved), rel Name, rel Accessor }.
-/// \p name is the shared mangled-thunk name global (also referenced by the
-/// target's accessible-function record). \p accessor is a macro-emitted
-/// validation-accessor global this record relative-points at. The layout
-/// mirrors `_DistributedValidationRecord` in DistributedValidation.swift.
-static void emitDistributedValidationRecord(IRGenModule &IGM,
-                                            StringRef sectionName,
-                                            llvm::Constant *name,
-                                            llvm::Constant *accessor,
-                                            const llvm::Twine &symbolName) {
+///   { i32 kind ('dval'), i32 reserved, rel Accessor, rel Next }.
+/// \p accessor is a macro-emitted validation-accessor global this record
+/// relative-points at. \p next is the next record for the same target (for the
+/// linked list the runtime walks from the accessible-function record's tagged
+/// `Flags` pointer), or null for the last record. Returns the emitted global so
+/// the caller can thread the list and point the `Flags` field at the first.
+/// The layout mirrors `_DistributedValidationRecord` in
+/// DistributedValidation.swift.
+static llvm::GlobalVariable *
+emitDistributedValidationRecord(IRGenModule &IGM, StringRef sectionName,
+                                llvm::Constant *accessor,
+                                llvm::GlobalVariable *next,
+                                const llvm::Twine &symbolName) {
   ConstantInitBuilder builder(IGM);
   auto fields = builder.beginStruct();
   // 'dval' FourCC == _DistributedValidationKind.validation.rawValue.
   fields.addInt32(0x6476616c);
-  // Flags: reserved for future use.
+  // Reserved for future use.
   fields.addInt32(0);
-  // Name: shared with the accessible-function record (stored once).
-  fields.addRelativeAddress(name);
   // Accessor: the macro-emitted validation accessor.
   fields.addRelativeAddress(accessor);
+  // Next: the next record for this target, or 0 (a self-relative offset of 0
+  // is never valid, so it is an unambiguous end-of-list sentinel).
+  if (next)
+    fields.addRelativeAddress(next);
+  else
+    fields.addInt32(0);
 
   auto *var = fields.finishAndCreateGlobal(symbolName, Alignment(4),
                                            /*constant=*/true,
@@ -4882,6 +4889,7 @@ static void emitDistributedValidationRecord(IRGenModule &IGM,
   var->setSection(sectionName);
   disableAddressSanitizer(IGM, var);
   IGM.addUsedGlobal(var);
+  return var;
 }
 
 void IRGenModule::emitAccessibleFunction(StringRef sectionName,
@@ -4890,6 +4898,24 @@ void IRGenModule::emitAccessibleFunction(StringRef sectionName,
       Module, AccessibleFunctionRecordTy, /*isConstant=*/true,
       llvm::GlobalValue::PrivateLinkage, /*initializer=*/nullptr,
       func.getRecordName());
+
+  // Emit this target's validation records first (if any), as a per-target
+  // linked list, so the `Flags` field below can point at the first one. The
+  // records are emitted in reverse so each record's `relativeNext` targets an
+  // already-emitted global. The runtime reaches them ONLY through the tagged
+  // `Flags` pointer, so the section is never stride-walked.
+  llvm::GlobalVariable *firstValidationRecord = nullptr;
+  if (func.hasValidation()) {
+    StringRef davalSection = getDistributedValidationSectionName(*this);
+    auto accessors = func.getValidationAccessors();
+    llvm::GlobalVariable *next = nullptr;
+    for (unsigned i = accessors.size(); i-- > 0;) {
+      next = emitDistributedValidationRecord(
+          *this, davalSection, accessors[i], next,
+          func.getRecordName() + "_daval" + llvm::Twine(i));
+    }
+    firstValidationRecord = next;
+  }
 
   ConstantInitBuilder builder(*this);
 
@@ -4929,7 +4955,17 @@ void IRGenModule::emitAccessibleFunction(StringRef sectionName,
   AccessibleFunctionFlags flags;
   flags.setDistributed(func.isDistributed());
   flags.setHasValidation(func.hasValidation());
-  fields.addInt32(flags.getOpaqueValue());
+  if (firstValidationRecord) {
+    // The Flags field doubles as a tagged relative pointer to the first
+    // validation record: the flag bits go in the low 2 bits (the offset is a
+    // multiple of 4, so those bits are otherwise 0), and the receive side
+    // reads `Flags & ~0x3` as the self-relative offset. Old runtimes read only
+    // the `Distributed` bit and ignore the rest, so this is back-deploy-safe.
+    fields.addTaggedRelativeAddress(firstValidationRecord,
+                                    flags.getOpaqueValue());
+  } else {
+    fields.addInt32(flags.getOpaqueValue());
+  }
 
   // ---- End of 'TargetAccessibleFunctionRecord' fields
 
@@ -4938,21 +4974,6 @@ void IRGenModule::emitAccessibleFunction(StringRef sectionName,
   var->setAlignment(llvm::MaybeAlign(4));
   disableAddressSanitizer(*this, var);
   addUsedGlobal(var);
-
-  // Emit one `swift5_daval` validation record per associated validation
-  // accessor. Each shares this record's mangled-thunk `name` string (so the
-  // identity is stored once) and relative-points at a macro-emitted accessor.
-  // The runtime matches records by that name against
-  // `RemoteCallTarget.identifier` and composes all matches AllOf.
-  if (func.hasValidation()) {
-    StringRef davalSection = getDistributedValidationSectionName(*this);
-    unsigned idx = 0;
-    for (llvm::Constant *accessor : func.getValidationAccessors()) {
-      emitDistributedValidationRecord(*this, davalSection, name, accessor,
-                                      func.getRecordName() + "_daval" +
-                                          llvm::Twine(idx++));
-    }
-  }
 }
 
 void IRGenModule::emitAccessibleFunctions() {

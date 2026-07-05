@@ -147,6 +147,8 @@ Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGG
 Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvpZMV
 // static Distributed.DistributedValidation.lookup(targetIdentifier: Swift.String) -> Distributed.RemoteCallValidator?
 Added: _$s11Distributed0A10ValidationO6lookup16targetIdentifierAA19RemoteCallValidatorVSgSS_tFZ
+// C runtime SPI: first swift5_daval validation record for a distributed target (via the accessible-function record's tagged Flags pointer)
+Added: _swift_distributed_getFirstValidationRecord
 // static Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy) throws -> ()
 Added: _$s11Distributed0A10ValidationO8evaluateyyAA17EntitlementPolicyOKFZ
 // static Distributed.DistributedValidation.preflight<A where A: Distributed.DistributedActor>(on: A, target: Distributed.RemoteCallTarget) throws -> ()

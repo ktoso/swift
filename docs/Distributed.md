@@ -465,39 +465,51 @@ Both apply to a `distributed func` or `distributed var` and can also be written 
 Validation is split between the macro and the compiler because neither can emit both halves. The macro can run arbitrary Swift (to build the validator) but cannot see the mangled name or emit a pointer in a `@section` constant (SE-0492); IRGen knows the mangled name and can emit relative pointers but cannot synthesize the validator.
 
 1. The **macro** emits one **accessor** per attribute - a captureless closure coerced to `_DistributedValidationAccessor` - into its own section (`swift5_davala`). `@section` forces SE-0492 static initialization so the C function pointer is in place at load. The accessor materializes a `RemoteCallValidator` into a caller-supplied out-pointer; strings, closures, arbitrary Swift expressions live here (normal function body, not a constant-expression context).
-2. **IRGen** (`emitDistributedTargetAccessor`, `lib/IRGen/GenDistributed.cpp`) emits the identifying **record** into `swift5_daval`, next to the target's accessible-function record, one per accessor.
+2. **IRGen** (`emitAccessibleFunction`, `lib/IRGen/GenDecl.cpp`) emits one **record** into `swift5_daval` per accessor, AND encodes a tagged relative pointer to the target's first record in the `Flags` field of the target's accessible-function record.
 
-Record layout (`_DistributedValidationRecord`, four `i32` fields, 16-byte stride on every target):
+Record layout (`_DistributedValidationRecord`, four `i32` fields, 16-byte stride):
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | FourCC `'dval'` |
-| `flags` | reserved (0) |
-| `relativeName` | `RelativeDirectPointer` to the target's mangled distributed-thunk name |
+| `kind` | FourCC `'dval'` (for offline tooling; unused at runtime) |
+| `reserved` | 0 |
 | `relativeAccessor` | `RelativeDirectPointer` to the macro-emitted accessor |
+| `relativeNext` | `RelativeDirectPointer` to the next record for this target, or `0` (end) |
 
-`relativeName` targets the **same** string global the target's accessible-function record (`swift5_acfuncs`) already carries, so the identity string is stored exactly once. That string is byte-identical to `RemoteCallTarget.identifier`, so receive-side lookup is a byte-for-byte name match: collision-free (the mangled name is module-qualified) and free of duplicated strings.
+The records are **never stride-walked**. The target's accessible-function record (which the runtime already resolves, by mangled name, to dispatch the call) carries a **tagged relative pointer** in its `Flags` field to this target's first validation record; further records chain via `relativeNext`. Both fields are 4-byte aligned, so the low two bits of the offset are free for the flag bits:
+
+```
+   accessible-function record .Flags  (i32)
+     bit 0        = Distributed         (read by old runtimes; unchanged)
+     bit 1        = HasValidation
+     bits 2..31   = self-relative offset to the first swift5_daval record
+                    (a multiple of 4; recovered as Flags & ~0x3)
+```
+
+Old runtimes read only bit 0 (`isDistributed`) and ignore the rest, and never look at validation, so this reuse is back-deploy-safe and does not change the accessible-function record's size.
 
 ```
    distributed actor MyActor
-   ├── distributed func openDoor()            ← user-written
-   ├── accessible-function record ─┐          ← IRGen, swift5_acfuncs
-   │                                ├── shared mangled-name string ($s…FTE)
-   ├── swift5_daval record ─────────┘          ← IRGen, one per attribute
-   │        └── relativeAccessor ─┐
-   └── __daval_openDoor_accessor ←┘            ← macro, swift5_davala
+   ├── distributed func openDoor()          ← user-written
+   ├── accessible-function record           ← IRGen, swift5_acfuncs
+   │        └── Flags: HasValidation + rel ─┐
+   ├── swift5_daval record 0 ←──────────────┘  ← IRGen, one per attribute
+   │        ├── relativeNext ─┐
+   │        └── relativeAccessor ─────────────┐
+   ├── swift5_daval record 1 ←┘ (relativeNext=0)
+   │        └── relativeAccessor ─┐           │
+   └── __daval_openDoor_accessor ←┴───────────┘  ← macro, swift5_davala
 ```
 
-Section names by object format:
+Section names by object format (neither section is stride-walked; both only need to survive stripping):
 
-| Format | Records (`swift5_daval`) | Accessors (`swift5_davala`) | Bounds source |
-|--------|--------------------------|------------------------------|---------------|
-| Mach-O | `__DATA_CONST,__swift5_daval`  | `__DATA_CONST,__swift5_davala`  | `getsectiondata` + `_dyld_get_image_header` walk |
-| ELF    | `swift5_daval`                 | `swift5_davala`                 | Linker `__start_/__stop_` sentinel pair |
-| Wasm   | `swift5_daval`                 | `swift5_davala`                 | Same sentinel pair as ELF |
-| COFF   | `.sw5daval$B` (`$A/$Z` bounds) | `.sw5davala$B`                  | Bracket sentinels |
+| Format | Records (`swift5_daval`) | Accessors (`swift5_davala`) |
+|--------|--------------------------|------------------------------|
+| Mach-O | `__DATA_CONST,__swift5_daval`  | `__DATA_CONST,__swift5_davala`  |
+| ELF / Wasm | `swift5_daval`             | `swift5_davala`                 |
+| COFF   | `.sw5daval$B`                  | `.sw5davala$B`                  |
 
-The runtime walks only `swift5_daval`; it reaches each accessor through the record's `relativeAccessor` (the accessor section is never stride-walked). The accessor's name is compiler-issued via `context.makeUniqueName("__daval_<method>_accessor")` so multiple attributes on the same member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. IRGen finds the accessors by walking the target's peer declarations (`visitAuxiliaryDecls` on the original distributed func, recovered from its synthesized thunk), not by name, and emits one record per accessor.
+The accessor's name is compiler-issued via `context.makeUniqueName("__daval_<method>_accessor")` so multiple attributes on the same member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. IRGen finds the accessors by walking the target's peer declarations (`visitAuxiliaryDecls` on the original distributed func, recovered from its synthesized thunk), emits one record per accessor, threads them into the linked list, and points the `Flags` field at the first.
 
 ### Receive-side preflight
 
@@ -513,23 +525,23 @@ executeDistributedTarget
         ▼
    lookup(targetIdentifier: target.identifier)
         │
-        │ walks swift5_daval section in each loaded image,
-        │ decodes each record's relativeName, keeps EVERY record whose
-        │ name == target.identifier, wraps them in one composite RemoteCallValidator
+        │ swift_distributed_getFirstValidationRecord: resolve the target's
+        │ accessible-function record (swift_findAccessibleFunction), read its
+        │ tagged Flags pointer -> first swift5_daval record (or nil)
         ▼
-   composite RemoteCallValidator.check()
-        │
-        │ iterates collected validators in section-scan order,
-        │ throws on the first failure (AllOf semantics)
+   walk the per-target linked list (relativeNext), materialize each validator,
+   wrap them in one composite RemoteCallValidator
+        ▼
+   composite RemoteCallValidator.check()  -> throws on first failure (AllOf)
         ▼
    error propagates back to caller
 ```
 
-The identity is the target's full mangled distributed-thunk name (`RemoteCallTarget.identifier`), matched byte-for-byte against each record's `relativeName`. Because that name is the same string the accessible-function record carries, a daval record matches `target.identifier` in exactly the cases the accessible-function lookup does - so validation is consistent with dispatch, for concrete and protocol/`@Resolvable` targets alike, with no independent hashing to drift.
+There is **no section scan**. Identity is the accessible-function record's full mangled distributed-thunk name (collision-free, module-qualified), and `swift_findAccessibleFunction` already covers every loaded image on every platform, so validation works cross-image everywhere and is consistent with dispatch (concrete and protocol/`@Resolvable` targets alike). When the `HasValidation` bit is clear, `lookup` returns `nil` immediately - un-validated calls (the common case) pay only the accessible-function lookup they already do.
 
 Failed preflight throws **directly** out of `executeDistributedTarget` - it does NOT go through `handler.onThrow(...)`. The target function has not run yet, so the error is not one the target produced.
 
-Multiple records for the same target compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). Section-scan order across records for the same target is implementation-defined, so the specific record whose error surfaces first is not guaranteed across images - but the AllOf outcome (accept iff every check accepts) is.
+Multiple records for the same target compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). List order is implementation-defined, so the specific record whose error surfaces first is not guaranteed - but the AllOf outcome (accept iff every check accepts) is.
 
 ### Attribute inheritance across modules
 
@@ -637,14 +649,12 @@ try await DistributedValidation.$currentEntitlements.withValue(
 }
 ```
 
-An empty set is treated as "caller has no entitlements". A missing section record (target has no annotation) is a no-op: `preflight` returns without doing anything.
+An empty set is treated as "caller has no entitlements". A target with no annotation is a no-op: `preflight` returns without doing anything (`HasValidation` is clear, so `lookup` returns `nil` after only the accessible-function resolution the call already performs).
 
 ### Known limitations (v1)
 
-- **Section walker sees only the current image on ELF/Wasm/COFF.** `dlopen`'d libraries and secondary DLLs are not scanned. Darwin walks all loaded images via dyld APIs.
 - **`@ValidateRemoteCall({...})` inline closure on a protocol requirement is rejected at macro-expansion time.** Cross-module closure re-parse trips a `PreCheckTarget` invariant. Named factory extensions on `RemoteCallValidator` are the supported spelling for cross-module use.
 
 ### Future directions
 
-- **Enforce validation directly in the distributed accessor.** IRGen already knows, when it emits the distributed thunk accessor, whether the target carries validation attributes. Instead of (or in addition to) the receive-side section scan, IRGen could emit the "resolve and run the validator" sequence inline in the accessor body, making enforcement unbypassable and eliminating the runtime lookup entirely for the enforcement path. The `swift5_daval` records would remain for optional sender-side pre-flight and tooling. This is a larger change and is deferred.
-- **Skip the section scan for un-validated targets.** The accessible-function record now carries a spare `HasValidation` flag bit (`AccessibleFunctionFlags`, set by IRGen whenever a target emits validation records). A small runtime SPI reading that bit could let `preflight` skip the `swift5_daval` walk entirely for targets with no validation, and - by having the accessible-function record point at its validation records - avoid the separate name scan even for validated targets.
+- **Enforce validation directly in the distributed accessor.** IRGen already knows, when it emits the distributed thunk accessor, whether the target carries validation attributes. Instead of the receive-side lookup, IRGen could emit the "resolve and run the validator" sequence inline in the accessor body, making enforcement unbypassable and eliminating the runtime lookup entirely for the enforcement path. The `swift5_daval` records would remain for optional sender-side pre-flight and tooling. This is a larger change and is deferred.

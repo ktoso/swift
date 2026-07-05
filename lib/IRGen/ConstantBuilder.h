@@ -117,6 +117,15 @@ public:
     addRelativeOffset(IGM().RelativeAddressTy, target);
   }
 
+  /// Add a relative reference to \p target with \p tag OR'd into the low bits
+  /// of the offset. Only valid when the offset is known to be aligned such
+  /// that those low bits are always zero (e.g. both this field and \p target
+  /// are 4-byte aligned and \p tag < 4).
+  void addTaggedRelativeAddress(llvm::Constant *target, unsigned tag) {
+    assert(!isa<llvm::ConstantPointerNull>(target));
+    addTaggedRelativeOffset(IGM().RelativeAddressTy, target, tag);
+  }
+
   /// Add a tagged relative reference to the given address.  The direct
   /// target must be defined within the current image, but it might be
   /// a "GOT-equivalent", i.e. a pointer to an external object; if so,

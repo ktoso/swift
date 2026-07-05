@@ -42,6 +42,31 @@ void *swift_distributed_getGenericEnvironment(const char *targetNameStart,
   return accessor ? accessor->GenericEnvironment.get() : nullptr;
 }
 
+/// Given a distributed target's mangled name, return a pointer to the first
+/// validation record (`swift5_daval`) associated with it, or null if the
+/// target carries no `@Entitlement` / `@ValidateRemoteCall`.
+///
+/// The accessible-function record's `Flags` field doubles as a tagged relative
+/// pointer to that first record: bit 1 (`HasValidation`) gates it, and
+/// `Flags & ~0x3` is a signed self-relative offset from the `Flags` field
+/// (the offset is a multiple of 4, so the low two bits are free for the flag
+/// bits). This reuses the accessible-function lookup - which already covers
+/// every loaded image on every platform - so no separate section scan is
+/// needed. Subsequent records for the same target are reached via each
+/// record's `relativeNext` field, walked on the Swift side.
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+const void *swift_distributed_getFirstValidationRecord(
+    const char *targetNameStart, size_t targetNameLength) {
+  auto *accessor = findDistributedAccessor(targetNameStart, targetNameLength);
+  if (!accessor || !accessor->Flags.hasValidation())
+    return nullptr;
+  int32_t offset =
+      static_cast<int32_t>(accessor->Flags.getOpaqueValue() & ~uint32_t(0x3));
+  auto *flagsAddr = reinterpret_cast<const char *>(&accessor->Flags);
+  return flagsAddr + offset;
+}
+
 /// func _executeDistributedTarget<D: DistributedTargetInvocationDecoder>(
 ///    on: AnyObject,
 ///    _ targetName: UnsafePointer<UInt8>,
