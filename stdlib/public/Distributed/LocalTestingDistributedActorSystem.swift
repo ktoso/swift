@@ -31,6 +31,17 @@ import WinSDK
 /// It will crash on any attempt of remote communication, but can be useful
 /// for learning about `distributed actor` isolation, as well as early
 /// prototyping stages of development where a real system is not necessary yet.
+// Explicit 6.5-scoped witness for the 6.5 `RemoteCallValidation` associated
+// type. Without it the default witness is synthesized at this class's 5.7
+// availability floor, printing a `RemoteCallValidation` typealias that claims
+// macOS 13 availability while referencing the 6.5-only
+// `DistributedRemoteCallValidation` - which breaks `.swiftinterface` verification.
+@available(SwiftStdlib 6.5, *)
+extension LocalTestingDistributedActorSystem {
+  public typealias RemoteCallValidation =
+    DistributedRemoteCallValidation.InheritMacros<ValidateRemoteCallMacro>
+}
+
 @available(SwiftStdlib 5.7, *)
 public final class LocalTestingDistributedActorSystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = LocalTestingActorID

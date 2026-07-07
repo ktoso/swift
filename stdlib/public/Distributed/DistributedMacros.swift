@@ -19,6 +19,20 @@ import _Concurrency
 #if $Macros && hasAttribute(attached)
 
 // ==== -----------------------------------------------------------------------
+// MARK: @DistributedValidatorMacro (marker generator)
+
+/// Marks a `macro` declaration as a receive-side remote-call validation macro
+/// so a distributed actor system can opt into inheriting it. Attach it to the
+/// macro declaration; it generates a marker type `<MacroName>Macro` conforming
+/// to ``DistributedRemoteCallValidationMacroIdentifier`` (e.g. `@DistributedValidatorMacro` on
+/// `macro Entitlement` generates `enum EntitlementMacro`). The actor system
+/// then lists that marker in `DistributedRemoteCallValidation.InheritMacros<...>`.
+@available(SwiftStdlib 6.5, *)
+@attached(peer, names: suffixed(Macro))
+public macro DistributedValidatorMacro() =
+  #externalMacro(module: "SwiftMacros", type: "RemoteCallValidationMarkerMacro")
+
+// ==== -----------------------------------------------------------------------
 // MARK: @Resolvable
 
 /// Enables the attached to protocol to be resolved as remote distributed
@@ -51,6 +65,7 @@ public macro Resolvable() =
 ///   Applying it to any other declaration is a compile-time error.
 @available(SwiftStdlib 6.5, *)
 @preservedInInterface
+@DistributedValidatorMacro
 @attached(peer, names: arbitrary)
 public macro ValidateRemoteCall(_ validator: sending () throws -> Void) =
   #externalMacro(module: "SwiftMacros", type: "ValidateRemoteCallMacro")

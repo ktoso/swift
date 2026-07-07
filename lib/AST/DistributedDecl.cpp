@@ -361,6 +361,40 @@ Type swift::getDistributedActorSystemActorIDType(NominalTypeDecl *system) {
                               ctx.Id_ActorID);
 }
 
+Type swift::getDistributedSupportedRemoteCallValidation(
+    NominalTypeDecl *system) {
+  assert(!system->isDistributedActor());
+  auto &ctx = system->getASTContext();
+  // Read the `RemoteCallValidation` associated-type witness off the system's
+  // `DistributedActorSystem` conformance. For a system that does not declare
+  // its own `typealias RemoteCallValidation`, this resolves to the associated
+  // type's default (`InheritMacros<ValidateRemoteCallMacro>`).
+  return getTypeWitnessByName(system, ctx.getDistributedActorSystemDecl(),
+                              ctx.Id_RemoteCallValidation);
+}
+
+llvm::SmallVector<NominalTypeDecl *, 2>
+swift::getRemoteCallValidationInheritMacroTypes(Type inheritMacros) {
+  llvm::SmallVector<NominalTypeDecl *, 2> result;
+  if (!inheritMacros || inheritMacros->hasError())
+    return result;
+
+  // Expect `DistributedRemoteCallValidation.InheritMacros<each Macro>`, a bound
+  // generic whose single pack parameter carries the marker types. Expand the
+  // pack so `InheritMacros<A, B>` yields [A, B] and `InheritMacros< >` yields [].
+  auto *bound = inheritMacros->getAs<BoundGenericType>();
+  if (!bound)
+    return result;
+
+  for (Type arg : bound->getExpandedGenericArgs()) {
+    if (!arg || arg->hasError())
+      continue;
+    if (auto *nominal = arg->getAnyNominal())
+      result.push_back(nominal);
+  }
+  return result;
+}
+
 Type swift::getDistributedActorSystemResultHandlerType(
     NominalTypeDecl *system) {
   assert(!system->isDistributedActor());

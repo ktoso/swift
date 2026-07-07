@@ -302,6 +302,15 @@ public struct FakeNotLoadableAddressActorSystem: DistributedActorSystem, CustomS
 
 // ==== Fake Roundtrip Transport -----------------------------------------------
 
+// Opt into inheriting @Entitlement (in addition to the default
+// @ValidateRemoteCall) from distributed protocol requirements onto conforming
+// actors' witnesses. Gated at 6.5 because the marker types are 6.5-only.
+@available(SwiftStdlib 6.5, *)
+extension FakeRoundtripActorSystem {
+  public typealias RemoteCallValidation =
+    DistributedRemoteCallValidation.InheritMacros<ValidateRemoteCallMacro, EntitlementMacro>
+}
+
 @available(SwiftStdlib 5.7, *)
 public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = ActorAddress

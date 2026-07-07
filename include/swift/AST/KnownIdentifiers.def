@@ -335,6 +335,7 @@ IDENTIFIER(InvocationEncoder)
 IDENTIFIER(whenLocal)
 IDENTIFIER(decodeNextArgument)
 IDENTIFIER(SerializationRequirement)
+IDENTIFIER(RemoteCallValidation)
 IDENTIFIER_WITH_NAME(builderSelf, "$builderSelf")
 
 // Attribute options

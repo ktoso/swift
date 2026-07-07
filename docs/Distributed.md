@@ -577,7 +577,27 @@ At deserialization time, `materializePreservedCustomAttrArgs` (`lib/Sema/TypeChe
 
 #### `inheritDistributedValidationAttrs`
 
-Runs from `checkDistributedActor` (`lib/Sema/TypeCheckDistributed.cpp`). For each `distributed func` / `distributed var` on the conforming actor, walks the protocol's requirements and clones allow-listed macro attributes (`@Entitlement`, `@ValidateRemoteCall`) onto the witness.
+Runs from `checkDistributedActor` and from the `ExpandPeerMacroRequest` hook (`lib/Sema/TypeCheckDistributed.cpp`). For each `distributed func` / `distributed var` on the conforming actor, it walks the protocol's requirements and clones the *inheritable* validation-macro attributes onto the witness. Which macros are inheritable is decided per actor system (see below), not by a hardcoded list - this is what lets `@Entitlement`-style macros live in modules other than `Distributed`.
+
+##### Opting in: which macros an actor system inherits
+
+An actor system opts into inheriting a validation macro by listing that macro's **marker type** in its `RemoteCallValidation`:
+
+```swift
+extension MyActorSystem {
+  public typealias RemoteCallValidation =
+    DistributedRemoteCallValidation.InheritMacros<ValidateRemoteCallMacro, EntitlementMacro>
+}
+```
+
+`RemoteCallValidation` is an `@available(SwiftStdlib 6.5, *)` associated type on `DistributedActorSystem`, defaulting to `InheritMacros<ValidateRemoteCallMacro>` - so **every** system inherits the core `@ValidateRemoteCall` by default, and `@Entitlement` (or any external macro) requires an explicit opt-in.
+
+- **Marker types.** Each validation macro ships a companion marker type named `<MacroName>Macro` (e.g. `EntitlementMacro`) conforming to `DistributedRemoteCallValidationMacroIdentifier`. Authors don't hand-write it: attaching `@DistributedValidatorMacro` (a peer macro, `lib/Macros/Sources/SwiftMacros/DistributedValidationMacros.swift`) to the `macro` declaration generates it, copying the macro's availability/SPI. A macro and a same-named marker type coexist because macro and type declarations don't conflict (`lib/AST/Decl.cpp`), and in the `InheritMacros<...>` (type) position name lookup resolves to the marker type.
+- **Matching.** `inheritDistributedValidationAttrs` resolves the conforming actor's system type, reads the system's `RemoteCallValidation` witness (`getDistributedSupportedRemoteCallValidation`), expands the `InheritMacros<each Macro>` parameter pack (`getRemoteCallValidationInheritMacroTypes`), and strips the `Macro` suffix from each marker's name to recover the spelled attribute name it matches against (the same by-name matching used for the requirement `CustomAttr`, avoiding a resolve of deserialized args).
+- **Cycle-safety.** The allowed set is computed **lazily** - only when a requirement actually carries a candidate attribute - and the actor system type is read via an `ExcludeMacroExpansions` `lookupDirect` of `ActorSystem` (falling back to the module-scope `DefaultDistributedActorSystem`). This matters because the main caller is `ExpandPeerMacroRequest`: resolving the system type through the actor's conformance would re-enter the actor's member expansion and cycle. An actor with no inheritable validation requirement never resolves its system type.
+- **Fallback vs. opt-out.** If the opt-in cannot be resolved (generic/unbound system, missing witness, error) the set falls back to `@ValidateRemoteCall` only, so a resolution failure never silently drops the core macro. A *resolved* but empty `InheritMacros< >` inherits nothing - an explicit opt-out, distinct from a failure.
+
+**Availability caveat.** Because `RemoteCallValidation` is a 6.5 associated type whose default references 6.5-only types, a concrete actor system available *before* 6.5 that is built with library evolution must declare an explicit `@available(SwiftStdlib 6.5, *) typealias RemoteCallValidation` (as `LocalTestingDistributedActorSystem` does). Otherwise the witness synthesized from the default inherits the conformer's lower availability floor and its printed `.swiftinterface` references a 9999-only type at, say, macOS 13 - which fails interface verification.
 
 The clone has two paths:
 
@@ -651,6 +671,28 @@ public macro ValidateRemoteCall(_ validator: sending () throws -> Void)
 @preservedInInterface
 @attached(peer, names: arbitrary)
 public macro ValidateRemoteCall(_ validator: RemoteCallValidator)
+
+// ---- Opt-in machinery for inheriting validation macros ----
+
+// Marker protocol: a per-macro type that identifies a validation macro.
+public protocol DistributedRemoteCallValidationMacroIdentifier {}
+
+// Namespace + the list an actor system opts into (variadic generics).
+public enum DistributedRemoteCallValidation {
+  public struct InheritMacros<each Macro: DistributedRemoteCallValidationMacroIdentifier> {}
+}
+
+// Generates `enum <MacroName>Macro: DistributedRemoteCallValidationMacroIdentifier {}`
+// as a peer of the macro it is attached to (copying availability/SPI).
+@attached(peer, names: suffixed(Macro))
+public macro DistributedValidatorMacro()
+
+// On DistributedActorSystem (default = inherit the core @ValidateRemoteCall):
+//   @available(SwiftStdlib 6.5, *)
+//   associatedtype RemoteCallValidation =
+//     DistributedRemoteCallValidation.InheritMacros<ValidateRemoteCallMacro>
+// Generated markers for the built-in macros: `EntitlementMacro`,
+// `ValidateRemoteCallMacro`.
 ```
 
 ### Actor-system responsibilities

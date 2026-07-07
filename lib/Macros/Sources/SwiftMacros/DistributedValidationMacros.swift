@@ -128,6 +128,51 @@ public struct ValidateRemoteCallMacro: PeerMacro {
 }
 
 // ==== -----------------------------------------------------------------------
+// MARK: Marker generator (attached to a validation-macro declaration)
+//
+// A peer macro attached to a `macro` declaration that generates a marker type
+// `<MacroName>Macro` conforming to `DistributedRemoteCallValidationMacroIdentifier`. An actor system
+// lists such marker types in `DistributedRemoteCallValidation.InheritMacros<...>`
+// to opt into inheriting the corresponding validation macro from protocol
+// requirements onto its actors' witnesses; the compiler recovers the macro
+// identity by stripping the `Macro` suffix from the marker type name.
+
+public struct RemoteCallValidationMarkerMacro: PeerMacro {
+  /// Attributes copied verbatim from the attached macro declaration onto the
+  /// generated marker type, so the marker matches the macro's availability and
+  /// SPI. Mirrors `DistributedResolvableMacro.attributesToCopy`.
+  static let attributesToCopy: [String] = [
+    "available",
+    "_spi",
+    "_spi_available",
+  ]
+
+  public static func expansion(
+    of node: AttributeSyntax,
+    providingPeersOf declaration: some DeclSyntaxProtocol,
+    in context: some MacroExpansionContext
+  ) throws -> [DeclSyntax] {
+    guard let macroDecl = declaration.as(MacroDeclSyntax.self) else {
+      // Only meaningful on a `macro` declaration; no-op elsewhere.
+      return []
+    }
+    let markerName = "\(macroDecl.name.text)Macro"
+    // Copy availability (and SPI) from the macro being marked so the generated
+    // marker type is usable in exactly the same contexts as the macro itself.
+    let attributes = macroDecl.attributes.filter { attr in
+      Self.attributesToCopy.contains(
+        attr.as(AttributeSyntax.self)?.attributeName.trimmed.description ?? "")
+    }
+    return [
+      """
+      \(attributes)
+      public enum \(raw: markerName): Distributed.DistributedRemoteCallValidationMacroIdentifier {}
+      """
+    ]
+  }
+}
+
+// ==== -----------------------------------------------------------------------
 // MARK: Peer emission
 
 /// Emits the validation accessor for a single @Entitlement /

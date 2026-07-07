@@ -21,6 +21,7 @@
 #include "swift/AST/ConcreteDeclRef.h"
 #include "swift/AST/DiagnosticEngine.h"
 #include "swift/AST/Type.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace swift {
 
@@ -127,6 +128,19 @@ Type getDistributedActorSystemResultHandlerType(NominalTypeDecl *system);
 
 /// Get the 'ActorID' type of a specific distributed actor system.
 Type getDistributedActorSystemActorIDType(NominalTypeDecl *system);
+
+/// Get the 'RemoteCallValidation' opt-in type of a specific distributed actor
+/// system - a `RemoteCallValidationBehavior.InheritMacros<...>` listing the
+/// validation-macro marker types the system inherits onto its actors'
+/// witnesses. Returns a null/error Type if the system does not specify one or
+/// the witness cannot be resolved.
+Type getDistributedSupportedRemoteCallValidation(NominalTypeDecl *system);
+
+/// Extract the validation-macro marker nominal types listed in a
+/// `RemoteCallValidationBehavior.InheritMacros<each Macro>` type (expanding the
+/// parameter pack). Returns empty for a non-matching type or an empty list.
+llvm::SmallVector<NominalTypeDecl *, 2>
+getRemoteCallValidationInheritMacroTypes(Type inheritMacros);
 
 /// Retrieve a protocol conformance to the `Actor` protocol for a
 /// distributed actor type that is described via a substitution map for
