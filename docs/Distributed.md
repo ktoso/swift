@@ -504,9 +504,20 @@ Section names by object format (neither section is stride-walked; both only need
 | ELF / Wasm | `swift5_daval`             | `swift5_davala`                 |
 | COFF   | `.sw5daval$B`                  | `.sw5davala$B`                  |
 
-The accessor's name is compiler-issued via `context.makeUniqueName("__daval_<method>_accessor")` so multiple attributes on the same member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. IRGen finds the accessors by walking the target's peer declarations (`visitAuxiliaryDecls` on the original distributed func, recovered from its synthesized thunk), emits one record per accessor, threads them into the linked list, and points the `Flags` field at the first.
+The accessor's name is compiler-issued via `context.makeUniqueName("__daval_<method>_accessor")` so multiple attributes on the same member (stacked `@Entitlement` + `@Entitlement`, or a witness-local attribute plus a protocol-inherited clone of the same kind) don't collide on invalid-redeclaration. IRGen finds the accessors by walking the target's peer declarations (`visitAuxiliaryDecls`), emits one record per accessor, threads them into the linked list, and points the `Flags` field at the first.
 
-### Receive-side preflight
+The record is emitted against the **synthesized thunk** (that is the decl the runtime resolves by mangled name), but the peer accessors hang off the **original** member. `emitDistributedTargetAccessor` (`lib/IRGen/GenDistributed.cpp`) recovers the original from the thunk by matching `getDistributedThunk()`. Both decl kinds must be handled: a `distributed func`'s original is an `AbstractFunctionDecl`, a `distributed var`'s is the getter's `AbstractStorageDecl`. Missing the storage-decl case silently drops the var's records (`HasValidation` stays clear, so the guard is bypassed at runtime).
+
+```
+   synthesized thunk                    ← record emitted here, resolved by mangled name
+        ▲ getDistributedThunk()
+        │
+   original member                      ← @Entitlement / @ValidateRemoteCall peers attached here
+     ├── distributed func openDoor()      → AbstractFunctionDecl
+     └── distributed var  secret { get }  → AbstractStorageDecl
+```
+
+### Receive-side validation
 
 `DistributedActorSystem.executeDistributedTarget(on:target:...)` calls `DistributedValidation.preflight(on:target:)` before decoding arguments:
 
@@ -538,26 +549,19 @@ Failed preflight throws **directly** out of `executeDistributedTarget` - it does
 
 Multiple records for the same target compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). List order is implementation-defined, so the specific record whose error surfaces first is not guaranteed - but the AllOf outcome (accept iff every check accepts) is.
 
-### Attribute inheritance across modules
+### Validation attribute inheritance across modules
 
 The macros work identically whether written on a `distributed func` / `distributed var` directly, or on a protocol requirement that a distributed actor conforms to. In the protocol case the compiler transparently clones the attribute onto the concrete witness during conformance checking, and macro expansion runs on the witness as if the user had written the annotation there.
 
 ```
-   Module A (producer)                         Module B (consumer)
+   API module                                            Server module
 
-   protocol HomeAdmin:                         distributed actor MyHome:
-     DistributedActor {                          HomeAdmin {
-                                                    typealias ActorSystem = ...
-     @Entitlement("home.admin")
-     distributed func openDoor() -> Bool         distributed func openDoor() -> Bool {
-                                                    true
-   }                                              }
-                                                }
-                                                    ▲
-                                                    │ compiler inherits
-                                                    │ @Entitlement onto witness,
-                                                    │ macro expands the section
-                                                    │ record here
+   protocol HomeAdmin: ... {                             distributed actor MyHome: HomeAdmin { 
+     @Entitlement("home.admin")  /* --- implies ---> */    // @Entitlement("home.admin")
+     distributed func openDoor() -> Bool                   distributed func openDoor() -> Bool {
+                                                             true
+   }                                                       }
+                                                         }
 ```
 
 Two mechanisms make this work: **`@preservedInInterface`** carries the attribute's argument text across module boundaries, and **`inheritDistributedValidationAttrs`** re-attaches it to the witness during conformance checking.
@@ -586,7 +590,16 @@ The synthesized buffer's `SourceFileKind` and `GeneratedSourceInfo::Kind` carry 
 - `SourceFileKind::SyntheticMacro` - makes `AvailabilityScope::createForSourceFile` walk `getEnclosingSourceFile()` and inherit availability from the witness's `DeclContext`. Without this, any reference to `@available(SwiftStdlib X, *)` API from inside the inherited attribute fails to type-check.
 - `GeneratedSourceInfo::AttributeFromClang` - the only kind whose parser dispatch calls `parseExpandedAttributeList`. Despite the name (chosen historically for ClangImporter's `__attribute__((swift_attr))` handling), the code path is not Clang-specific.
 
-The witness's peer expansion must observe the merged (local + inherited) attribute list on its single, cached evaluation. That is guaranteed by a hook at the top of `ExpandPeerMacroRequest::evaluate` (`lib/Sema/TypeCheckMacros.cpp`): before iterating a distributed witness's attributes, it calls `inheritDistributedValidationAttrs` on the enclosing distributed actor, cloning any not-yet-present inherited attributes. Because the request is evaluated exactly once and this runs before `forEachAttachedMacro`, both a witness-local attribute and a same-kind inherited one (e.g. local `@Entitlement("local")` + inherited `@Entitlement("proto")`) each get their own section record. The clone uses `LookupDirectFlags::ExcludeMacroExpansions` on its own witness lookup, so it cannot recurse back into the peer request. `TypeChecker::checkDistributedActor` also calls `inheritDistributedValidationAttrs` directly (after `getDefaultInitializer`, so it never forces early expansion of a cross-module synthesized attribute); the two call sites are idempotent (deduped by spelled name + argument source range).
+The witness's peer expansion must observe the merged (local + inherited) attribute list on its single, cached evaluation. That is guaranteed by a hook at the top of `ExpandPeerMacroRequest::evaluate` (`lib/Sema/TypeCheckMacros.cpp`): before iterating a distributed witness's attributes, it calls `inheritDistributedValidationAttrs` on the enclosing distributed actor, cloning any not-yet-present inherited attributes. Because the request is evaluated exactly once and this runs before `forEachAttachedMacro`, both a witness-local attribute and a same-kind inherited one (e.g. local `@Entitlement("local")` + inherited `@Entitlement("proto")`) each get their own section record. The clone uses `LookupDirectFlags::ExcludeMacroExpansions` on its own witness lookup, so it cannot recurse back into the peer request. `TypeChecker::checkDistributedActor` also calls `inheritDistributedValidationAttrs` directly (after `getDefaultInitializer`, so it never forces early expansion of a cross-module synthesized attribute); the two call sites must be idempotent.
+
+Idempotency is `witnessAlreadyHas`: match on the attribute's spelled name plus its argument *content*. The key differs by origin because a deserialized (cross-module) requirement attribute has invalid source locations, so its args source range can never equal a synthesized clone's - it would re-clone on every invocation (an N-method actor accumulated `2, 3, ..., N+1` duplicate accessors):
+
+| Clone origin | Requirement args carry | Dedup key |
+|--------------|------------------------|-----------|
+| Same-module  | valid source locations | argument source range |
+| Cross-module | preserved text, invalid locations | preserved arg text; the clone is tagged with the same text via `setPreservedArgText` so a later invocation recognizes it |
+
+Both key on argument content, so a witness that legitimately stacks a local attribute and a same-kind inherited one keeps both records rather than collapsing to one.
 
 ### Public API
 
@@ -597,6 +610,15 @@ public enum EntitlementPolicy: ExpressibleByStringLiteral {
   case entitlement(String)
   case anyOf([EntitlementPolicy])   // empty is vacuously false
   case allOf([EntitlementPolicy])   // empty is vacuously true
+
+  // Variadic short-hand so nested policies can be listed without an array
+  // literal: `.anyOf(.entitlement("a"), .entitlement("b"))`. Forwards to the
+  // `.anyOf([...])` / `.allOf([...])` case. An array argument (literal or
+  // variable) still binds to the case; only a bare comma-list resolves here.
+  // Legal alongside the same-named cases because enum elements and functions
+  // don't conflict when their types differ (`lib/AST/Decl.cpp`).
+  public static func anyOf(_ policies: EntitlementPolicy...) -> EntitlementPolicy
+  public static func allOf(_ policies: EntitlementPolicy...) -> EntitlementPolicy
 }
 
 public struct EntitlementCheckFailed: Error, Codable, CustomStringConvertible {

@@ -46,6 +46,17 @@ distributed actor SecureHome {
   ]))
   distributed func openSafe() -> Bool { true }
 
+  // Variadic short-form: nested policies listed without an array literal.
+  // Resolves to the `EntitlementPolicy.anyOf(_:)` / `.allOf(_:)` factory.
+  @Entitlement(.anyOf(
+    .entitlement("com.example.admin"),
+    .entitlement("com.example.super-admin"),
+  ))
+  distributed func openSafeVariadic() -> Bool { true }
+
+  @Entitlement(.allOf(.entitlement("com.example.admin"), "com.example.mfa"))
+  distributed func openVaultVariadic() -> Bool { true }
+
   @ValidateRemoteCall({ () throws -> Void in
     // Custom validation logic runs on the receive side before decoding.
   })

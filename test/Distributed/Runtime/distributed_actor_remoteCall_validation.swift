@@ -81,6 +81,16 @@ distributed actor SecureHome {
   @Entitlement(.allOf(["a", "b"]))
   distributed func allOfAB() -> String { "allOf(A,B) ok" }
 
+  // Variadic short-form of `.anyOf` / `.allOf`: nested policies listed
+  // directly, no array literal. Resolves to the `anyOf(_:)` / `allOf(_:)`
+  // variadic factory, which forwards to the `.anyOf([...])` / `.allOf([...])`
+  // case, so the runtime semantics are identical to the array form above.
+  @Entitlement(.anyOf(.entitlement("va"), .entitlement("vb")))
+  distributed func anyOfVariadic() -> String { "anyOf variadic ok" }
+
+  @Entitlement(.allOf(.entitlement("va"), .entitlement("vb")))
+  distributed func allOfVariadic() -> String { "allOf variadic ok" }
+
   // Nested: `.anyOf` containing `.allOf`. Accepts either {a,b together} or
   // the standalone entitlement "root".
   @Entitlement(.anyOf([.allOf(["a", "b"]), .entitlement("root")]))
@@ -195,6 +205,38 @@ struct Main {
       print("result=\(v)")
     }
 
+    print("--- anyOfVariadic with {\"va\"} (accept)")
+    try await DistributedValidation.$currentEntitlements.withValue(["va"]) {
+      let v = try await remote.anyOfVariadic()
+      print("result=\(v)")
+    }
+
+    print("--- anyOfVariadic with {} (reject)")
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue([]) {
+        _ = try await remote.anyOfVariadic()
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+    }
+
+    print("--- allOfVariadic with {\"va\", \"vb\"} (accept)")
+    try await DistributedValidation.$currentEntitlements.withValue(["va", "vb"]) {
+      let v = try await remote.allOfVariadic()
+      print("result=\(v)")
+    }
+
+    print("--- allOfVariadic with {\"va\"} (reject)")
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue(["va"]) {
+        _ = try await remote.allOfVariadic()
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+    }
+
     print("--- anyOfAllOfAB_or_root with {\"a\", \"b\"} (accept via allOf branch)")
     try await DistributedValidation.$currentEntitlements.withValue(["a", "b"]) {
       let v = try await remote.anyOfAllOfAB_or_root()
@@ -296,6 +338,20 @@ struct Main {
 
 // CHECK: --- allOfAB with {"a", "b"} (accept)
 // CHECK: result=allOf(A,B) ok
+
+// CHECK: --- anyOfVariadic with {"va"} (accept)
+// CHECK: result=anyOf variadic ok
+
+// CHECK: --- anyOfVariadic with {} (reject)
+// CHECK-NOT: result=unexpected-success
+// CHECK: caught=Remote call rejected: missing entitlement 'vb'
+
+// CHECK: --- allOfVariadic with {"va", "vb"} (accept)
+// CHECK: result=allOf variadic ok
+
+// CHECK: --- allOfVariadic with {"va"} (reject)
+// CHECK-NOT: result=unexpected-success
+// CHECK: caught=Remote call rejected: missing entitlement 'vb'
 
 // CHECK: --- anyOfAllOfAB_or_root with {"a", "b"} (accept via allOf branch)
 // CHECK: result=nested ok

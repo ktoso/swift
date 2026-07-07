@@ -64,6 +64,7 @@ distributed actor MyHome: HomeAdmin {
   distributed func openDoor() -> Bool { true }
   distributed func openDoorAnyOf() -> Bool { true }
   distributed func openDoorShortAnyOf() -> Bool { true }
+  distributed func openDoorVariadicAnyOf() -> Bool { true }
   distributed func openDoorCustom() -> Bool { true }
 }
 
@@ -168,6 +169,42 @@ struct Main {
     // CHECK: --- openDoorShortAnyOf reject
     // CHECK-NOT: result=unexpected-success
     // CHECK: caught=Remote call rejected: missing entitlement 'com.example.short-form-b'
+
+    // ==== openDoorVariadicAnyOf: variadic `.anyOf(a, b)` short-form =========
+    // Bracket-less variadic policy inherited from the protocol requirement;
+    // accepts either variadic entitlement, matching the array short-form.
+    print("--- openDoorVariadicAnyOf accept via a")
+    try await DistributedValidation.$currentEntitlements.withValue(
+      ["com.example.variadic-a"]
+    ) {
+      let v = try await remote.openDoorVariadicAnyOf()
+      print("result=\(v)")
+    }
+    // CHECK: --- openDoorVariadicAnyOf accept via a
+    // CHECK: result=true
+
+    print("--- openDoorVariadicAnyOf accept via b")
+    try await DistributedValidation.$currentEntitlements.withValue(
+      ["com.example.variadic-b"]
+    ) {
+      let v = try await remote.openDoorVariadicAnyOf()
+      print("result=\(v)")
+    }
+    // CHECK: --- openDoorVariadicAnyOf accept via b
+    // CHECK: result=true
+
+    print("--- openDoorVariadicAnyOf reject")
+    do {
+      try await DistributedValidation.$currentEntitlements.withValue([]) {
+        _ = try await remote.openDoorVariadicAnyOf()
+        print("result=unexpected-success")
+      }
+    } catch {
+      print("caught=\(error)")
+    }
+    // CHECK: --- openDoorVariadicAnyOf reject
+    // CHECK-NOT: result=unexpected-success
+    // CHECK: caught=Remote call rejected: missing entitlement 'com.example.variadic-b'
 
     // ==== openDoorCustom: @ValidateRemoteCall(.requireCustomEntitlement) ====
     // Named factory reference inherited from the protocol requirement,

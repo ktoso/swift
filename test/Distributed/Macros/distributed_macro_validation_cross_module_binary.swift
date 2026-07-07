@@ -30,8 +30,12 @@
 // RUN: %target-swift-frontend -emit-module -emit-module-path %t/AdminProtocol.swiftmodule -module-name AdminProtocol -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -I %t %S/Inputs/AdminProtocol.swift
 //
 // Consumer: type-checks the actor with -dump-macro-expansions so we can
-// FileCheck the emitted validation accessor.
-// RUN: %target-swift-frontend -typecheck -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -I %t -dump-macro-expansions %s 2>&1 | %FileCheck %s
+// FileCheck the emitted validation accessor. Capture the dump once, then
+// FileCheck it twice: the default prefix asserts each accessor's contents,
+// the DEDUP prefix asserts exactly one accessor per witness (see end of file).
+// RUN: %target-swift-frontend -typecheck -target %target-swift-6.0-abi-triple -plugin-path %swift-plugin-dir -parse-as-library -I %t -dump-macro-expansions %s > %t/expansion.txt 2>&1
+// RUN: %FileCheck %s < %t/expansion.txt
+// RUN: %FileCheck %s --check-prefix=DEDUP < %t/expansion.txt
 
 import Distributed
 import FakeDistributedActorSystems
@@ -82,6 +86,18 @@ distributed actor MyHome: HomeAdmin {
   // CHECK-NEXT: .entitlement("com.example.short-form-b"),
   // CHECK-NEXT: ])) as Distributed.EntitlementPolicy)
 
+  // Fourth requirement with a variadic `.anyOf(a, b)` short-form: nested
+  // policies listed directly, no array literal. The preserved arg text
+  // round-trips the bracket-less spelling to the witness, and the same
+  // `(...) as Distributed.EntitlementPolicy` wrap lets it resolve to the
+  // variadic `EntitlementPolicy.anyOf(_:)` factory.
+  distributed func openDoorVariadicAnyOf() -> Bool { true }
+  // CHECK: __daval_openDoorVariadicAnyOf_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
+  // CHECK: try Distributed.DistributedValidation.evaluate((.anyOf(
+  // CHECK-NEXT: .entitlement("com.example.variadic-a"),
+  // CHECK-NEXT: .entitlement("com.example.variadic-b"),
+  // CHECK-NEXT: )) as Distributed.EntitlementPolicy)
+
   // `@ValidateRemoteCall(.requireCustomEntitlement)` inherited from the
   // protocol requirement. The named factory reference resolves against the
   // producer module's extension on `RemoteCallValidator` (which the client
@@ -90,3 +106,15 @@ distributed actor MyHome: HomeAdmin {
   // CHECK: private static let $s48distributed_macro_validation_cross_module_binary6MyHomeC14openDoorCustom18ValidateRemoteCallfMp_31__daval_openDoorCustom_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator(.requireCustomEntitlement)
 }
+
+// Exactly one validation accessor per witness - guards the cross-module dedup
+// in inheritDistributedValidationAttrs (was 2/3/4/5 duplicate accessors before
+// deduping on preserved arg text). Each expected accessor is listed once, in
+// source order; the trailing NOT fails on any further accessor (a duplicate
+// re-clone appends extra copies, piling up at/after the last witness).
+// DEDUP: __daval_openDoor_accessorfMu
+// DEDUP: __daval_openDoorAnyOf_accessorfMu
+// DEDUP: __daval_openDoorShortAnyOf_accessorfMu
+// DEDUP: __daval_openDoorVariadicAnyOf_accessorfMu
+// DEDUP: __daval_openDoorCustom_accessorfMu
+// DEDUP-NOT: accessorfMu

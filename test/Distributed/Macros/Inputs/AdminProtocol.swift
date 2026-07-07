@@ -8,7 +8,7 @@
 // survive to the consuming module regardless of whether that module loads
 // this one directly from `.swiftmodule` or via re-parsed `.swiftinterface`.
 //
-// Three shapes are tested:
+// Four shapes are tested:
 //   1. Bare string literal (`"..."`) - desugared to `.entitlement("...")`
 //      via `ExpressibleByStringLiteral`.
 //   2. Fully-qualified composite (`Distributed.EntitlementPolicy.anyOf(...)`)
@@ -25,6 +25,9 @@
 //      EntitlementPolicy.entitlement(...), ...])`; the same wrap makes the
 //      qualified form type-check equivalently. Both paths produce
 //      identical runtime policies.
+//   4. Variadic implicit-member composite (`.anyOf(a, b)`, no array literal)
+//      - resolves to the variadic `EntitlementPolicy.anyOf(_:)` factory. The
+//      bracket-less spelling round-trips the same way as shape 3.
 
 import Distributed
 import FakeDistributedActorSystems
@@ -83,6 +86,17 @@ public protocol HomeAdmin: DistributedActor where ActorSystem == FakeRoundtripAc
     .entitlement("com.example.short-form-b"),
   ]))
   distributed func openDoorShortAnyOf() -> Bool
+
+  // Variadic short-form: `.anyOf(...)` with the nested policies listed
+  // directly (no array literal). Resolves to the variadic
+  // `EntitlementPolicy.anyOf(_:)` factory rather than the `.anyOf([...])`
+  // case; the preserved arg text round-trips the bracket-less spelling to
+  // the witness, exercising the factory across the module boundary.
+  @Entitlement(.anyOf(
+    .entitlement("com.example.variadic-a"),
+    .entitlement("com.example.variadic-b"),
+  ))
+  distributed func openDoorVariadicAnyOf() -> Bool
 
   // `@ValidateRemoteCall` with a named factory. The producer defines the
   // factory as a static member of `RemoteCallValidator`; the consumer just

@@ -76,6 +76,15 @@ distributed actor MyHome: HomeAdmin {
   // CHECK: private static let $s51distributed_macro_validation_cross_module_interface6MyHomeC18openDoorShortAnyOf11EntitlementfMp_35__daval_openDoorShortAnyOf_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
   // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf([Distributed::EntitlementPolicy.entitlement("com.example.short-form-a"), Distributed::EntitlementPolicy.entitlement("com.example.short-form-b")])) as Distributed.EntitlementPolicy)
 
+  // Variadic short-form (`.anyOf(a, b)`, no array literal) inherited across
+  // the interface-rebuild boundary. The interface printer resolves the
+  // implicit member to the variadic `EntitlementPolicy.anyOf(_:)` factory
+  // and reprints the call in fully-qualified form (a variadic argument list,
+  // not an array literal).
+  distributed func openDoorVariadicAnyOf() -> Bool { true }
+  // CHECK: __daval_openDoorVariadicAnyOf_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
+  // CHECK: try Distributed.DistributedValidation.evaluate((Distributed::EntitlementPolicy.anyOf(Distributed::EntitlementPolicy.entitlement("com.example.variadic-a"), Distributed::EntitlementPolicy.entitlement("com.example.variadic-b"))) as Distributed.EntitlementPolicy)
+
   // `@ValidateRemoteCall(.requireCustomEntitlement)` inherited across the
   // interface-rebuild boundary. The named factory reference is re-parsed
   // from the preserved arg text and resolves against the producer module's

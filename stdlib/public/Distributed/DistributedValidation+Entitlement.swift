@@ -52,6 +52,30 @@ public enum EntitlementPolicy {
   ///
   /// An empty `.allOf([])` is vacuously true: it always accepts.
   case allOf([EntitlementPolicy])
+
+  /// Variadic short-hand for `.anyOf([...])`, so the nested policies can be
+  /// listed without an array literal:
+  ///
+  ///     @Entitlement(.anyOf(.entitlement("a"), .entitlement("b")))
+  ///
+  /// `.anyOf()` is vacuously false, matching `.anyOf([])`. The array form
+  /// (`.anyOf([...])`) still binds to the `anyOf(_:)` case; only a bare
+  /// comma-separated list resolves to this factory
+  public static func anyOf(_ policies: EntitlementPolicy...) -> EntitlementPolicy {
+    .anyOf(policies)
+  }
+
+  /// Variadic short-hand for `.allOf([...])`, so the nested policies can be
+  /// listed without an array literal:
+  ///
+  ///     @Entitlement(.allOf(.entitlement("a"), .entitlement("b")))
+  ///
+  /// `.allOf()` is vacuously true, matching `.allOf([])`. The array form
+  /// (`.allOf([...])`) still binds to the `allOf(_:)` case; only a bare
+  /// comma-separated list resolves to this factory
+  public static func allOf(_ policies: EntitlementPolicy...) -> EntitlementPolicy {
+    .allOf(policies)
+  }
 }
 
 // A bare string literal is shorthand for the single-entitlement case:
