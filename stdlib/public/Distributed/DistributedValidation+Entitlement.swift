@@ -20,7 +20,7 @@
 //   - `DistributedValidation.evaluate(_:)`: policy-tree walker.
 //
 // Generic validation infrastructure (record ABI, `RemoteCallValidator`,
-// section walker, `lookup`, `preflight`) lives in
+// section walker, `lookup`, `validate`) lives in
 // `DistributedValidation.swift`.
 //
 // The `@Entitlement` macro declarations live in

@@ -151,8 +151,8 @@ Added: _$s11Distributed0A10ValidationO6lookup16targetIdentifierAA19RemoteCallVal
 Added: _swift_distributed_getFirstValidationRecord
 // static Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy) throws -> ()
 Added: _$s11Distributed0A10ValidationO8evaluateyyAA17EntitlementPolicyOKFZ
-// static Distributed.DistributedValidation.preflight<A where A: Distributed.DistributedActor>(on: A, target: Distributed.RemoteCallTarget) throws -> ()
-Added: _$s11Distributed0A10ValidationO9preflight2on6targetyx_AA16RemoteCallTargetVtKAA0A5ActorRzlFZ
+// static Distributed.DistributedValidation.validate<A where A: Distributed.DistributedActor>(on: A, target: Distributed.RemoteCallTarget) throws -> ()
+Added: _$s11Distributed0A10ValidationO8validate2on6targetyx_AA16RemoteCallTargetVtKAA0A5ActorRzlFZ
 // type metadata accessor for Distributed.DistributedValidation
 Added: _$s11Distributed0A10ValidationOMa
 // nominal type descriptor for Distributed.DistributedValidation
@@ -229,3 +229,52 @@ Added: _$s11Distributed22EntitlementCheckFailedVs5ErrorAAMc
 Added: _$s11Distributed22EntitlementCheckFailedVSeAAMc
 // protocol conformance descriptor for Distributed.EntitlementCheckFailed : Swift.Encodable in Distributed
 Added: _$s11Distributed22EntitlementCheckFailedVSEAAMc
+
+// static Distributed.EntitlementPolicy.allOf(Distributed.EntitlementPolicy...) -> Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyO5allOfyA2Cd_tFZ
+// static Distributed.EntitlementPolicy.anyOf(Distributed.EntitlementPolicy...) -> Distributed.EntitlementPolicy
+Added: _$s11Distributed17EntitlementPolicyO5anyOfyA2Cd_tFZ
+
+// protocol descriptor for Distributed.DistributedRemoteCallValidationMacroIdentifier
+Added: _$s11Distributed0A35RemoteCallValidationMacroIdentifierMp
+// protocol descriptor for Distributed.DistributedRemoteCallValidationSetting
+Added: _$s11Distributed0A27RemoteCallValidationSettingMp
+// associated type descriptor for Distributed.DistributedActorSystem.RemoteCallValidation
+Added: _$s20RemoteCallValidation11Distributed0D11ActorSystemPTl
+
+// type metadata accessor for Distributed.DistributedRemoteCallValidation
+Added: _$s11Distributed0A20RemoteCallValidationOMa
+// nominal type descriptor for Distributed.DistributedRemoteCallValidation
+Added: _$s11Distributed0A20RemoteCallValidationOMn
+// type metadata for Distributed.DistributedRemoteCallValidation
+Added: _$s11Distributed0A20RemoteCallValidationON
+// type metadata accessor for Distributed.DistributedRemoteCallValidation.InheritMacros
+Added: _$s11Distributed0A20RemoteCallValidationO13InheritMacrosVMa
+// nominal type descriptor for Distributed.DistributedRemoteCallValidation.InheritMacros
+Added: _$s11Distributed0A20RemoteCallValidationO13InheritMacrosVMn
+// protocol conformance descriptor for Distributed.DistributedRemoteCallValidation.InheritMacros<Pack{repeat A}> : Distributed.DistributedRemoteCallValidationSetting in Distributed
+Added: _$s11Distributed0A20RemoteCallValidationO13InheritMacrosVy_xxQp_QPGAA0abcD7SettingAAMc
+// protocol witness table for Distributed.DistributedRemoteCallValidation.InheritMacros<Pack{repeat A}> : Distributed.DistributedRemoteCallValidationSetting in Distributed
+Added: _$s11Distributed0A20RemoteCallValidationO13InheritMacrosVy_xxQp_QPGAA0abcD7SettingAAWP
+
+// type metadata accessor for Distributed.EntitlementMacro
+Added: _$s11Distributed16EntitlementMacroOMa
+// nominal type descriptor for Distributed.EntitlementMacro
+Added: _$s11Distributed16EntitlementMacroOMn
+// type metadata for Distributed.EntitlementMacro
+Added: _$s11Distributed16EntitlementMacroON
+// protocol conformance descriptor for Distributed.EntitlementMacro : Distributed.DistributedRemoteCallValidationMacroIdentifier in Distributed
+Added: _$s11Distributed16EntitlementMacroOAA0a20RemoteCallValidationC10IdentifierAAMc
+// protocol witness table for Distributed.EntitlementMacro : Distributed.DistributedRemoteCallValidationMacroIdentifier in Distributed
+Added: _$s11Distributed16EntitlementMacroOAA0a20RemoteCallValidationC10IdentifierAAWP
+
+// type metadata accessor for Distributed.ValidateRemoteCallMacro
+Added: _$s11Distributed23ValidateRemoteCallMacroOMa
+// nominal type descriptor for Distributed.ValidateRemoteCallMacro
+Added: _$s11Distributed23ValidateRemoteCallMacroOMn
+// type metadata for Distributed.ValidateRemoteCallMacro
+Added: _$s11Distributed23ValidateRemoteCallMacroON
+// protocol conformance descriptor for Distributed.ValidateRemoteCallMacro : Distributed.DistributedRemoteCallValidationMacroIdentifier in Distributed
+Added: _$s11Distributed23ValidateRemoteCallMacroOAA0acd10ValidationE10IdentifierAAMc
+// protocol witness table for Distributed.ValidateRemoteCallMacro : Distributed.DistributedRemoteCallValidationMacroIdentifier in Distributed
+Added: _$s11Distributed23ValidateRemoteCallMacroOAA0acd10ValidationE10IdentifierAAWP

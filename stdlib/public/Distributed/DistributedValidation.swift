@@ -19,9 +19,10 @@
 //     user-facing API.
 //   - `RemoteCallValidator`: the receive-side value the accessor produces,
 //     wrapping the closure the runtime ultimately invokes.
-//   - `DistributedValidation`: the `executeDistributedTarget` preflight hook.
-//     Generic - parameterized only in `RemoteCallValidator`; no
-//     entitlement-specific state or logic lives here.
+//   - `DistributedValidation`: the `validate(on:target:)` primitive an actor
+//     system calls from `remoteCall`/`remoteCallVoid` and/or before
+//     `executeDistributedTarget`. Generic - parameterized only in
+//     `RemoteCallValidator`; no entitlement-specific state or logic lives here.
 //
 // There is NO section scan. A target's accessible-function record (which the
 // runtime already resolves, by mangled name, to dispatch the call) carries a
@@ -140,9 +141,11 @@ public struct _DistributedValidationKind: Sendable, RawRepresentable, Equatable 
 ///     }
 @available(SwiftStdlib 6.5, *)
 public struct RemoteCallValidator: Sendable {
-  /// The closure invoked on the receive side, before argument decoding, to
-  /// validate the incoming remote call. Throwing rejects the call and
-  /// propagates the error to the caller.
+  /// The closure invoked to validate that a remote call should proceed.
+  /// Throwing rejects the call and propagates the error to the caller. Reached
+  /// via `DistributedValidation.validate(on:target:)`, which an actor system
+  /// calls itself - typically from `remoteCall`/`remoteCallVoid` on the client
+  /// side and/or before `executeDistributedTarget` on the server side.
   public var check: @Sendable () throws -> Void
 
   /// Wraps a validator closure or top-level function reference.
@@ -273,7 +276,7 @@ internal func _collectValidators(
 }
 
 // ==== -----------------------------------------------------------------------
-// MARK: Lookup + preflight
+// MARK: Lookup + validate
 
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
@@ -298,20 +301,24 @@ extension DistributedValidation {
     targetIdentifier: String
   ) -> RemoteCallValidator? {
     var utf8 = Array(targetIdentifier.utf8)
-    let first: UnsafeRawPointer? = unsafe utf8.withUnsafeBufferPointer { buf in
+    let firstRecord: UnsafeRawPointer? = unsafe utf8.withUnsafeBufferPointer { buf in
       guard let base = unsafe buf.baseAddress else { return nil }
       return unsafe _swift_distributed_getFirstValidationRecord(
         base, UInt(buf.count))
     }
-    guard let first = unsafe first else { return nil }
+    guard let first = unsafe firstRecord else {
+      return nil // no records
+    }
 
     // Materialize this target's validators by walking its `swift5_daval`
     // linked list (see `_collectValidators`).
     var collected: [RemoteCallValidator] = []
     unsafe _collectValidators(from: first, into: &collected)
 
-    if collected.isEmpty { return nil }
-    if collected.count == 1 { return collected[0] }
+    guard collected.count > 1 else {
+      return collected.first // a single validator or just nil, which is fine as well
+    }
+
     // Bind to a `let` so the Sendable closure captures an immutable copy.
     let validators = collected
     return RemoteCallValidator {
@@ -321,11 +328,32 @@ extension DistributedValidation {
     }
   }
 
-  /// Preflight hook called from `DistributedActorSystem.executeDistributedTarget`
-  /// before argument decoding. Looks up the composed validator for
-  /// `target.identifier` and invokes `check()`. No-op if the target carries no
-  /// validation.
-  public static func preflight<Act: DistributedActor>(
+  /// Look up and run the composed `@Entitlement` / `@ValidateRemoteCall`
+  /// validators for a distributed target. No-op if the target carries no
+  /// validation. Throwing propagates the first validator's rejection.
+  ///
+  /// This is a **primitive**: the runtime does not call it automatically.
+  /// An actor system that wants remote-call validation calls it itself, at
+  /// whichever point makes sense for its transport:
+  ///
+  ///   - **From `remoteCall` / `remoteCallVoid` on the client side**, before
+  ///     the network round trip. This avoids a doomed round trip when the
+  ///     caller can already see it will fail (e.g. missing entitlement in
+  ///     `$currentEntitlements`).
+  ///
+  ///   - **On the server side, before calling `executeDistributedTarget`**.
+  ///     This is the trust boundary: a receiver that intends to enforce
+  ///     `@Entitlement` / `@ValidateRemoteCall` must call this - callers can
+  ///     lie or run with an older stdlib that never validated anything.
+  ///
+  ///   - Or both. The lookup is keyed on the target's mangled thunk name
+  ///     (`RemoteCallTarget.identifier`) so it resolves to the same records
+  ///     on both sides; running it in both places is defense in depth.
+  ///
+  /// A failed validator throws directly out of this function. On the server
+  /// side, that means the error does NOT go through `handler.onThrow(...)` -
+  /// the target has not run, so the error is not one the target produced.
+  public static func validate<Act: DistributedActor>(
     on actor: Act, target: RemoteCallTarget
   ) throws {
     guard let validator = lookup(targetIdentifier: target.identifier)

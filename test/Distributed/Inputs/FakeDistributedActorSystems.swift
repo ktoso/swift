@@ -400,6 +400,9 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
 
       var decoder = invocation.makeDecoder()
 
+      if #available(SwiftStdlib 6.5, *) {
+        try DistributedValidation.validate(on: active, target: target)
+      }
       try await executeDistributedTarget(
         on: active,
         target: target,
@@ -451,6 +454,9 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
       var decoder = invocation.makeDecoder()
 
       print(" > execute distributed target: \(target)")
+      if #available(SwiftStdlib 6.5, *) {
+        try DistributedValidation.validate(on: active, target: target)
+      }
       try await executeDistributedTarget(
         on: active,
         target: target,
@@ -725,6 +731,9 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
 
       var decoder = invocation.makeDecoder()
 
+      if #available(SwiftStdlib 6.5, *) {
+        try DistributedValidation.validate(on: active, target: target)
+      }
       try await executeDistributedTarget(
         on: active,
         target: target,
@@ -776,6 +785,9 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
       var decoder = invocation.makeDecoder()
 
       print(" > execute distributed target: \(target)")
+      if #available(SwiftStdlib 6.5, *) {
+        try DistributedValidation.validate(on: active, target: target)
+      }
       try await executeDistributedTarget(
         on: active,
         target: target,

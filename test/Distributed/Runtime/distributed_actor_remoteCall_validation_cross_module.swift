@@ -15,7 +15,7 @@
 // End-to-end cross-module runtime test. `@Entitlement` written on distributed
 // protocol requirements in the `AdminProtocol` producer module must be
 // inherited onto the conforming actor's witnesses in the consumer, and the
-// receive-side preflight must produce the same accept/reject outcomes as if
+// receive-side validation must produce the same accept/reject outcomes as if
 // the attributes had been written directly on the witnesses.
 //
 // This asserts SEMANTIC equivalence at runtime, not just textual expansion

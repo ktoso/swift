@@ -446,12 +446,14 @@ The SIL function the accessor actually dispatches to is selected by `IRGenModule
 
 There is one residual IRGen-side fixup: `argumentTypesBuffer` on the recipient is filled by `__getParameterTypeInfo` from demangling the regular distributed thunk's mangled name, which still says `any P` / `some P`. Since `any P` does not conform to `Codable`, `decodeNextArgument` would trap if invoked with that metadata. The accessor therefore overrides the runtime-loaded `argumentTy` with a compile-time reference to `$P`'s metadata before calling `decodeNextArgument` (see the `@Resolvable protocol param: override runtime-loaded metadata` block in `decodeArguments`).
 
-## Receive-side call validation: `@Entitlement` and `@ValidateRemoteCall`
+## Remote-call validation: `@Entitlement` and `@ValidateRemoteCall`
 
-Distributed actor systems that expose methods over untrusted transport often need to reject a call before it decodes, based on caller identity or capability. Two attached peer macros express this at the source level:
+Distributed actor systems that expose methods over untrusted transport often need to reject a call based on caller identity or capability. Two attached peer macros express this at the source level:
 
 - `@Entitlement(_ policy: EntitlementPolicy)` - declarative check against a task-local set of granted entitlements. Composes with `.anyOf` / `.allOf` and desugars a bare string literal to `.entitlement(...)`.
-- `@ValidateRemoteCall(_ validator: RemoteCallValidator)` - a named reusable validator recipe, or (on concrete methods only) an inline closure. Fires before argument decoding.
+- `@ValidateRemoteCall(_ validator: RemoteCallValidator)` - a named reusable validator recipe, or (on concrete methods only) an inline closure.
+
+The runtime does not automatically invoke either. The actor system decides when and where to run the check via the `DistributedValidation.validate(on:target:)` primitive - see [Invoking validation from an actor system](#invoking-validation-from-an-actor-system) below.
 
 Both apply to a `distributed func` or `distributed var` and can also be written on a protocol requirement, in which case the compiler inherits them onto every conforming actor's witness without the user restating anything.
 
@@ -517,16 +519,37 @@ The record is emitted against the **synthesized thunk** (that is the decl the ru
      └── distributed var  secret { get }  → AbstractStorageDecl
 ```
 
-### Receive-side validation
+### Invoking validation from an actor system
 
-`DistributedActorSystem.executeDistributedTarget(on:target:...)` calls `DistributedValidation.preflight(on:target:)` before decoding arguments:
+`DistributedValidation.validate(on:target:)` is a **primitive**. The runtime never invokes it automatically - `executeDistributedTarget` does not call it. An actor system that wants remote-call validation calls it itself, at whichever point makes sense for its transport. Typical placements:
+
+- **Client side, from `remoteCall`/`remoteCallVoid`**, before the network round trip. Avoids a doomed round trip when the caller can already see it will fail (e.g. missing entitlement in `$currentEntitlements`).
+- **Server side, before delegating to `executeDistributedTarget`**. This is the trust boundary - the receiver must run the check if the policy is to be enforced (callers can lie or run with an older stdlib that doesn't validate).
+- **Both.** Defense in depth. The lookup is keyed on the target's mangled thunk name so it resolves to the same records on both sides.
 
 ```
-executeDistributedTarget
+system.remoteCall
         │
-        │ if #available(SwiftStdlib 6.5, *)
+        │ (client-side, optional)
         ▼
-   preflight(on:target:)
+   DistributedValidation.validate(on:target:)
+        │
+        │ ... network round trip ...
+        ▼
+system.executeDistributedTarget (server-side wrapper)
+        │
+        │ (server-side, trust boundary)
+        ▼
+   DistributedValidation.validate(on:target:)
+        │
+        ▼
+   executeDistributedTarget       ← runtime does not call validate itself
+```
+
+`validate(on:target:)` internally calls `lookup(targetIdentifier:)`:
+
+```
+   validate(on:target:)
         │
         ▼
    lookup(targetIdentifier: target.identifier)
@@ -545,7 +568,7 @@ executeDistributedTarget
 
 There is **no section scan**. Identity is the accessible-function record's full mangled distributed-thunk name (collision-free, module-qualified), and `swift_findAccessibleFunction` already covers every loaded image on every platform, so validation works cross-image everywhere and is consistent with dispatch (concrete and protocol/`@Resolvable` targets alike). When the `HasValidation` bit is clear, `lookup` returns `nil` immediately - un-validated calls (the common case) pay only the accessible-function lookup they already do.
 
-Failed preflight throws **directly** out of `executeDistributedTarget` - it does NOT go through `handler.onThrow(...)`. The target function has not run yet, so the error is not one the target produced.
+Failed validation throws **directly** out of `validate` - it does NOT go through the receiver's `handler.onThrow(...)`. The target function has not run yet, so the error is not one the target produced.
 
 Multiple records for the same target compose as **AllOf**: every validator must accept before the call runs. This arises from stacked attributes on the same distributed member and from the compiler's cross-module inheritance of a protocol requirement's attribute onto the conforming actor's witness (the witness ends up with both its own attribute and the inherited one). List order is implementation-defined, so the specific record whose error surfaces first is not guaranteed - but the AllOf outcome (accept iff every check accepts) is.
 
@@ -654,7 +677,7 @@ public struct RemoteCallValidator: Sendable {
 public enum DistributedValidation {
   @TaskLocal public static var currentEntitlements: Set<String>
   public static func evaluate(_ policy: EntitlementPolicy) throws
-  public static func preflight<Act: DistributedActor>(
+  public static func validate<Act: DistributedActor>(
     on actor: Act, target: RemoteCallTarget) throws
   public static func lookup(
     targetIdentifier: String) -> RemoteCallValidator?
@@ -708,7 +731,7 @@ try await DistributedValidation.$currentEntitlements.withValue(
 }
 ```
 
-An empty set is treated as "caller has no entitlements". A target with no annotation is a no-op: `preflight` returns without doing anything (`HasValidation` is clear, so `lookup` returns `nil` after only the accessible-function resolution the call already performs).
+An empty set is treated as "caller has no entitlements". A target with no annotation is a no-op: `validate` returns without doing anything (`HasValidation` is clear, so `lookup` returns `nil` after only the accessible-function resolution the call already performs).
 
 ### Known limitations (v1)
 
