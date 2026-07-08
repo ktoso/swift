@@ -16,8 +16,19 @@
 // emitted by the compiler (IRGen), not the macro - it carries the target's
 // mangled distributed-thunk name and a relative pointer to this accessor - so
 // it does not appear in macro-expansion output.
+//
+// The accessor body includes a runtime cross-check on the incoming `type`
+// pointer so a validator emitted for one actor system refuses to materialize
+// into a caller expecting a different one; the emitted validator itself is
+// typed as `RemoteCallValidator<MyHome.ActorSystem>`.
 
 import Distributed
+import FakeDistributedActorSystems
+
+@available(SwiftStdlib 6.5, *)
+extension RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
+  public static var noop: RemoteCallValidator { RemoteCallValidator { _ in } }
+}
 
 @available(SwiftStdlib 6.5, *)
 distributed actor MyHome {
@@ -40,15 +51,20 @@ distributed actor MyHome {
   // can coexist on the same declaration. The mangled shape is
   // `$s<module><type><method>{Entitlement|ValidateRemoteCall}fMp_25__daval_<method>_accessorfMu_`.
   // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC8openDoor11EntitlementfMp_25__daval_openDoor_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
-  // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
+  // CHECK-NEXT: let expected: Any.Type = Distributed.RemoteCallValidator<MyHome.ActorSystem>.self
+  // CHECK-NEXT: let requested = type.load(as: Any.Type.self)
+  // CHECK-NEXT: guard requested == expected else {
+  // CHECK-NEXT: return false
+  // CHECK-NEXT: }
+  // CHECK-NEXT: let validator: Distributed.RemoteCallValidator<MyHome.ActorSystem> = Distributed.RemoteCallValidator<MyHome.ActorSystem>({ _ in
   // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.openDoor"))
   // CHECK-NEXT: })
-  // CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator.self)
+  // CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator<MyHome.ActorSystem>.self)
   // CHECK-NEXT: .initialize(to: validator)
   // CHECK-NEXT: return true
   // CHECK-NEXT: }
 
-  @ValidateRemoteCall({ () throws -> Void in })
+  @ValidateRemoteCall(.noop)
   distributed func openWindow() -> Bool { true }
   // CHECK: #if objectFormat(MachO)
   // CHECK-NEXT: @section("__DATA_CONST,__swift5_davala")
@@ -60,9 +76,13 @@ distributed actor MyHome {
   // CHECK-NEXT: @used
   // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
   // CHECK-NEXT: private static let $s27FakeDistributedActorSystems6MyHomeC10openWindow18ValidateRemoteCallfMp_27__daval_openWindow_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
-  // CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({ () throws -> Void in
-  // CHECK-NEXT: })
-  // CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator.self)
+  // CHECK-NEXT: let expected: Any.Type = Distributed.RemoteCallValidator<MyHome.ActorSystem>.self
+  // CHECK-NEXT: let requested = type.load(as: Any.Type.self)
+  // CHECK-NEXT: guard requested == expected else {
+  // CHECK-NEXT: return false
+  // CHECK-NEXT: }
+  // CHECK-NEXT: let validator: Distributed.RemoteCallValidator<MyHome.ActorSystem> = Distributed.RemoteCallValidator<MyHome.ActorSystem>(.noop)
+  // CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator<MyHome.ActorSystem>.self)
   // CHECK-NEXT: .initialize(to: validator)
   // CHECK-NEXT: return true
   // CHECK-NEXT: }

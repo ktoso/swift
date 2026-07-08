@@ -56,12 +56,12 @@ typealias DefaultDistributedActorSystem = FakeRoundtripActorSystem
 // with the factory name so we can prove both the protocol-inherited and
 // witness-local checks fired.
 @available(SwiftStdlib 6.5, *)
-extension RemoteCallValidator {
+extension RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
   public static var traceProto: RemoteCallValidator {
-    RemoteCallValidator { print("[validator] proto check ran") }
+    RemoteCallValidator { _ in print("[validator] proto check ran") }
   }
   public static var traceWitness: RemoteCallValidator {
-    RemoteCallValidator { print("[validator] witness check ran") }
+    RemoteCallValidator { _ in print("[validator] witness check ran") }
   }
 }
 

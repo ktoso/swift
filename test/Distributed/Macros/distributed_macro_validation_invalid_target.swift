@@ -9,7 +9,12 @@
 
 import Distributed
 
-@Sendable func exampleValidator() throws {}
+@available(SwiftStdlib 6.5, *)
+extension RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
+  public static var exampleValidator: RemoteCallValidator {
+    RemoteCallValidator { _ in }
+  }
+}
 
 @available(SwiftStdlib 6.5, *)
 distributed actor MyHome {
@@ -21,7 +26,7 @@ distributed actor MyHome {
   @Entitlement("com.example")
   distributed func openDoor() -> Bool { true }
 
-  @ValidateRemoteCall(exampleValidator)
+  @ValidateRemoteCall(.exampleValidator)
   distributed func openWindow() -> Bool { true }
 
   // ==== -----------------------------------------------------------------------
@@ -33,7 +38,7 @@ distributed actor MyHome {
   @Entitlement("com.example") // expected-error{{'@Entitlement' can only be applied to a 'distributed func' or 'distributed var'; add the 'distributed' modifier or remove '@Entitlement'}} expected-note{{Add 'distributed' modifier}}
   var plainVar: Int { 42 }
 
-  @ValidateRemoteCall(exampleValidator) // expected-error{{'@ValidateRemoteCall' can only be applied to a 'distributed func' or 'distributed var'; add the 'distributed' modifier or remove '@ValidateRemoteCall'}} expected-note{{Add 'distributed' modifier}}
+  @ValidateRemoteCall(.exampleValidator) // expected-error{{'@ValidateRemoteCall' can only be applied to a 'distributed func' or 'distributed var'; add the 'distributed' modifier or remove '@ValidateRemoteCall'}} expected-note{{Add 'distributed' modifier}}
   func plainValidatedFunc() {}
 
   // ==== -----------------------------------------------------------------------

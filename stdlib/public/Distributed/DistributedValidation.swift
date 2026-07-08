@@ -19,10 +19,11 @@
 //     user-facing API.
 //   - `RemoteCallValidator`: the receive-side value the accessor produces,
 //     wrapping the closure the runtime ultimately invokes.
-//   - `DistributedValidation`: the `validate(on:target:)` primitive an actor
-//     system calls from `remoteCall`/`remoteCallVoid` and/or before
-//     `executeDistributedTarget`. Generic - parameterized only in
-//     `RemoteCallValidator`; no entitlement-specific state or logic lives here.
+//   - `DistributedValidation`: internal-only helpers. `lookup(...)` (internal)
+//     resolves and composes a target's validators; `RemoteCallValidationLookupError`
+//     is thrown when a target has records but none are bound to the requesting
+//     actor system. The developer-facing entry point is `self.validate(target:context:)`
+//     on `DistributedActorSystem` (see the extension in `DistributedActorSystem.swift`).
 //
 // There is NO section scan. A target's accessible-function record (which the
 // runtime already resolves, by mangled name, to dispatch the call) carries a
@@ -113,19 +114,25 @@ public struct _DistributedValidationKind: Sendable, RawRepresentable, Equatable 
 /// A named, reusable receive-side validation policy for a distributed
 /// method, applied via `@ValidateRemoteCall`.
 ///
-/// Extend this type with static factory members to reference them via
-/// implicit-member syntax:
+/// `RemoteCallValidator` is parameterized on the concrete
+/// ``DistributedActorSystem`` so its stored closure can accept that system's
+/// ``DistributedActorSystem/RemoteCallValidationContext`` and throw its
+/// ``DistributedActorSystem/RemoteCallValidationFailure``.
 ///
-///     extension RemoteCallValidator {
+/// Extend it with static factory members (usually constrained to a specific
+/// actor system) so they can be referenced via implicit-member syntax at a
+/// `@ValidateRemoteCall(.someFactory)` site:
+///
+///     extension RemoteCallValidator where ActorSystem == MySystem {
 ///       public static var requireAdminRole: RemoteCallValidator {
-///         RemoteCallValidator {
+///         RemoteCallValidator { _ in
 ///           guard DistributedValidation.currentEntitlements.contains("admin")
 ///           else { throw EntitlementCheckFailed(missing: "admin") }
 ///         }
 ///       }
 ///
 ///       public static func requireEntitlement(_ name: String) -> RemoteCallValidator {
-///         RemoteCallValidator {
+///         RemoteCallValidator { _ in
 ///           guard DistributedValidation.currentEntitlements.contains(name)
 ///           else { throw EntitlementCheckFailed(missing: name) }
 ///         }
@@ -140,24 +147,33 @@ public struct _DistributedValidationKind: Sendable, RawRepresentable, Equatable 
 ///       distributed func openSafe() -> Bool { true }
 ///     }
 @available(SwiftStdlib 6.5, *)
-public struct RemoteCallValidator: Sendable {
-  /// The closure invoked to validate that a remote call should proceed.
-  /// Throwing rejects the call and propagates the error to the caller. Reached
-  /// via `DistributedValidation.validate(on:target:)`, which an actor system
-  /// calls itself - typically from `remoteCall`/`remoteCallVoid` on the client
-  /// side and/or before `executeDistributedTarget` on the server side.
-  public var check: @Sendable () throws -> Void
+public struct RemoteCallValidator<ActorSystem: DistributedActorSystem>: Sendable {
+  @usableFromInline
+  internal let _check: @Sendable (ActorSystem.RemoteCallValidationContext) throws(ActorSystem.RemoteCallValidationFailure) -> Void
 
-  /// Wraps a validator closure or top-level function reference.
-  public init(_ check: @escaping @Sendable () throws -> Void) {
-    self.check = check
+  /// Wraps a validator closure or top-level function reference. The closure
+  /// receives this actor system's ``DistributedActorSystem/RemoteCallValidationContext``
+  /// and may throw its ``DistributedActorSystem/RemoteCallValidationFailure``
+  /// to reject the call.
+  public init(
+    _ check: @escaping @Sendable (ActorSystem.RemoteCallValidationContext) throws(ActorSystem.RemoteCallValidationFailure) -> Void
+  ) {
+    self._check = check
   }
 
   /// Pass-through initializer. Enables the macro plugin's emission to
   /// funnel both `@ValidateRemoteCall({ ... })` and
   /// `@ValidateRemoteCall(.namedRecipe)` through a single code path.
-  public init(_ validator: RemoteCallValidator) {
-    self.check = validator.check
+  public init(_ validator: RemoteCallValidator<ActorSystem>) {
+    self._check = validator._check
+  }
+
+  /// Invoke the wrapped validator against `context`. Rethrows whatever the
+  /// validator body throws.
+  public func check(
+    context: ActorSystem.RemoteCallValidationContext
+  ) throws(ActorSystem.RemoteCallValidationFailure) {
+    try self._check(context)
   }
 }
 
@@ -239,67 +255,120 @@ internal func _relativePointer(
 /// (offset 12; a self-relative offset of 0 ends the list). Recursion avoids a
 /// mutable unsafe-pointer variable, which the strict-memory-safety checker
 /// rejects.
+///
+/// Each record's accessor is offered a pointer to `RemoteCallValidator<ActorSystem>.self`;
+/// if the accessor was emitted for a different actor system it will refuse
+/// (returning `false`), and we record that so the caller can distinguish "no
+/// records at all" from "records exist but not for me". A single target with
+/// mixed-actor-system records (unusual but possible if third-party code
+/// composed them) is tolerated: matches are collected, mismatches are silently
+/// skipped, and `sawMatch` stays `true` overall.
 @available(SwiftStdlib 6.5, *)
-internal func _collectValidators(
+internal func _collectValidators<ActorSystem: DistributedActorSystem>(
   from record: UnsafeRawPointer,
-  into collected: inout [RemoteCallValidator]
-) {
+  using system: ActorSystem.Type,
+  into collected: inout [RemoteCallValidator<ActorSystem>]
+) -> (sawMismatch: Bool, sawMatch: Bool) {
   // Field `relativeAccessor` (offset 8) -> accessor storage -> C fn ptr.
   let accessor = unsafe _relativePointer(at: record.advanced(by: 8))
     .assumingMemoryBound(to: _DistributedValidationAccessor.self)
     .pointee
 
   // Materialize the validator via the accessor. The `type` argument is a
-  // pointer to `RemoteCallValidator.self` - the accessor uses it as a
-  // self-check to reject mismatches when multiple copies of the runtime are
-  // loaded (currently unused; kept for ABI symmetry).
-  var validator: RemoteCallValidator = RemoteCallValidator({ })
-  var validatorType: Any.Type = RemoteCallValidator.self
-  let ok = withUnsafeMutablePointer(to: &validator) { outPtr in
-    withUnsafePointer(to: &validatorType) { typePtr in
-      unsafe accessor(
-        UnsafeMutableRawPointer(outPtr),
-        UnsafeRawPointer(typePtr),
-        nil,
-        0)
+  // pointer to `RemoteCallValidator<ActorSystem>.self`; the accessor uses it
+  // as an actor-system cross-check and returns `false` if this record was
+  // emitted for a different `DistributedActorSystem`.
+  var sawMismatch = false
+  var sawMatch = false
+  let size = MemoryLayout<RemoteCallValidator<ActorSystem>>.size
+  let align = MemoryLayout<RemoteCallValidator<ActorSystem>>.alignment
+  unsafe withUnsafeTemporaryAllocation(byteCount: size, alignment: align) { buf in
+    guard let outPtr = unsafe buf.baseAddress else { return }
+    var validatorType: Any.Type = RemoteCallValidator<ActorSystem>.self
+    let ok = unsafe withUnsafePointer(to: &validatorType) { typePtr in
+      unsafe accessor(outPtr, UnsafeRawPointer(typePtr), nil, 0)
+    }
+    if ok {
+      let v = unsafe outPtr
+        .assumingMemoryBound(to: RemoteCallValidator<ActorSystem>.self).move()
+      collected.append(v)
+      sawMatch = true
+    } else {
+      sawMismatch = true
     }
   }
-  if ok { collected.append(validator) }
 
   // Field `relativeNext` (offset 12): 0 ends the list.
   let nextField = unsafe record.advanced(by: 12)
   let nextOffset = unsafe Int(nextField.load(as: Int32.self))
   if nextOffset != 0 {
     let next = unsafe nextField.advanced(by: nextOffset)
-    unsafe _collectValidators(from: next, into: &collected)
+    let tail = unsafe _collectValidators(from: next, using: ActorSystem.self,
+                                         into: &collected)
+    sawMismatch = sawMismatch || tail.sawMismatch
+    sawMatch = sawMatch || tail.sawMatch
   }
+  return (sawMismatch, sawMatch)
 }
 
 // ==== -----------------------------------------------------------------------
-// MARK: Lookup + validate
+// MARK: Lookup
+
+/// Errors raised by ``DistributedValidation/lookup(targetIdentifier:using:)``.
+///
+/// A target with no validation records is NOT an error - `lookup` returns
+/// `nil` in that case. `RemoteCallValidationLookupError` covers lookup-time
+/// failures that are distinct from a validator's own rejection.
+@available(SwiftStdlib 6.5, *)
+public enum RemoteCallValidationLookupError: Error, CustomStringConvertible {
+  /// The target has one or more `swift5_daval` validation records, but none
+  /// of them were emitted for the actor system the caller asked about. This
+  /// is a programmer error: the target belongs to a different
+  /// ``DistributedActorSystem`` than the one running the validation.
+  ///
+  /// - Parameters:
+  ///   - targetIdentifier: the mangled distributed-thunk identifier of the
+  ///     target that was looked up.
+  ///   - requestedSystem: the actor system the caller passed to the lookup.
+  case actorSystemTypeMismatch(targetIdentifier: String, requestedSystem: Any.Type)
+
+  public var description: String {
+    switch self {
+    case .actorSystemTypeMismatch(let id, let system):
+      return "Remote-call validation records exist for '\(id)' but none are " +
+        "bound to '\(system)'. The target likely belongs to a different " +
+        "DistributedActorSystem."
+    }
+  }
+}
 
 @available(SwiftStdlib 6.5, *)
 extension DistributedValidation {
 
   /// Look up the composed ``RemoteCallValidator`` for the distributed target
   /// identified by `targetIdentifier` (its mangled distributed-thunk name,
-  /// i.e. `RemoteCallTarget.identifier`). Returns `nil` if the target has no
-  /// `@Entitlement`/`@ValidateRemoteCall`.
+  /// i.e. `RemoteCallTarget.identifier`) under actor system `ActorSystem`.
+  ///
+  /// - Returns `nil` if the target carries no validation records at all.
+  /// - Throws ``RemoteCallValidationLookupError/actorSystemTypeMismatch(targetIdentifier:requestedSystem:)``
+  ///   if the target carries records but none of them were emitted for
+  ///   `ActorSystem`.
+  /// - Otherwise returns an AllOf composition of the collected validators:
+  ///   invoking `.check(context:)` runs each validator in list order and the
+  ///   first thrown error short-circuits the rest.
   ///
   /// The target's first validation record is found via its accessible-function
   /// record's tagged `Flags` pointer; further records for the same target
   /// (from stacked attributes, or the compiler's cross-module inheritance of a
   /// protocol requirement's attribute onto the witness) are chained via
-  /// `relativeNext`. All of them compose as **AllOf**: every validator must
-  /// accept before the call runs.
+  /// `relativeNext`.
   ///
-  /// The returned validator's `check()` invokes each collected validator in
-  /// list order; the first thrown error propagates and short-circuits the
-  /// rest. Only the AllOf outcome (accept iff every check accepts) is
-  /// guaranteed; the specific record whose error surfaces first is not.
-  public static func lookup(
-    targetIdentifier: String
-  ) -> RemoteCallValidator? {
+  /// Reached from ``DistributedActorSystem/validate(target:context:)``, which
+  /// is what actor-system implementations call.
+  internal static func lookup<ActorSystem: DistributedActorSystem>(
+    targetIdentifier: String,
+    using system: ActorSystem.Type
+  ) throws(RemoteCallValidationLookupError) -> RemoteCallValidator<ActorSystem>? {
     var utf8 = Array(targetIdentifier.utf8)
     let firstRecord: UnsafeRawPointer? = unsafe utf8.withUnsafeBufferPointer { buf in
       guard let base = unsafe buf.baseAddress else { return nil }
@@ -310,55 +379,31 @@ extension DistributedValidation {
       return nil // no records
     }
 
-    // Materialize this target's validators by walking its `swift5_daval`
+    // Collect this target's validators by walking its `swift5_daval`
     // linked list (see `_collectValidators`).
-    var collected: [RemoteCallValidator] = []
-    unsafe _collectValidators(from: first, into: &collected)
+    var collected: [RemoteCallValidator<ActorSystem>] = []
+    let (sawMismatch, sawMatch) = unsafe _collectValidators(
+      from: first, using: ActorSystem.self, into: &collected)
+
+    if !sawMatch && sawMismatch {
+      // Records exist for this target but not one belongs to `ActorSystem`.
+      throw .actorSystemTypeMismatch(
+        targetIdentifier: targetIdentifier,
+        requestedSystem: ActorSystem.self)
+    }
 
     guard collected.count > 1 else {
-      return collected.first // a single validator or just nil, which is fine as well
+      return collected.first // a single validator, or nil, which is fine as well
     }
 
     // Bind to a `let` so the Sendable closure captures an immutable copy.
     let validators = collected
-    return RemoteCallValidator {
-      for validator in validators {
-        try validator.check()
+    let allOf: @Sendable (ActorSystem.RemoteCallValidationContext)
+      throws(ActorSystem.RemoteCallValidationFailure) -> Void = { context throws(ActorSystem.RemoteCallValidationFailure) in
+        for validator in validators {
+          try validator.check(context: context)
+        }
       }
-    }
-  }
-
-  /// Look up and run the composed `@Entitlement` / `@ValidateRemoteCall`
-  /// validators for a distributed target. No-op if the target carries no
-  /// validation. Throwing propagates the first validator's rejection.
-  ///
-  /// This is a **primitive**: the runtime does not call it automatically.
-  /// An actor system that wants remote-call validation calls it itself, at
-  /// whichever point makes sense for its transport:
-  ///
-  ///   - **From `remoteCall` / `remoteCallVoid` on the client side**, before
-  ///     the network round trip. This avoids a doomed round trip when the
-  ///     caller can already see it will fail (e.g. missing entitlement in
-  ///     `$currentEntitlements`).
-  ///
-  ///   - **On the server side, before calling `executeDistributedTarget`**.
-  ///     This is the trust boundary: a receiver that intends to enforce
-  ///     `@Entitlement` / `@ValidateRemoteCall` must call this - callers can
-  ///     lie or run with an older stdlib that never validated anything.
-  ///
-  ///   - Or both. The lookup is keyed on the target's mangled thunk name
-  ///     (`RemoteCallTarget.identifier`) so it resolves to the same records
-  ///     on both sides; running it in both places is defense in depth.
-  ///
-  /// A failed validator throws directly out of this function. On the server
-  /// side, that means the error does NOT go through `handler.onThrow(...)` -
-  /// the target has not run, so the error is not one the target produced.
-  public static func validate<Act: DistributedActor>(
-    on actor: Act, target: RemoteCallTarget
-  ) throws {
-    guard let validator = lookup(targetIdentifier: target.identifier)
-    else { return }
-
-    try validator.check()
+    return RemoteCallValidator<ActorSystem>(allOf)
   }
 }

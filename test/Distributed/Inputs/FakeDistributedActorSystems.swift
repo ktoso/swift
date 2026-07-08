@@ -401,7 +401,9 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
       var decoder = invocation.makeDecoder()
 
       if #available(SwiftStdlib 6.5, *) {
-        try DistributedValidation.validate(on: active, target: target)
+        if let lookupError = try self.validate(target: target, context: (actor.id, target)) {
+          fatalError("Unexpected validation lookup error: \(lookupError)")
+        }
       }
       try await executeDistributedTarget(
         on: active,
@@ -455,7 +457,9 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
 
       print(" > execute distributed target: \(target)")
       if #available(SwiftStdlib 6.5, *) {
-        try DistributedValidation.validate(on: active, target: target)
+        if let lookupError = try self.validate(target: target, context: (actor.id, target)) {
+          fatalError("Unexpected validation lookup error: \(lookupError)")
+        }
       }
       try await executeDistributedTarget(
         on: active,
@@ -732,7 +736,9 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
       var decoder = invocation.makeDecoder()
 
       if #available(SwiftStdlib 6.5, *) {
-        try DistributedValidation.validate(on: active, target: target)
+        if let lookupError = try self.validate(target: target, context: (actor.id, target)) {
+          fatalError("Unexpected validation lookup error: \(lookupError)")
+        }
       }
       try await executeDistributedTarget(
         on: active,
@@ -786,7 +792,9 @@ public final class FakeCustomSerializationRoundtripActorSystem: DistributedActor
 
       print(" > execute distributed target: \(target)")
       if #available(SwiftStdlib 6.5, *) {
-        try DistributedValidation.validate(on: active, target: target)
+        if let lookupError = try self.validate(target: target, context: (actor.id, target)) {
+          fatalError("Unexpected validation lookup error: \(lookupError)")
+        }
       }
       try await executeDistributedTarget(
         on: active,

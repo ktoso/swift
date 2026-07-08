@@ -23,9 +23,13 @@
 
 import Distributed
 
+// The generic macro parameter of `@ValidateRemoteCall` needs a known
+// `ActorSystem` at every attachment site, including protocol requirements.
+// Constrain the factory to `FakeActorSystem` here so it matches the protocol
+// requirement's fixed `ActorSystem` below without ambiguity.
 @available(SwiftStdlib 6.5, *)
-extension RemoteCallValidator {
-  public static var trace: RemoteCallValidator { RemoteCallValidator { } }
+extension RemoteCallValidator where ActorSystem == FakeActorSystem {
+  public static var trace: RemoteCallValidator { RemoteCallValidator { _ in } }
 }
 
 // Requirements carry distinct entitlement strings so the opted-in vs default
@@ -36,8 +40,11 @@ protocol OptedInService: DistributedActor {
   distributed func guarded() -> Bool
 }
 
+// Fixing `ActorSystem` on the protocol so `@ValidateRemoteCall(.trace)` on
+// the requirement can bind the macro's `ActorSystem` type parameter and find
+// the `.trace` factory.
 @available(SwiftStdlib 6.5, *)
-protocol DefaultService: DistributedActor {
+protocol DefaultService: DistributedActor where ActorSystem == FakeActorSystem {
   @Entitlement("com.example.default-gate")
   distributed func guarded() -> Bool
   @ValidateRemoteCall(.trace)
@@ -59,7 +66,7 @@ distributed actor DefaultOnly: DefaultService {
   typealias ActorSystem = FakeActorSystem
   distributed func guarded() -> Bool { true }
   distributed func traced() -> Bool { true }
-  // CHECK-DAG: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator(.trace)
+  // CHECK-DAG: let validator: Distributed.RemoteCallValidator<{{.*}}.ActorSystem> = Distributed.RemoteCallValidator<{{.*}}.ActorSystem>(.trace)
 }
 
 // The default-system actor must NOT inherit @Entitlement, so its gate string

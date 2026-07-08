@@ -51,32 +51,14 @@ public macro Resolvable() =
 // ==== -----------------------------------------------------------------------
 // MARK: @ValidateRemoteCall
 
-/// Runs a user-supplied validation on the receiving side of a remote call,
-/// before arguments are decoded and before the target method is invoked.
-/// Throwing from the validator aborts the call and propagates the error to
-/// the caller as a codable error.
-///
-/// Applied to a protocol requirement, `@ValidateRemoteCall` is inherited onto
-/// every witness of that requirement on conforming distributed actors.
-///
-/// ### Restrictions
-///
-/// - Can only be applied to a `distributed func` or `distributed var`.
-///   Applying it to any other declaration is a compile-time error.
-@available(SwiftStdlib 6.5, *)
-@preservedInInterface
-@DistributedValidatorMacro
-@attached(peer, names: arbitrary)
-public macro ValidateRemoteCall(_ validator: sending () throws -> Void) =
-  #externalMacro(module: "SwiftMacros", type: "ValidateRemoteCallMacro")
-
 /// Attaches a named ``RemoteCallValidator`` recipe to the receive side of a
-/// distributed call. Extend ``RemoteCallValidator`` with static factories to
-/// build reusable validation recipes shared across many actors:
+/// distributed call. Extend ``RemoteCallValidator`` with static factories
+/// (constrained by `where ActorSystem == MySystem`) and reference them via
+/// implicit-member syntax:
 ///
-///     extension RemoteCallValidator {
+///     extension RemoteCallValidator where ActorSystem == MySystem {
 ///       public static var requireAdminRole: RemoteCallValidator {
-///         RemoteCallValidator { /* check task-local entitlements */ }
+///         RemoteCallValidator { _ in /* check task-local entitlements */ }
 ///       }
 ///     }
 ///
@@ -85,11 +67,44 @@ public macro ValidateRemoteCall(_ validator: sending () throws -> Void) =
 ///       distributed func openBackDoor() -> Bool { true }
 ///     }
 ///
-/// See ``ValidateRemoteCall(_:)-Wrapper`` for the closure form.
+/// Applied to a protocol requirement, `@ValidateRemoteCall` is inherited onto
+/// every witness of that requirement on conforming distributed actors.
+///
+/// The macro parameter is deliberately untyped (`_ validator: Any`) so the
+/// implicit-member `.name` syntax parses uniformly whether the attachment
+/// site is a concrete distributed method (where `Self.ActorSystem` is known)
+/// or a protocol requirement (where it is not). Actual validity is enforced
+/// by the peer accessor the macro emits, which types the value as
+/// `RemoteCallValidator<Self.ActorSystem>` - so an extension of
+/// ``RemoteCallValidator`` that isn't visible under the enclosing actor's
+/// system fails the accessor's type-check with the usual "no member" error.
+///
+/// ### Restrictions
+///
+/// - Can only be applied to a `distributed func` or `distributed var`.
+///   Applying it to any other declaration is a compile-time error.
+/// - Only the named-factory form is supported. Inline closures cannot be
+///   used, because the validator body depends on the enclosing actor
+///   system's ``DistributedActorSystem/RemoteCallValidationContext`` and
+///   ``DistributedActorSystem/RemoteCallValidationFailure`` associated
+///   types which are not in scope at the attribute-argument syntax
+///   position. Factor the body into a static extension member on
+///   ``RemoteCallValidator`` (see the example above) and reference it by
+///   name.
+/// The macro is generic over the actor system so implicit-member syntax
+/// (`.myFactory`) at the attribute-argument site resolves against the
+/// enclosing distributed actor's `ActorSystem`. When the attachment site is
+/// a distributed protocol requirement, the requirement must fix
+/// `ActorSystem` (either the protocol's `where ActorSystem == ...` constraint
+/// or by using a validator factory whose extension pins a specific system)
+/// so the macro's `ActorSystem` type parameter can be inferred.
 @available(SwiftStdlib 6.5, *)
 @preservedInInterface
+@DistributedValidatorMacro
 @attached(peer, names: arbitrary)
-public macro ValidateRemoteCall(_ validator: RemoteCallValidator) =
+public macro ValidateRemoteCall<ActorSystem: DistributedActorSystem>(
+  _ validator: RemoteCallValidator<ActorSystem>
+) =
   #externalMacro(module: "SwiftMacros", type: "ValidateRemoteCallMacro")
 
 #endif

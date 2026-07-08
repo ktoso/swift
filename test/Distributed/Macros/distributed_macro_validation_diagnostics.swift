@@ -18,7 +18,12 @@
 
 import Distributed
 
-@Sendable func exampleValidator() throws {}
+@available(SwiftStdlib 6.5, *)
+extension RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
+  public static var exampleValidator: RemoteCallValidator {
+    RemoteCallValidator { _ in }
+  }
+}
 
 let runtimeString = "runtime-value"
 
@@ -47,12 +52,12 @@ distributed actor Accepted {
   distributed func openC() -> Bool { true }
 
   // ==== -----------------------------------------------------------------------
-  // MARK: `@ValidateRemoteCall` with a top-level function reference
+  // MARK: `@ValidateRemoteCall` with a named factory reference
   //
-  // Top-level functions are `@convention(thin)` and can be lifted into a
-  // `RemoteCallValidator` via its passthrough initializer without capturing
-  // any state.
+  // The macro's argument type is `RemoteCallValidator<ActorSystem>`, so a
+  // named factory on a `RemoteCallValidator` extension (constrained to the
+  // enclosing actor's `ActorSystem`) is the standard shape.
 
-  @ValidateRemoteCall(exampleValidator)
+  @ValidateRemoteCall(.exampleValidator)
   distributed func openD() -> Bool { true }
 }

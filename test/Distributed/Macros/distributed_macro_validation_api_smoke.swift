@@ -14,20 +14,21 @@
 // supports linking against a just-built swiftDistributed with new symbols.
 
 import Distributed
+import FakeDistributedActorSystems
 
 // Recipe API: extend RemoteCallValidator with named factories, use them via
 // implicit-member syntax on `@ValidateRemoteCall(.name)`.
 @available(SwiftStdlib 6.5, *)
-extension RemoteCallValidator {
+extension RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
   public static var requireAdminRole: RemoteCallValidator {
-    RemoteCallValidator {
+    RemoteCallValidator { _ in
       // A real implementation would consult the receive-side context (e.g.
       // task-local entitlements, service context) and throw on rejection.
     }
   }
 
   public static func requireEntitlement(_ name: String) -> RemoteCallValidator {
-    RemoteCallValidator { }
+    RemoteCallValidator { _ in }
   }
 }
 
@@ -57,11 +58,6 @@ distributed actor SecureHome {
   @Entitlement(.allOf(.entitlement("com.example.admin"), "com.example.mfa"))
   distributed func openVaultVariadic() -> Bool { true }
 
-  @ValidateRemoteCall({ () throws -> Void in
-    // Custom validation logic runs on the receive side before decoding.
-  })
-  distributed func openBackDoor() -> Bool { true }
-
   @ValidateRemoteCall(.requireAdminRole)
   distributed func openBackDoorSecure() -> Bool { true }
 
@@ -69,11 +65,11 @@ distributed actor SecureHome {
   distributed func openVault() -> Bool { true }
 }
 
-// Also verify the runtime API is reachable from user code:
+// Also verify the runtime API is reachable from user code (`lookup` is
+// internal; the developer-facing entrypoint is `system.validate(...)`, tested
+// in the runtime tests).
 @available(SwiftStdlib 6.5, *)
 func exerciseAPI() {
-  let _ : RemoteCallValidator? = DistributedValidation.lookup(
-    targetIdentifier: "")
   DistributedValidation.$currentEntitlements.withValue(["foo"]) {
     let _ = DistributedValidation.currentEntitlements
   }

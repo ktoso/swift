@@ -13,8 +13,9 @@
 add_swift_macro_library(SwiftMacros
   OptionSetMacro.swift
   DebugDescriptionMacro.swift
-  DistributedResolvableMacro.swift
-  DistributedValidationMacros.swift
+  DistributedMacros+Resolvable.swift
+  DistributedMacros+ValidateRemoteCall.swift
+  DistributedMacros+Entitlement.swift # FIXME: This is not intended to ship in stdlib
   SyntaxExtensions.swift
   TaskLocalMacro.swift
   SwiftifyImportMacro.swift

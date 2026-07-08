@@ -16,13 +16,13 @@
 // validation firing on the CLIENT (sender) side, from inside an actor
 // system's `remoteCall` / `remoteCallVoid` implementation.
 //
-// The stdlib exposes `DistributedValidation.validate(on:target:)` as a
-// primitive; the runtime never invokes it automatically. An actor system
-// that wants remote-call validation calls it itself. The lookup is keyed on
-// `target.identifier` (the mangled distributed-thunk name), so the same
-// records fire regardless of which side (client, server, or both) invokes
-// `validate`. This test's system calls it on BOTH sides for defense in
-// depth and checks:
+// The stdlib exposes `DistributedActorSystem.validate(target:context:)` as an
+// opt-in primitive; the runtime never invokes it automatically. An actor
+// system that wants remote-call validation calls `self.validate(...)` itself.
+// The lookup is keyed on `target.identifier` (the mangled distributed-thunk
+// name), so the same records fire regardless of which side (client, server,
+// or both) invokes `validate`. This test's system calls it on BOTH sides for
+// defense in depth and checks:
 //
 //   1. Un-annotated methods: no-op on both sides.
 //   2. `@ValidateRemoteCall` accepting: fires on the client BEFORE the fake
@@ -33,10 +33,10 @@
 //   5. `@Entitlement` accepting: both sides run.
 //
 // The test binary must load the just-built swiftDistributed (which has
-// RemoteCallValidator and DistributedValidation.validate), NOT the OS-shipped
-// /usr/lib/swift/libswiftDistributed.dylib (ABI-frozen, does not have those
-// symbols yet). We rewrite the LC_LOAD_DYLIB entry with install_name_tool
-// after linking.
+// RemoteCallValidator<AS> and DistributedActorSystem.validate), NOT the
+// OS-shipped /usr/lib/swift/libswiftDistributed.dylib (ABI-frozen, does not
+// have those symbols yet). We rewrite the LC_LOAD_DYLIB entry with
+// install_name_tool after linking.
 //
 // RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend-emit-module -emit-module-path %t/FakeDistributedActorSystems.swiftmodule -module-name FakeDistributedActorSystems -target %target-swift-6.0-abi-triple %S/../Inputs/FakeDistributedActorSystems.swift
@@ -82,9 +82,9 @@ public struct LocalResultHandler: DistributedTargetInvocationResultHandler {
 // ==== -----------------------------------------------------------------------
 // MARK: Client-side validating actor system
 
-// An actor system that runs `DistributedValidation.validate` on the client
-// side before the "network" hop. If validation rejects, the call never
-// reaches `executeDistributedTarget` (i.e. never crosses the wire).
+// An actor system that runs `self.validate` on the client side before the
+// "network" hop. If validation rejects, the call never reaches
+// `executeDistributedTarget` (i.e. never crosses the wire).
 //
 // This system reuses the invocation encoder/decoder types from
 // `FakeRoundtripActorSystem` so the compiler-synthesized thunk sees a
@@ -144,7 +144,9 @@ public final class ClientValidatingActorSystem: DistributedActorSystem, @uncheck
           Err: Error,
           Res: SerializationRequirement {
     print("  >> remoteCall client-preflight: target:\(target.identifier)")
-    try DistributedValidation.validate(on: actor, target: target)
+    if let lookupError = try self.validate(target: target, context: (actor.id, target)) {
+      fatalError("Unexpected validation lookup error: \(lookupError)")
+    }
     print("  >> remoteCall client-preflight: passed, dispatching")
 
     return try await roundtrip(actor: actor, target: target,
@@ -161,7 +163,9 @@ public final class ClientValidatingActorSystem: DistributedActorSystem, @uncheck
           Act.ID == ActorID,
           Err: Error {
     print("  >> remoteCallVoid client-preflight: target:\(target.identifier)")
-    try DistributedValidation.validate(on: actor, target: target)
+    if let lookupError = try self.validate(target: target, context: (actor.id, target)) {
+      fatalError("Unexpected validation lookup error: \(lookupError)")
+    }
     print("  >> remoteCallVoid client-preflight: passed, dispatching")
 
     let _: Void = try await roundtripVoid(actor: actor, target: target,
@@ -184,7 +188,9 @@ public final class ClientValidatingActorSystem: DistributedActorSystem, @uncheck
         storeError:  { self.remoteCallResult = nil; self.remoteCallError = $0 })
       var decoder = invocation.makeDecoder()
       print("  >> [wire] executeDistributedTarget on server side")
-      try DistributedValidation.validate(on: active, target: target)
+      if let lookupError = try self.validate(target: target, context: (active.id as! ActorID, target)) {
+        fatalError("Unexpected validation lookup error: \(lookupError)")
+      }
       try await executeDistributedTarget(on: active, target: target,
                                          invocationDecoder: &decoder, handler: handler)
       switch (remoteCallResult, remoteCallError) {
@@ -208,7 +214,9 @@ public final class ClientValidatingActorSystem: DistributedActorSystem, @uncheck
         storeError:  { self.remoteCallResult = nil; self.remoteCallError = $0 })
       var decoder = invocation.makeDecoder()
       print("  >> [wire] executeDistributedTarget on server side")
-      try DistributedValidation.validate(on: active, target: target)
+      if let lookupError = try self.validate(target: target, context: (active.id as! ActorID, target)) {
+        fatalError("Unexpected validation lookup error: \(lookupError)")
+      }
       try await executeDistributedTarget(on: active, target: target,
                                          invocationDecoder: &decoder, handler: handler)
       if let e = remoteCallError { throw e }
@@ -221,12 +229,12 @@ public final class ClientValidatingActorSystem: DistributedActorSystem, @uncheck
 // MARK: Validators + test actor
 
 @available(SwiftStdlib 6.5, *)
-extension RemoteCallValidator {
+extension RemoteCallValidator where ActorSystem == ClientValidatingActorSystem {
   public static var traceValidator: RemoteCallValidator {
-    RemoteCallValidator { print("[validator] check ran") }
+    RemoteCallValidator { _ in print("[validator] check ran") }
   }
   public static var rejectAll: RemoteCallValidator {
-    RemoteCallValidator { throw ValidatorRejected() }
+    RemoteCallValidator { _ in throw ValidatorRejected() }
   }
 }
 

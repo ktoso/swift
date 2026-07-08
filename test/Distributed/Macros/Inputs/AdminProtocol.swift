@@ -50,9 +50,9 @@ import FakeDistributedActorSystems
 // witness sits inside a `@available(SwiftStdlib 6.5, *)` context the
 // factory reference type-checks with no additional gymnastics.
 @available(SwiftStdlib 6.5, *)
-extension Distributed.RemoteCallValidator {
-  public static var requireCustomEntitlement: Distributed.RemoteCallValidator {
-    Distributed.RemoteCallValidator {
+extension Distributed.RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
+  public static var requireCustomEntitlement: RemoteCallValidator {
+    RemoteCallValidator { _ in
       guard Distributed.DistributedValidation.currentEntitlements.contains(
         "com.example.custom-validator"
       ) else {

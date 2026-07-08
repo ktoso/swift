@@ -240,6 +240,12 @@ public protocol DistributedActorSystem<SerializationRequirement>: Sendable {
   @available(SwiftStdlib 6.5, *)
   associatedtype RemoteCallValidation = DistributedRemoteCallValidation.InheritMacros<ValidateRemoteCallMacro>
 
+  @available(SwiftStdlib 6.5, *)
+  associatedtype RemoteCallValidationContext = (ActorID, RemoteCallTarget)
+
+  @available(SwiftStdlib 6.5, *)
+  associatedtype RemoteCallValidationFailure: Error = any Error
+
   // ==== ---------------------------------------------------------------------
   // - MARK: Resolving actors by identity
 
@@ -401,6 +407,57 @@ public protocol DistributedActorSystem<SerializationRequirement>: Sendable {
     resultBuffer: UnsafeRawPointer,
     metatype: Any.Type
   ) async throws
+}
+
+// ==== ----------------------------------------------------------------------------------------------------------------
+// MARK: Remote call validation
+
+@available(SwiftStdlib 6.5, *)
+extension DistributedActorSystem {
+
+  /// Run all the validators attached to the given remote call target.
+  /// No-op if the target carries no validation records.
+  ///
+  /// Actor system implementations call this from their own
+  /// ``remoteCall(on:target:invocation:throwing:returning:)`` /
+  /// ``remoteCallVoid(on:target:invocation:throwing:)`` on the client side,
+  /// and/or before ``executeDistributedTarget(on:target:invocationDecoder:handler:)``
+  /// on the server side. The runtime never calls this automatically. Running
+  /// it on both sides (defense in depth) is fine: the same records are keyed
+  /// on `target.identifier`, so both sides see the same composition.
+  ///
+  /// - Parameters:
+  ///   - target: the distributed target whose validators should be run.
+  ///   - context: the actor system's validation context for the call (e.g.
+  ///     `(actor.id, target)`, or a custom struct).
+  ///
+  /// - Throws:
+  ///   - Whatever a validator throws to reject the call (the validator body
+  ///     sees the typed ``RemoteCallValidationFailure``; here it surfaces as
+  ///     this method's untyped `throws`).
+  ///   - ``RemoteCallValidationLookupError/actorSystemTypeMismatch(targetIdentifier:requestedSystem:)`` if the target carries
+  ///     validation records but none of them are bound to this actor system.
+  ///     This means the target belongs to a different
+  ///     ``DistributedActorSystem`` - a programmer error, not a validator
+  ///     rejection.
+  public func validate(
+    target: RemoteCallTarget,
+    context: RemoteCallValidationContext
+  ) throws(RemoteCallValidationFailure) -> RemoteCallValidationLookupError? {
+    let validator: RemoteCallValidator<Self>?
+    do {
+      validator = try DistributedValidation.lookup(
+        targetIdentifier: target.identifier,
+        using: Self.self)
+    } catch {
+      return error
+    }
+    guard let validator else {
+      return nil // no validator to check
+    }
+    try validator.check(context: context)
+    return nil
+  }
 }
 
 // ==== ----------------------------------------------------------------------------------------------------------------

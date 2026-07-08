@@ -35,15 +35,15 @@ typealias DefaultDistributedActorSystem = FakeRoundtripActorSystem
 
 // A validator that leaves a visible trace when it fires.
 @available(SwiftStdlib 6.5, *)
-extension RemoteCallValidator {
+extension RemoteCallValidator where ActorSystem == FakeRoundtripActorSystem {
   public static var traceValidator: RemoteCallValidator {
-    RemoteCallValidator {
+    RemoteCallValidator { _ in
       print("[validator] check ran")
     }
   }
 
   public static var rejectAll: RemoteCallValidator {
-    RemoteCallValidator {
+    RemoteCallValidator { _ in
       throw ValidatorRejected()
     }
   }

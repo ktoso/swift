@@ -49,10 +49,15 @@ distributed actor MyHome: HomeAdmin {
 // CHECK-NEXT: @used
 // CHECK-NEXT: @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
 // CHECK-NEXT: private static let {{.*}}__daval_openDoor_accessorfMu_: Distributed._DistributedValidationAccessor = { outValue, type, hint, reserved in
-// CHECK-NEXT: let validator: Distributed.RemoteCallValidator = Distributed.RemoteCallValidator({
+// CHECK-NEXT: let expected: Any.Type = Distributed.RemoteCallValidator<MyHome.ActorSystem>.self
+// CHECK-NEXT: let requested = type.load(as: Any.Type.self)
+// CHECK-NEXT: guard requested == expected else {
+// CHECK-NEXT: return false
+// CHECK-NEXT: }
+// CHECK-NEXT: let validator: Distributed.RemoteCallValidator<MyHome.ActorSystem> = Distributed.RemoteCallValidator<MyHome.ActorSystem>({ _ in
 // CHECK-NEXT: try Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy.entitlement("com.example.protocol-inherited"))
 // CHECK-NEXT: })
-// CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator.self)
+// CHECK-NEXT: outValue.assumingMemoryBound(to: Distributed.RemoteCallValidator<MyHome.ActorSystem>.self)
 // CHECK-NEXT: .initialize(to: validator)
 // CHECK-NEXT: return true
 // CHECK-NEXT: }

@@ -145,14 +145,10 @@ Added: _$s11Distributed0A10ValidationO19currentEntitlementsShySSGvpZMV
 Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvgZ
 // property descriptor for static Distributed.DistributedValidation.$currentEntitlements : Swift.TaskLocal<Swift.Set<Swift.String>>
 Added: _$s11Distributed0A10ValidationO20$currentEntitlementss9TaskLocalCyShySSGGvpZMV
-// static Distributed.DistributedValidation.lookup(targetIdentifier: Swift.String) -> Distributed.RemoteCallValidator?
-Added: _$s11Distributed0A10ValidationO6lookup16targetIdentifierAA19RemoteCallValidatorVSgSS_tFZ
 // C runtime SPI: first swift5_daval validation record for a distributed target (via the accessible-function record's tagged Flags pointer)
 Added: _swift_distributed_getFirstValidationRecord
 // static Distributed.DistributedValidation.evaluate(Distributed.EntitlementPolicy) throws -> ()
 Added: _$s11Distributed0A10ValidationO8evaluateyyAA17EntitlementPolicyOKFZ
-// static Distributed.DistributedValidation.validate<A where A: Distributed.DistributedActor>(on: A, target: Distributed.RemoteCallTarget) throws -> ()
-Added: _$s11Distributed0A10ValidationO8validate2on6targetyx_AA16RemoteCallTargetVtKAA0A5ActorRzlFZ
 // type metadata accessor for Distributed.DistributedValidation
 Added: _$s11Distributed0A10ValidationOMa
 // nominal type descriptor for Distributed.DistributedValidation
@@ -179,24 +175,20 @@ Added: _$s11Distributed17EntitlementPolicyOs26ExpressibleByStringLiteralAAMc
 Added: _$s11Distributed17EntitlementPolicyOs33ExpressibleByUnicodeScalarLiteralAAMc
 // protocol conformance descriptor for Distributed.EntitlementPolicy : Swift.ExpressibleByExtendedGraphemeClusterLiteral in Distributed
 Added: _$s11Distributed17EntitlementPolicyOs43ExpressibleByExtendedGraphemeClusterLiteralAAMc
-// Distributed.RemoteCallValidator.check.getter : @Sendable () throws -> ()
-Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvg
-// Distributed.RemoteCallValidator.check.modify : @Sendable () throws -> ()
-Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvM
-// property descriptor for Distributed.RemoteCallValidator.check : @Sendable () throws -> ()
-Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvpMV
-// Distributed.RemoteCallValidator.check.setter : @Sendable () throws -> ()
-Added: _$s11Distributed19RemoteCallValidatorV5checkyyYbKcvs
+// Distributed.RemoteCallValidator._check.getter : @Sendable (A.RemoteCallValidationContext) throws(A.RemoteCallValidationFailure) -> ()
+Added: _$s11Distributed19RemoteCallValidatorV6_checkyy0bC17ValidationContextQzYb0bcF7FailureQzYKcvg
+// property descriptor for Distributed.RemoteCallValidator._check
+Added: _$s11Distributed19RemoteCallValidatorV6_checkyy0bC17ValidationContextQzYb0bcF7FailureQzYKcvpMV
+// Distributed.RemoteCallValidator.check(context: A.RemoteCallValidationContext) throws(A.RemoteCallValidationFailure) -> ()
+Added: _$s11Distributed19RemoteCallValidatorV5check7contexty0bC17ValidationContextQz_t0bcG7FailureQzYKF
 // type metadata accessor for Distributed.RemoteCallValidator
 Added: _$s11Distributed19RemoteCallValidatorVMa
 // nominal type descriptor for Distributed.RemoteCallValidator
 Added: _$s11Distributed19RemoteCallValidatorVMn
-// type metadata for Distributed.RemoteCallValidator
-Added: _$s11Distributed19RemoteCallValidatorVN
-// Distributed.RemoteCallValidator.init(Distributed.RemoteCallValidator) -> Distributed.RemoteCallValidator
-Added: _$s11Distributed19RemoteCallValidatorVyA2CcfC
-// Distributed.RemoteCallValidator.init(@Sendable () throws -> ()) -> Distributed.RemoteCallValidator
-Added: _$s11Distributed19RemoteCallValidatorVyACyyYbKccfC
+// Distributed.RemoteCallValidator.init(Distributed.RemoteCallValidator<A>) -> Distributed.RemoteCallValidator<A>
+Added: _$s11Distributed19RemoteCallValidatorVyACyxGADcfC
+// Distributed.RemoteCallValidator.init(@Sendable (A.RemoteCallValidationContext) throws(A.RemoteCallValidationFailure) -> ()) -> Distributed.RemoteCallValidator<A>
+Added: _$s11Distributed19RemoteCallValidatorVyACyxGy0bC17ValidationContextQzYb0bcE7FailureQzYKccfC
 // Distributed.EntitlementCheckFailed.description.getter : Swift.String
 Added: _$s11Distributed22EntitlementCheckFailedV11descriptionSSvg
 // property descriptor for Distributed.EntitlementCheckFailed.description : Swift.String
@@ -248,6 +240,32 @@ Added: _$s11Distributed0A20RemoteCallValidationOMa
 Added: _$s11Distributed0A20RemoteCallValidationOMn
 // type metadata for Distributed.DistributedRemoteCallValidation
 Added: _$s11Distributed0A20RemoteCallValidationON
+// associated type descriptor for Distributed.DistributedActorSystem.RemoteCallValidationContext
+Added: _$s27RemoteCallValidationContext11Distributed0E11ActorSystemPTl
+// associated type descriptor for Distributed.DistributedActorSystem.RemoteCallValidationFailure
+Added: _$s27RemoteCallValidationFailure11Distributed0E11ActorSystemPTl
+// associated conformance descriptor for Distributed.DistributedActorSystem.RemoteCallValidationFailure: Swift.Error
+Added: _$s11Distributed0A11ActorSystemP27RemoteCallValidationFailureAC_s5ErrorTn
+// (extension in Distributed):Distributed.DistributedActorSystem.validate(target: Distributed.RemoteCallTarget, context: A.RemoteCallValidationContext) throws(A.RemoteCallValidationFailure) -> Distributed.RemoteCallValidationLookupError?
+Added: _$s11Distributed0A11ActorSystemPAAE8validate6target7contextAA31RemoteCallValidationLookupErrorOSgAA0gH6TargetV_0ghI7ContextQzt0ghI7FailureQzYKF
+
+// Distributed.RemoteCallValidationLookupError.description.getter
+Added: _$s11Distributed31RemoteCallValidationLookupErrorO11descriptionSSvg
+// property descriptor for Distributed.RemoteCallValidationLookupError.description
+Added: _$s11Distributed31RemoteCallValidationLookupErrorO11descriptionSSvpMV
+// enum case for Distributed.RemoteCallValidationLookupError.actorSystemTypeMismatch(targetIdentifier: Swift.String, requestedSystem: Any.Type)
+Added: _$s11Distributed31RemoteCallValidationLookupErrorO23actorSystemTypeMismatchyACSS_ypXptcACmFWC
+// type metadata accessor for Distributed.RemoteCallValidationLookupError
+Added: _$s11Distributed31RemoteCallValidationLookupErrorOMa
+// nominal type descriptor for Distributed.RemoteCallValidationLookupError
+Added: _$s11Distributed31RemoteCallValidationLookupErrorOMn
+// type metadata for Distributed.RemoteCallValidationLookupError
+Added: _$s11Distributed31RemoteCallValidationLookupErrorON
+// protocol conformance descriptor for Distributed.RemoteCallValidationLookupError : Swift.Error in Distributed
+Added: _$s11Distributed31RemoteCallValidationLookupErrorOs0F0AAMc
+// protocol conformance descriptor for Distributed.RemoteCallValidationLookupError : Swift.CustomStringConvertible in Distributed
+Added: _$s11Distributed31RemoteCallValidationLookupErrorOs23CustomStringConvertibleAAMc
+
 // type metadata accessor for Distributed.DistributedRemoteCallValidation.InheritMacros
 Added: _$s11Distributed0A20RemoteCallValidationO13InheritMacrosVMa
 // nominal type descriptor for Distributed.DistributedRemoteCallValidation.InheritMacros
