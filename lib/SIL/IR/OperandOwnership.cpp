@@ -1138,6 +1138,13 @@ BUILTIN_OPERAND_OWNERSHIP(TrivialUse, RemoveTaskLocalValue)
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskCancellationShieldPush)
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskCancellationShieldPop)
 
+// CancellationScopePush takes no operands.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopePush)
+// Trivial use since our operand is just an UnsafeRawPointer.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopePop)
+// Trivial use since our operand is just an UnsafeRawPointer.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopeCancel)
+
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CreateDetachedContinuation)
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, DestroyDetachedContinuation)
 
