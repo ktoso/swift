@@ -700,6 +700,7 @@ CONSTANT_OWNERSHIP_BUILTIN(None, TaskCancellationShieldPop)
 CONSTANT_OWNERSHIP_BUILTIN(None, CancellationScopePush)
 CONSTANT_OWNERSHIP_BUILTIN(None, CancellationScopePop)
 CONSTANT_OWNERSHIP_BUILTIN(None, CancellationScopeCancel)
+CONSTANT_OWNERSHIP_BUILTIN(None, CreateSynchronousJob)
 
 #undef CONSTANT_OWNERSHIP_BUILTIN
 

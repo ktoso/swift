@@ -236,6 +236,38 @@ public:
   }
 };
 
+/// A minimal `Job` that runs a synchronous, no-argument, no-result closure
+/// exactly once when an executor schedules it, then releases the closure
+/// context. Used by higher-level primitives (e.g. `withDeadline`) that
+/// need to enqueue a plain "fire once" callback onto an executor without
+/// spinning up a full `AsyncTask`.
+///
+/// The closure is represented as a `(fn, context)` pair using Swift's
+/// thick-function ABI: `Invoke` takes the context pointer and returns
+/// void. Ownership of the context is transferred to the job at
+/// construction; the job releases it after `Invoke` returns (or if the
+/// job is destroyed without ever running).
+class SynchronousJob : public Job {
+public:
+  using InvokeFn = SWIFT_CC(swift) void(SWIFT_CONTEXT void *context);
+
+private:
+  void *ClosureContext;
+  InvokeFn * __ptrauth_swift_job_invoke_function Invoke;
+
+public:
+  SynchronousJob(JobPriority priority, void *closureContext, InvokeFn *invoke)
+    : Job({JobKind::SynchronousJob, priority}, &process),
+      ClosureContext(closureContext), Invoke(invoke) {}
+
+  SWIFT_CC(swiftasync)
+  static void process(Job *job);
+
+  static bool classof(const Job *job) {
+    return job->Flags.getKind() == JobKind::SynchronousJob;
+  }
+};
+
 /// Describes type information and offers value methods for an arbitrary concrete
 /// type in a way that's compatible with regular Swift and embedded Swift. In
 /// regular Swift, just holds a Metadata pointer and dispatches to the value

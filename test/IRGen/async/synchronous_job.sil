@@ -1,0 +1,44 @@
+// RUN: %target-swift-frontend -enable-objc-interop  -primary-file %s -emit-ir -sil-verify-all | %FileCheck %s -DINT=i%target-ptrsize --check-prefixes=CHECK,CHECK-%target-ptrsize
+// RUN: %target-swift-frontend -disable-objc-interop -primary-file %s -emit-ir -sil-verify-all | %FileCheck %s -DINT=i%target-ptrsize --check-prefixes=CHECK,CHECK-%target-ptrsize
+
+// REQUIRES: concurrency
+
+// IRGen coverage for the `createSynchronousJob` builtin at the SIL level.
+// Verifies:
+//   * The SIL builtin lowers to a direct call to
+//     `@swift_job_createSynchronous(SizeTy priority, ptr ctx, ptr invoke)`.
+//   * The priority operand is a `UInt8` widened to `size_t` (the runtime
+//     signature) before the call.
+//   * The (fn, ctx) pair of a thick closure is forwarded to the runtime
+//     call in the expected arg slots.
+
+sil_stage canonical
+
+import Builtin
+import Swift
+import _Concurrency
+
+// CHECK-LABEL: define{{.*}} swiftcc ptr @sync_job_empty(i8 %0, ptr %1, ptr %2)
+sil hidden [ossa] @sync_job_empty : $@convention(thin) (UInt8, @owned @callee_guaranteed () -> ()) -> Builtin.Job {
+bb0(%priority : $UInt8, %closure : @owned $@callee_guaranteed () -> ()):
+  // CHECK: [[PRIORITY_WORD:%.*]] = zext i8 %0 to [[INT]]
+  // CHECK: [[JOB:%.*]] = call swiftcc ptr @swift_job_createSynchronous([[INT]] [[PRIORITY_WORD]], ptr {{%.*}}, ptr {{%.*}})
+  // CHECK: ret ptr [[JOB]]
+  %job = builtin "createSynchronousJob"(%priority : $UInt8, %closure : $@callee_guaranteed () -> ()) : $Builtin.Job
+  return %job : $Builtin.Job
+}
+
+// The (fn, ctx) pair of a thick closure is exploded into two operands at the
+// SIL builtin site; verify both reach the runtime call in the correct arg
+// slots. IRGen synthesizes the operand order (priority, ctx, invoke).
+// CHECK-LABEL: define{{.*}} swiftcc ptr @sync_job_forwards_context(i8 %0, ptr %1, ptr %2)
+sil hidden [ossa] @sync_job_forwards_context : $@convention(thin) (UInt8, @owned @callee_guaranteed () -> ()) -> Builtin.Job {
+bb0(%priority : $UInt8, %closure : @owned $@callee_guaranteed () -> ()):
+  // The closure's context pointer (%2 in LLVM IR - the second word of a
+  // Swift `@callee_guaranteed` thick function on the stack) becomes the
+  // `ctx` arg to `swift_job_createSynchronous`, and the function pointer
+  // (%1) becomes `invoke`.
+  // CHECK: call swiftcc ptr @swift_job_createSynchronous([[INT]] {{%.*}}, ptr %2, ptr %1)
+  %job = builtin "createSynchronousJob"(%priority : $UInt8, %closure : $@callee_guaranteed () -> ()) : $Builtin.Job
+  return %job : $Builtin.Job
+}

@@ -46,3 +46,33 @@ public struct S {
       return await callee()
   }
 }
+
+// ==== -----------------------------------------------------------------------
+// MARK: Builtin.createSynchronousJob
+
+// IRGen coverage for `Builtin.createSynchronousJob` (backs the
+// `withDeadline` timer / general fire-once synchronous work item on an
+// executor). Verifies the builtin lowers to a direct call to the
+// `swift_job_createSynchronous` runtime entry point, with the closure's
+// `(fn, ctx)` pair forwarded as `(context, invoke)` args.
+
+// CHECK-LABEL: define{{.*}} swiftcc ptr @"$s5async26emptySynchronousJobBuiltinBjyF"
+// CHECK: call{{.*}} swiftcc ptr @swift_job_createSynchronous(i{{32|64}} 0, ptr null, ptr @"$s5async26emptySynchronousJobBuiltinBjyFyycfU_{{(.ptrauth)?}}"
+// CHECK: ret ptr
+public func emptySynchronousJobBuiltin() -> Builtin.Job {
+  return Builtin.createSynchronousJob(priority: UInt8(0)) { }
+}
+
+// A captured heap object is retained into the closure's context; the
+// context pointer is what shows up as the middle arg to the runtime call.
+public class SynchronousJobTrace {}
+
+// CHECK-LABEL: define{{.*}} swiftcc ptr @"$s5async23capturingSynchronousJobBjyF"
+// CHECK: call{{.*}} swiftcc ptr @swift_job_createSynchronous(i{{32|64}} 0, ptr %{{[0-9]+}}, ptr @"$s5async23capturingSynchronousJobBjyFyycfU_TA{{(.ptrauth)?}}"
+// CHECK: ret ptr
+public func capturingSynchronousJob() -> Builtin.Job {
+  let trace = SynchronousJobTrace()
+  return Builtin.createSynchronousJob(priority: UInt8(0)) {
+    _ = trace
+  }
+}

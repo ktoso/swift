@@ -2483,6 +2483,24 @@ static ValueDecl *getCancellationScopeCancel(ASTContext &ctx, Identifier id) {
       ctx, id, _thin, _parameters(_label("record", _unsafeRawPointer)), _void);
 }
 
+static ValueDecl *getCreateSynchronousJob(ASTContext &ctx, Identifier id) {
+  // (priority: UInt8, body: __owned @escaping () -> ()) -> Builtin.Job
+  //
+  // The closure is passed as an @owned thick function value; IRGen extracts
+  // its (function pointer, context pointer) explosion and hands them to
+  // `swift_job_createSynchronous`, which transfers ownership of the context
+  // to the created SynchronousJob (released after the job runs or when the
+  // job is dropped).
+  auto extInfo = ASTExtInfoBuilder().build();
+  auto *closureType =
+      FunctionType::get({}, ctx.TheEmptyTupleType, extInfo);
+  return getBuiltinFunction(
+      ctx, id, _thin,
+      _parameters(_label("priority", ctx.getUInt8Type()),
+                  _label("body", _owned(closureType))),
+      _job);
+}
+
 static ValueDecl *getTaskLocalValuePush(ASTContext &ctx, Identifier id) {
   return getBuiltinFunction(ctx, id, _thin, _generics(_unrestricted),
                             _parameters(_rawPointer, _consuming(_typeparam(0))),
@@ -3676,6 +3694,9 @@ ValueDecl *swift::getBuiltinValueDecl(ASTContext &Context, Identifier Id) {
 
   case BuiltinValueKind::CancellationScopeCancel:
     return getCancellationScopeCancel(Context, Id);
+
+  case BuiltinValueKind::CreateSynchronousJob:
+    return getCreateSynchronousJob(Context, Id);
 
   case BuiltinValueKind::TaskLocalValuePush:
     return getTaskLocalValuePush(Context, Id);

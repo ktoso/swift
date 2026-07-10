@@ -1646,6 +1646,15 @@ void irgen::emitBuiltinCall(IRGenFunction &IGF, const BuiltinInfo &Builtin,
     emitBuiltinCancellationScopeCancel(IGF, record);
     return;
   }
+  case BuiltinValueKind::CreateSynchronousJob: {
+    // Args order matches Builtins.def signature: priority, then thick
+    // closure exploded as (function pointer, context pointer).
+    auto *priority = args.claimNext();
+    auto *closure = args.claimNext();
+    auto *closureContext = args.claimNext();
+    out.add(emitBuiltinCreateSynchronousJob(IGF, priority, closure, closureContext));
+    return;
+  }
   case BuiltinValueKind::RemoveTaskLocalValue:
   case BuiltinValueKind::TaskLocalValuePop:
     // removeTaskLocalValue technically takes an argument, but we ignore

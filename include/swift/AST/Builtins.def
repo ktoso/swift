@@ -1320,6 +1320,13 @@ BUILTIN_MISC_OPERATION(CancellationScopePop, "cancellationScopePop", "", Special
 /// Signature: (record: UnsafeRawPointer) -> ()
 BUILTIN_MISC_OPERATION(CancellationScopeCancel, "cancellationScopeCancel", "", Special)
 
+/// createSynchronousJob: (priority: UInt8, body: __owned @escaping () -> ()) -> Builtin.Job
+///
+/// Create a lightweight `Job` that runs the given synchronous closure
+/// exactly once when an executor schedules it, then releases the
+/// closure's context.
+BUILTIN_MISC_OPERATION_WITH_SILGEN(CreateSynchronousJob, "createSynchronousJob", "", Special)
+
 /// Equivalent to calling swift_task_localValuePush. Deprecated because
 /// it doesn't properly pair the allocation and deallocation with a
 /// use-def relationship. We no longer use this in the standard library,

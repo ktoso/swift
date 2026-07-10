@@ -407,6 +407,27 @@ void irgen::emitBuiltinCancellationScopeCancel(IRGenFunction &IGF,
   call->setCallingConv(IGF.IGM.SwiftCC);
 }
 
+llvm::Value *irgen::emitBuiltinCreateSynchronousJob(IRGenFunction &IGF,
+                                                    llvm::Value *priority,
+                                                    llvm::Value *closure,
+                                                    llvm::Value *closureContext) {
+  // The runtime expects the priority as a size-typed word for JobPriority
+  // packing. Widen the UInt8 value to size_t.
+  auto *widenedPriority =
+      IGF.Builder.CreateZExtOrBitCast(priority, IGF.IGM.SizeTy);
+  // Bitcast the closure function pointer to `i8*` for the runtime signature.
+  auto *invokeFn =
+      IGF.Builder.CreateBitCast(closure, IGF.IGM.Int8PtrTy);
+  auto *ctx =
+      IGF.Builder.CreateBitCast(closureContext, IGF.IGM.Int8PtrTy);
+  auto *call = IGF.Builder.CreateCall(
+      IGF.IGM.getJobCreateSynchronousFunctionPointer(),
+      {widenedPriority, ctx, invokeFn});
+  call->setDoesNotThrow();
+  call->setCallingConv(IGF.IGM.SwiftCC);
+  return call;
+}
+
 void irgen::emitFinishAsyncLet(IRGenFunction &IGF,
                                llvm::Value *asyncLet,
                                llvm::Value *resultBuffer) {

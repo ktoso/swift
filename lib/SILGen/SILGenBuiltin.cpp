@@ -2302,6 +2302,23 @@ static ManagedValue emitBuiltinTaskAddCancellationHandler(
   return ManagedValue::forRValueWithoutOwnership(b);
 }
 
+static ManagedValue emitBuiltinCreateSynchronousJob(
+    SILGenFunction &SGF, SILLocation loc, SubstitutionMap subs,
+    ArrayRef<ManagedValue> args, SGFContext C) {
+  auto &ctx = SGF.getASTContext();
+  // args[0] = priority: UInt8 (trivial), args[1] = @owned closure whose
+  // context refcount is transferred into the created SynchronousJob.
+  // `Builtin.Job` is a trivial pointer at the SIL type level (interior
+  // pointer to a `HeapObject`), with refcounts managed manually by the
+  // runtime, so we return the result without ownership tracking.
+  SILType jobType = SILType::getPrimitiveObjectType(
+      getBuiltinType(ctx, "Job")->getCanonicalType());
+  auto *b = SGF.B.createBuiltin(
+      loc, BuiltinNames::CreateSynchronousJob, jobType, subs,
+      {args[0].getValue(), args[1].forward(SGF)});
+  return ManagedValue::forRValueWithoutOwnership(b);
+}
+
 static ManagedValue emitBuiltinTaskAddPriorityEscalationHandler(
     SILGenFunction &SGF, SILLocation loc, SubstitutionMap subs,
     ArrayRef<ManagedValue> args, SGFContext C) {

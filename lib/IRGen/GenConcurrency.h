@@ -153,6 +153,16 @@ void emitBuiltinCancellationScopePop(IRGenFunction &IGF, llvm::Value *record);
 void emitBuiltinCancellationScopeCancel(IRGenFunction &IGF,
                                         llvm::Value *record);
 
+/// Emit IR for the createSynchronousJob builtin.
+///
+/// The `closure` value is the raw invoke function pointer from a thick
+/// closure ABI; `closureContext` is the closure's context pointer (whose
+/// retain count is transferred into the created `SynchronousJob`).
+llvm::Value *emitBuiltinCreateSynchronousJob(IRGenFunction &IGF,
+                                             llvm::Value *priority,
+                                             llvm::Value *closure,
+                                             llvm::Value *closureContext);
+
 } // end namespace irgen
 } // end namespace swift
 

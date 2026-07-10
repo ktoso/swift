@@ -633,6 +633,23 @@ void swift_task_popCancellationScope(CancellationScopeRecord *record);
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_task_cancelCancellationScope(CancellationScopeRecord *record);
 
+/// Create a lightweight `SynchronousJob` that runs `closureContext` under
+/// the given `invoke` function exactly once when an executor schedules it.
+///
+/// `priority` is the raw byte from `JobPriority`. Ownership of
+/// `closureContext` is transferred to the job; it will be released after
+/// `invoke` returns (or if the returned job is destroyed without ever
+/// being run).
+///
+/// The returned `Job*` is retained; the caller owns that reference. When
+/// handed to an executor via `swift_task_enqueue*` the executor takes
+/// over ownership.
+///
+/// Runtime availability: Swift 6.5
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+Job *swift_job_createSynchronous(size_t priority, void *closureContext,
+                                 SynchronousJob::InvokeFn *invoke);
+
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 size_t swift_task_getJobFlags(AsyncTask* task);
 

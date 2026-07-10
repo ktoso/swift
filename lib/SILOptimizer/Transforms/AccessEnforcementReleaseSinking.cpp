@@ -233,6 +233,7 @@ static bool isBarrier(SILInstruction *inst) {
     case BuiltinValueKind::CancellationScopePush:
     case BuiltinValueKind::CancellationScopePop:
     case BuiltinValueKind::CancellationScopeCancel:
+    case BuiltinValueKind::CreateSynchronousJob:
       return true;
     }
   }

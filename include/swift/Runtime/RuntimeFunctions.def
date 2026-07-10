@@ -2828,6 +2828,17 @@ FUNCTION(TaskCancelCancellationScope,
          EFFECT(RuntimeEffect::Concurrency),
          UNKNOWN_MEMEFFECTS)
 
+// Job *swift_job_createSynchronous(size_t priority, void *closureContext,
+//                                  SynchronousJob::InvokeFn *invoke);
+FUNCTION(JobCreateSynchronous,
+         _Concurrency, swift_job_createSynchronous, SwiftCC,
+         ConcurrencyAvailability,
+         RETURNS(SwiftJobPtrTy),
+         ARGS(SizeTy, Int8PtrTy, Int8PtrTy),
+         ATTRS(NoUnwind),
+         EFFECT(RuntimeEffect::Concurrency),
+         UNKNOWN_MEMEFFECTS)
+
 // void swift_task_localValuePush(const HeapObject *key,
 //                                /* +1 */ OpaqueValue *value,
 //                                const Metadata *valueType);

@@ -238,6 +238,29 @@ void NullaryContinuationJob::process(Job *_job) {
   swift_continuation_resume(continuation);
 }
 
+void SynchronousJob::process(Job *_job) {
+  auto *job = cast<SynchronousJob>(_job);
+
+  auto *ctx = job->ClosureContext;
+  auto *invoke = job->Invoke;
+
+  // Drop the job's own retain first. `invoke(ctx)` runs the user closure
+  // synchronously on the enqueuing executor; the closure context is a
+  // Swift heap object whose reference count is owned by the job, so we
+  // release it after the invoke returns.
+  swift_cxx_deleteObject(job);
+  invoke(ctx);
+  swift_release(static_cast<HeapObject *>(ctx));
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swift_Concurrency)
+Job *swift::swift_job_createSynchronous(size_t priority, void *closureContext,
+                                        SynchronousJob::InvokeFn *invoke) {
+  return swift_cxx_newObject<SynchronousJob>(
+      static_cast<JobPriority>(priority), closureContext, invoke);
+}
+
 void AsyncTask::completeFuture(AsyncContext *context) {
   using Status = FutureFragment::Status;
   using WaitQueueItem = FutureFragment::WaitQueueItem;

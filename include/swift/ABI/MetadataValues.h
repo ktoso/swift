@@ -2702,6 +2702,7 @@ enum class JobKind : size_t {
   NullaryContinuation,
   IsolatedDeinit,
   TaskStealer,
+  SynchronousJob,
 };
 
 /// The priority of a job.  Higher priorities are larger values.

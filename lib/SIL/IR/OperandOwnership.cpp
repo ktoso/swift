@@ -1040,6 +1040,15 @@ OperandOwnershipBuiltinClassifier::visitCreateAsyncTask(BuiltinInst *bi,
   return OperandOwnership::InstantaneousUse;
 }
 
+OperandOwnership
+OperandOwnershipBuiltinClassifier::visitCreateSynchronousJob(BuiltinInst *bi,
+                                                             StringRef attr) {
+  // The closure is the last operand and is consumed by the job.
+  if (&op == &bi->getArgumentOperands().back())
+    return OperandOwnership::DestroyingConsume;
+  return OperandOwnership::TrivialUse;
+}
+
 OperandOwnership OperandOwnershipBuiltinClassifier::
 visitResumeNonThrowingContinuationReturning(BuiltinInst *bi, StringRef attr) {
   // The value operand is consumed.
