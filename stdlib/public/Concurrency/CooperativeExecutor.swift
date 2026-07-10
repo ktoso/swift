@@ -16,7 +16,7 @@ import Swift
 
 /// A co-operative executor that can be used as the main executor or as a
 /// task executor.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 final class CooperativeExecutor: Executor, @unchecked Sendable {
   var runQueue: PriorityQueue<UnownedJob>
   #if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
@@ -132,7 +132,7 @@ final class CooperativeExecutor: Executor, @unchecked Sendable {
 
 
 #if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor {
 
   func currentTime(clock: _ClockID) -> Timestamp {
@@ -144,7 +144,7 @@ extension CooperativeExecutor {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: OperationExecutor {
 
   // Shared arming logic; `deadline` is already converted to this executor's
@@ -203,7 +203,7 @@ extension CooperativeExecutor: OperationExecutor {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: ContinuousClockExecutor {
   public func enqueue(
     _ continuation: consuming ExecutorContinuation<Void, CancellationError>,
@@ -226,7 +226,7 @@ extension CooperativeExecutor: ContinuousClockExecutor {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: SuspendingClockExecutor {
   public func enqueue(
     _ continuation: consuming ExecutorContinuation<Void, CancellationError>,
@@ -250,7 +250,7 @@ extension CooperativeExecutor: SuspendingClockExecutor {
 }
 #endif
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: RunLoopExecutor {
   #if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
   // Resume every ready sleep on `heap` whose deadline has elapsed: a
@@ -358,13 +358,13 @@ extension CooperativeExecutor: RunLoopExecutor {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: SerialExecutor {}
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: TaskExecutor {}
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension CooperativeExecutor: MainExecutor {}
 
 #endif // !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY

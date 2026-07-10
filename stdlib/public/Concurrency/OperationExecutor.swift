@@ -19,7 +19,7 @@ import Swift
 /// Used by the ``OperationExecutor`` to identify operations and allow
 /// cancellation and priority escalation.
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @frozen
 public struct OperationExecutorRegistration: Sendable, Hashable {
   @usableFromInline
@@ -65,14 +65,14 @@ public struct OperationExecutorRegistration: Sendable, Hashable {
 /// }
 /// ```
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 public protocol OperationExecutor: Executor {
   /// Cancels the asynchronous operation.
   ///
   /// Cancellation is a best effort and the operation might still successfully complete.
   ///
   /// - Parameter registration: The registration returned by `enqueue`.
-  @available(SwiftStdlib 9999, *)
+  @available(SwiftStdlib 6.5, *)
   func cancel(_ registration: OperationExecutorRegistration)
 
   /// Escalates the priority of the asynchronous operation.
@@ -80,7 +80,7 @@ public protocol OperationExecutor: Executor {
   /// - Parameters:
   ///   - registration: The registration returned by `enqueue`.
   ///   - newPriority: The new priority.
-  @available(SwiftStdlib 9999, *)
+  @available(SwiftStdlib 6.5, *)
   func escalatePriority(
     of registration: OperationExecutorRegistration,
     to newPriority: TaskPriority
@@ -103,7 +103,7 @@ extension Task where Success == Never, Failure == Never {
   /// on the concrete clock rather than on ``OperationExecutor`` is what lets an
   /// executor that implements only one clock coexist with the default executor
   /// for the other.
-  @available(StdlibDeploymentTarget 9999, *)
+  @available(StdlibDeploymentTarget 6.5, *)
   internal static func _currentOperationExecutor<E>(
     _ cast: (any Executor) -> E?
   ) -> E? {

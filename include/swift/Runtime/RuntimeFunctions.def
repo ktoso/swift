@@ -2798,6 +2798,28 @@ FUNCTION(TaskRemovePriorityEscalationHandler,
          EFFECT(RuntimeEffect::Concurrency),
          UNKNOWN_MEMEFFECTS)
 
+// TaskDeadlineStatusRecord*
+// swift_task_pushDeadline(uint64_t clockID, int64_t deadlineSeconds,
+//                         int64_t deadlineAttoseconds);
+FUNCTION(TaskPushDeadline,
+        _Concurrency, swift_task_pushDeadline, SwiftCC,
+        ConcurrencyAvailability,
+        RETURNS(Int8PtrTy),
+        ARGS(Int64Ty, Int64Ty, Int64Ty),
+        ATTRS(NoUnwind),
+        EFFECT(RuntimeEffect::Concurrency),
+        UNKNOWN_MEMEFFECTS)
+
+// void swift_task_popDeadline(TaskDeadlineStatusRecord *record);
+FUNCTION(TaskPopDeadline,
+         _Concurrency, swift_task_popDeadline, SwiftCC,
+         ConcurrencyAvailability,
+         RETURNS(VoidTy),
+         ARGS(Int8PtrTy),
+         ATTRS(NoUnwind),
+         EFFECT(RuntimeEffect::Concurrency),
+         UNKNOWN_MEMEFFECTS)
+
 // CancellationScopeRecord* swift_task_pushCancellationScope();
 FUNCTION(TaskPushCancellationScope,
         _Concurrency, swift_task_pushCancellationScope, SwiftCC,
@@ -2829,7 +2851,7 @@ FUNCTION(TaskCancelCancellationScope,
          UNKNOWN_MEMEFFECTS)
 
 // Job *swift_job_createSynchronous(size_t priority, void *closureContext,
-//                                  SynchronousJob::InvokeFn *invoke);
+//                           SynchronousJob::InvokeFn *invoke);
 FUNCTION(JobCreateSynchronous,
          _Concurrency, swift_job_createSynchronous, SwiftCC,
          ConcurrencyAvailability,

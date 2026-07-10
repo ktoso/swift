@@ -368,6 +368,26 @@ void irgen::emitBuiltinTaskLocalValuePop(IRGenFunction &IGF) {
   call->setCallingConv(IGF.IGM.SwiftCC);
 }
 
+llvm::Value *irgen::emitBuiltinTaskPushDeadline(IRGenFunction &IGF,
+                                                llvm::Value *clockID,
+                                                llvm::Value *deadlineSeconds,
+                                                llvm::Value *deadlineAttoseconds) {
+  auto *call = IGF.Builder.CreateCall(
+      IGF.IGM.getTaskPushDeadlineFunctionPointer(),
+      {clockID, deadlineSeconds, deadlineAttoseconds});
+  call->setDoesNotThrow();
+  call->setCallingConv(IGF.IGM.SwiftCC);
+  return call;
+}
+
+void irgen::emitBuiltinTaskPopDeadline(IRGenFunction &IGF,
+                                       llvm::Value *record) {
+  auto *call = IGF.Builder.CreateCall(
+      IGF.IGM.getTaskPopDeadlineFunctionPointer(), {record});
+  call->setDoesNotThrow();
+  call->setCallingConv(IGF.IGM.SwiftCC);
+}
+
 llvm::Value *irgen::emitBuiltinTaskCancellationShieldPush(IRGenFunction &IGF) {
   auto *call =
       IGF.Builder.CreateCall(IGF.IGM.getTaskCancellationShieldPushFunctionPointer(), {});
@@ -408,9 +428,9 @@ void irgen::emitBuiltinCancellationScopeCancel(IRGenFunction &IGF,
 }
 
 llvm::Value *irgen::emitBuiltinCreateSynchronousJob(IRGenFunction &IGF,
-                                                    llvm::Value *priority,
-                                                    llvm::Value *closure,
-                                                    llvm::Value *closureContext) {
+                                           llvm::Value *priority,
+                                           llvm::Value *closure,
+                                           llvm::Value *closureContext) {
   // The runtime expects the priority as a size-typed word for JobPriority
   // packing. Widen the UInt8 value to size_t.
   auto *widenedPriority =

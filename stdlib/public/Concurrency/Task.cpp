@@ -256,9 +256,9 @@ void SynchronousJob::process(Job *_job) {
 SWIFT_CC(swift)
 SWIFT_EXPORT_FROM(swift_Concurrency)
 Job *swift::swift_job_createSynchronous(size_t priority, void *closureContext,
-                                        SynchronousJob::InvokeFn *invoke) {
-  return swift_cxx_newObject<SynchronousJob>(
-      static_cast<JobPriority>(priority), closureContext, invoke);
+                                 SynchronousJob::InvokeFn *invoke) {
+  return swift_cxx_newObject<SynchronousJob>(static_cast<JobPriority>(priority),
+                                      closureContext, invoke);
 }
 
 void AsyncTask::completeFuture(AsyncContext *context) {

@@ -2469,6 +2469,20 @@ static ValueDecl *getTaskRemovePriorityEscalationHandler(ASTContext &ctx,
       ctx, id, _thin, _parameters(_label("record", _unsafeRawPointer)), _void);
 }
 
+static ValueDecl *getTaskPushDeadline(ASTContext &ctx, Identifier id) {
+  return getBuiltinFunction(
+      ctx, id, _thin,
+      _parameters(_label("clockID", ctx.getUInt64Type()),
+                 _label("deadlineSeconds", ctx.getInt64Type()),
+                 _label("deadlineAttoseconds", ctx.getInt64Type())),
+      _unsafeRawPointer);
+}
+
+static ValueDecl *getTaskPopDeadline(ASTContext &ctx, Identifier id) {
+  return getBuiltinFunction(
+      ctx, id, _thin, _parameters(_label("record", _unsafeRawPointer)), _void);
+}
+
 static ValueDecl *getCancellationScopePush(ASTContext &ctx, Identifier id) {
   return getBuiltinFunction(ctx, id, _thin, _parameters(), _unsafeRawPointer);
 }
@@ -2484,13 +2498,7 @@ static ValueDecl *getCancellationScopeCancel(ASTContext &ctx, Identifier id) {
 }
 
 static ValueDecl *getCreateSynchronousJob(ASTContext &ctx, Identifier id) {
-  // (priority: UInt8, body: __owned @escaping () -> ()) -> Builtin.Job
-  //
-  // The closure is passed as an @owned thick function value; IRGen extracts
-  // its (function pointer, context pointer) explosion and hands them to
-  // `swift_job_createSynchronous`, which transfers ownership of the context
-  // to the created SynchronousJob (released after the job runs or when the
-  // job is dropped).
+  // TODO: the closure technically is `sending` I think.
   auto extInfo = ASTExtInfoBuilder().build();
   auto *closureType =
       FunctionType::get({}, ctx.TheEmptyTupleType, extInfo);
@@ -3685,6 +3693,12 @@ ValueDecl *swift::getBuiltinValueDecl(ASTContext &Context, Identifier Id) {
 
   case BuiltinValueKind::TaskRemovePriorityEscalationHandler:
     return getTaskRemovePriorityEscalationHandler(Context, Id);
+
+  case BuiltinValueKind::TaskPushDeadline:
+    return getTaskPushDeadline(Context, Id);
+
+  case BuiltinValueKind::TaskPopDeadline:
+    return getTaskPopDeadline(Context, Id);
 
   case BuiltinValueKind::CancellationScopePush:
     return getCancellationScopePush(Context, Id);

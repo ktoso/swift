@@ -16,7 +16,7 @@ import Swift
 
 /// An executor that can schedule jobs and continuations against the suspending clock.
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 public protocol SuspendingClockExecutor: OperationExecutor {
   /// Enqueues a continuation to be resumed at an instant on the suspending clock.
   ///
@@ -33,7 +33,7 @@ public protocol SuspendingClockExecutor: OperationExecutor {
   /// - Returns: A registration identifying the operation, usable with
   ///   ``OperationExecutor/cancel(_:)`` and
   ///   ``OperationExecutor/escalatePriority(of:to:)``.
-  @available(SwiftStdlib 9999, *)
+  @available(SwiftStdlib 6.5, *)
   func enqueue(
     _ continuation: consuming ExecutorContinuation<Void, CancellationError>,
     at instant: SuspendingClock.Instant,
@@ -51,7 +51,7 @@ public protocol SuspendingClockExecutor: OperationExecutor {
   /// - Returns: A registration identifying the operation, usable with
   ///   ``OperationExecutor/cancel(_:)`` and
   ///   ``OperationExecutor/escalatePriority(of:to:)``.
-  @available(SwiftStdlib 9999, *)
+  @available(SwiftStdlib 6.5, *)
   func enqueue(
     _ job: consuming ExecutorJob,
     at instant: SuspendingClock.Instant,
@@ -65,7 +65,7 @@ extension Task where Success == Never, Failure == Never {
   /// executor, preferred/current task executor) that conforms to
   /// ``SuspendingClockExecutor``, otherwise the default executor.  `nil` only
   /// if even the default executor doesn't implement it.
-  @available(StdlibDeploymentTarget 9999, *)
+  @available(StdlibDeploymentTarget 6.5, *)
   static var currentSuspendingClockExecutor: (any SuspendingClockExecutor)? {
     _currentOperationExecutor { $0 as? any SuspendingClockExecutor }
   }

@@ -24,7 +24,7 @@ import Swift
 // .. Main Executor ............................................................
 
 /// A Dispatch-based main executor.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 class DispatchMainExecutor: RunLoopExecutor,
                             ContinuousClockExecutor, SuspendingClockExecutor,
                             @unchecked Sendable {
@@ -138,7 +138,7 @@ class DispatchMainExecutor: RunLoopExecutor,
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension DispatchMainExecutor: SerialExecutor {
 
   public func enqueue(_ job: consuming ExecutorJob) {
@@ -150,13 +150,13 @@ extension DispatchMainExecutor: SerialExecutor {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension DispatchMainExecutor: MainExecutor {}
 
 // .. Task Executor ............................................................
 
 /// A Dispatch-based `TaskExecutor`
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 class DispatchGlobalTaskExecutor: TaskExecutor,
                                   ContinuousClockExecutor, SuspendingClockExecutor,
                                   @unchecked Sendable {
@@ -316,7 +316,7 @@ extension SuspendingClock {
 //    (the idiom `CheckedContinuation` already uses), so it needs no dependency.
 
 /// A mutual-exclusion lock guarding a value of type `State`.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @safe
 final class Mutex<State>: @unchecked Sendable {
   private var _value: State
@@ -348,14 +348,14 @@ final class Mutex<State>: @unchecked Sendable {
 
 /// The memory ordering for an `Atomic` operation.  The scheduler only needs
 /// `.relaxed`, which is all a monotonic id source requires.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @safe
 struct AtomicUpdateOrdering {
   static var relaxed: AtomicUpdateOrdering { AtomicUpdateOrdering() }
 }
 
 /// A lock-free atomic integer backed by a `Builtin` atomic on a machine word.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @safe
 final class Atomic<Value>: @unchecked Sendable {
   private let _storage: UnsafeMutablePointer<Value>
@@ -371,7 +371,7 @@ final class Atomic<Value>: @unchecked Sendable {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 extension Atomic where Value == UInt {
   /// Atomically adds `operand`, returning the values before and after the add.
   func wrappingAdd(
@@ -395,7 +395,7 @@ extension Atomic where Value == UInt {
 // `Mutex` guarding both clocks' state is sufficient -- no sharding and no
 // per-clock locks are needed.  `enqueue` (via `arm`) mints token ids from a
 // lock-free `Atomic` counter, so it never needs an upfront registration step.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @safe
 final class DispatchTimerScheduler: @unchecked Sendable {
   /// A point in time on one of the clocks, as whole seconds plus nanoseconds.
@@ -541,7 +541,7 @@ final class DispatchTimerScheduler: @unchecked Sendable {
 
   /// Immutable per-clock context handed to the C timer as its callback context;
   /// the fire trampoline reconstitutes it to route back into the scheduler.
-  @available(StdlibDeploymentTarget 9999, *)
+  @available(StdlibDeploymentTarget 6.5, *)
   @safe
   final class ClockContext {
     let clockID: Int32
@@ -759,7 +759,7 @@ final class DispatchTimerScheduler: @unchecked Sendable {
   }
 }
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 func _dispatchTimerFireTrampoline(_ rawContext: UnsafeMutableRawPointer?) {
   guard let rawContext = unsafe rawContext else { return }
   let context = unsafe Unmanaged<DispatchTimerScheduler.ClockContext>

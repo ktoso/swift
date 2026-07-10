@@ -132,6 +132,13 @@ enum _ClockID: Int32 {
   case walltime = 3
 }
 
+@nonexhaustive
+@available(StdlibDeploymentTarget 6.5, *)
+public enum SystemClockID: Int32, Hashable {
+  case continuous = 1  // _ClockID.continuous
+  case suspending = 2  // _ClockID.suspending
+}
+
 @available(StdlibDeploymentTarget 5.7, *)
 @_silgen_name("swift_get_time")
 internal func _getTime(

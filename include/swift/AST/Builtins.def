@@ -1296,6 +1296,21 @@ BUILTIN_MISC_OPERATION_WITH_SILGEN(TaskAddPriorityEscalationHandler,
 BUILTIN_MISC_OPERATION(TaskRemovePriorityEscalationHandler,
                        "taskRemovePriorityEscalationHandler", "", Special)
 
+/// Equivalent to calling swift_task_pushDeadline.
+///
+/// Pushes a deadline status record for the given clock onto the current
+/// task, returning the record pointer that must be handed back to
+/// taskPopDeadline. The pointer may be null if the push was subsumed by
+/// an existing tighter deadline installed for the same clock.
+///
+/// Signature: (clockID: UInt64, deadlineSeconds: Int64, deadlineAttoseconds: Int64) -> UnsafeRawPointer
+BUILTIN_MISC_OPERATION(TaskPushDeadline, "taskPushDeadline", "", Special)
+
+/// Equivalent to calling swift_task_popDeadline.
+///
+/// Signature: (record: UnsafeRawPointer) -> ()
+BUILTIN_MISC_OPERATION(TaskPopDeadline, "taskPopDeadline", "", Special)
+
 /// Equivalent to calling swift_task_pushCancellationScope.
 ///
 /// Pushes a cancellation scope record onto the current task, returning the

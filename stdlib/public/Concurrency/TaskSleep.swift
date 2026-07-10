@@ -23,7 +23,7 @@ extension Task where Success == Never, Failure == Never {
   /// This function doesn't block the underlying thread.
   public static func sleep(_ duration: UInt64) async {
     #if !$Embedded
-      if #available(StdlibDeploymentTarget 9999, *) {
+      if #available(StdlibDeploymentTarget 6.5, *) {
         let clock = ContinuousClock()
         try? await clock.sleep(
           until: clock.now.advanced(by: .nanoseconds(duration)),
@@ -46,7 +46,7 @@ extension Task where Success == Never, Failure == Never {
   /// This function doesn't block the underlying thread.
   public static func sleep(nanoseconds duration: UInt64) async throws {
     #if !$Embedded
-      if #available(StdlibDeploymentTarget 9999, *) {
+      if #available(StdlibDeploymentTarget 6.5, *) {
         let clock = ContinuousClock()
         try await clock.sleep(
           until: clock.now.advanced(by: .nanoseconds(duration)),

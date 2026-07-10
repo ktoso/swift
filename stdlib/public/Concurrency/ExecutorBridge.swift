@@ -128,7 +128,7 @@ internal func _dispatchEnqueueGlobal(_ job: UnownedJob)
 // A per-clock dispatch timer whose scheduling state is owned entirely by the
 // Swift `DispatchExecutor`.  `fire` is a C-convention trampoline invoked on the
 // timer queue when the armed deadline elapses.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @_silgen_name("swift_dispatchTimerCreate")
 internal func _dispatchTimerCreate(
   _ clock: CInt,
@@ -137,7 +137,7 @@ internal func _dispatchTimerCreate(
   _ context: UnsafeMutableRawPointer?
 ) -> UnsafeMutableRawPointer?
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @_silgen_name("swift_dispatchTimerSet")
 internal func _dispatchTimerSet(_ timer: UnsafeMutableRawPointer?,
                                 _ sec: CLongLong,
@@ -145,7 +145,7 @@ internal func _dispatchTimerSet(_ timer: UnsafeMutableRawPointer?,
                                 _ leewaySec: CLongLong,
                                 _ leewayNsec: CLongLong)
 
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @_silgen_name("swift_dispatchTimerDisarm")
 internal func _dispatchTimerDisarm(_ timer: UnsafeMutableRawPointer?)
 #endif
@@ -165,7 +165,7 @@ internal func _getDispatchQueueForExecutor(
 
 // Resume a suspended task from a continuation, running it inline on the current
 // thread.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @usableFromInline
 @_silgen_name("swift_continuation_resumeSynchronously")
 internal func _swiftContinuationResumeSynchronously(
@@ -174,7 +174,7 @@ internal func _swiftContinuationResumeSynchronously(
 
 // Resume a suspended task from a continuation by throwing an error, running it
 // inline on the current thread.
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @usableFromInline
 @_silgen_name("swift_continuation_throwingResumeSynchronouslyWithError")
 internal func _swiftContinuationThrowingResumeSynchronouslyWithError(

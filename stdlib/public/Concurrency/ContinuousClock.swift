@@ -41,6 +41,13 @@ extension ContinuousClock.Instant: Codable {
 }
 #endif
 
+#if !$Embedded
+@available(StdlibDeploymentTarget 6.5, *)
+extension ContinuousClock: Identifiable {
+  public var id: SystemClockID { .continuous }
+}
+#endif
+
 @available(StdlibDeploymentTarget 5.7, *)
 extension Duration {
   internal init(_seconds s: Int64, nanoseconds n: Int64) {
@@ -114,7 +121,7 @@ extension ContinuousClock: Clock {
   public func sleep(
     until deadline: Instant, tolerance: Swift.Duration? = nil
   ) async throws {
-    if #available(StdlibDeploymentTarget 9999, *) {
+    if #available(StdlibDeploymentTarget 6.5, *) {
       guard let executor = Task.currentContinuousClockExecutor else {
         fatalError("No active ContinuousClockExecutor found")
       }

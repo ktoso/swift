@@ -136,6 +136,19 @@ void emitBuiltinTaskLocalValuePush(IRGenFunction &IGF, llvm::Value *key,
 
 void emitBuiltinTaskLocalValuePop(IRGenFunction &IGF);
 
+/// Emit IR for the taskPushDeadline builtin.
+///
+/// \returns the record pointer to hand back to emitBuiltinTaskPopDeadline;
+/// this may be null if the push was subsumed by an existing tighter
+/// deadline installed for the same clock.
+llvm::Value *emitBuiltinTaskPushDeadline(IRGenFunction &IGF,
+                                         llvm::Value *clockID,
+                                         llvm::Value *deadlineSeconds,
+                                         llvm::Value *deadlineAttoseconds);
+
+/// Emit IR for the taskPopDeadline builtin.
+void emitBuiltinTaskPopDeadline(IRGenFunction &IGF, llvm::Value *record);
+
 llvm::Value *emitBuiltinTaskCancellationShieldPush(IRGenFunction &IGF);
 
 void emitBuiltinTaskCancellationShieldPop(IRGenFunction &IGF);
@@ -159,9 +172,9 @@ void emitBuiltinCancellationScopeCancel(IRGenFunction &IGF,
 /// closure ABI; `closureContext` is the closure's context pointer (whose
 /// retain count is transferred into the created `SynchronousJob`).
 llvm::Value *emitBuiltinCreateSynchronousJob(IRGenFunction &IGF,
-                                             llvm::Value *priority,
-                                             llvm::Value *closure,
-                                             llvm::Value *closureContext);
+                                    llvm::Value *priority,
+                                    llvm::Value *closure,
+                                    llvm::Value *closureContext);
 
 } // end namespace irgen
 } // end namespace swift

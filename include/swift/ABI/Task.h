@@ -236,11 +236,11 @@ public:
   }
 };
 
-/// A minimal `Job` that runs a synchronous, no-argument, no-result closure
-/// exactly once when an executor schedules it, then releases the closure
-/// context. Used by higher-level primitives (e.g. `withDeadline`) that
-/// need to enqueue a plain "fire once" callback onto an executor without
-/// spinning up a full `AsyncTask`.
+/// A minimal `Job` that runs a synchronous, no-argument, no-result closure.
+/// It is the cheapest primitive to execute a single callback on an executor,
+/// without spinning up a new `AsyncTask`.
+///
+/// The job may be "dropped" without executing it.
 ///
 /// The closure is represented as a `(fn, context)` pair using Swift's
 /// thick-function ABI: `Invoke` takes the context pointer and returns

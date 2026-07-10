@@ -18,7 +18,7 @@ import Swift
 @available(StdlibDeploymentTarget 6.3, *)
 public struct PlatformExecutorFactory: ExecutorFactory {
   public static var mainExecutor: any MainExecutor {
-    if #available(StdlibDeploymentTarget 9999, *) {
+    if #available(StdlibDeploymentTarget 6.5, *) {
       if CoreFoundation.isPresent {
         return CFMainExecutor()
       } else {
@@ -30,7 +30,7 @@ public struct PlatformExecutorFactory: ExecutorFactory {
   }
 
   public static var defaultExecutor: any TaskExecutor {
-    if #available(StdlibDeploymentTarget 9999, *) {
+    if #available(StdlibDeploymentTarget 6.5, *) {
       if CoreFoundation.isPresent {
         return CFTaskExecutor()
       } else {

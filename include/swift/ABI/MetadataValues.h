@@ -2908,6 +2908,10 @@ enum class TaskStatusRecordKind : uint8_t {
   /// Deprecated: A human-readable task name, replaced by `NameFragment`.
   // DEPRECATED: TaskName = 6,
 
+  /// A TaskDeadlineStatusRecord, which represents a point in time,
+  /// at which the task should become cancelled.
+  Deadline = 7,
+
   /// A CancellationScopeRecord, which represents a scoped cancellation
   /// domain that is independent of whole-task cancellation.
   CancellationScope = 8,

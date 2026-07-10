@@ -1042,8 +1042,10 @@ OperandOwnershipBuiltinClassifier::visitCreateAsyncTask(BuiltinInst *bi,
 
 OperandOwnership
 OperandOwnershipBuiltinClassifier::visitCreateSynchronousJob(BuiltinInst *bi,
-                                                             StringRef attr) {
-  // The closure is the last operand and is consumed by the job.
+                                                    StringRef attr) {
+  // Operands: (priority: UInt8, sending closure). The closure is the last
+  // operand and is consumed by the created SynchronousJob; the priority is a
+  // trivial scalar.
   if (&op == &bi->getArgumentOperands().back())
     return OperandOwnership::DestroyingConsume;
   return OperandOwnership::TrivialUse;
@@ -1137,6 +1139,16 @@ BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskRemoveCancellationHandler)
 BUILTIN_OPERAND_OWNERSHIP(BitwiseEscape, TaskAddPriorityEscalationHandler)
 // Trivial use since our operand is just an UnsafeRawPointer.
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskRemovePriorityEscalationHandler)
+// Trivial use since our operands are UInt64/Int64 scalars.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskPushDeadline)
+// Trivial use since our operand is just an UnsafeRawPointer.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskPopDeadline)
+// CancellationScopePush takes no operands.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopePush)
+// Trivial use since our operand is just an UnsafeRawPointer.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopePop)
+// Trivial use since our operand is just an UnsafeRawPointer.
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopeCancel)
 // This is a trivial use since our first operand is a Builtin.RawPointer and our
 // second is an address to our generic Value.
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskLocalValuePush)
@@ -1146,13 +1158,6 @@ BUILTIN_OPERAND_OWNERSHIP(TrivialUse, RemoveTaskLocalValue)
 
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskCancellationShieldPush)
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskCancellationShieldPop)
-
-// CancellationScopePush takes no operands.
-BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopePush)
-// Trivial use since our operand is just an UnsafeRawPointer.
-BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopePop)
-// Trivial use since our operand is just an UnsafeRawPointer.
-BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CancellationScopeCancel)
 
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, CreateDetachedContinuation)
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, DestroyDetachedContinuation)

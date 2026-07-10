@@ -1632,6 +1632,19 @@ void irgen::emitBuiltinCall(IRGenFunction &IGF, const BuiltinInfo &Builtin,
     out.add(emitBuiltinTaskAddHandler(IGF, Builtin.ID, func, context));
     return;
   }
+  case BuiltinValueKind::TaskPushDeadline: {
+    auto *clockID = args.claimNext();
+    auto *deadlineSeconds = args.claimNext();
+    auto *deadlineAttoseconds = args.claimNext();
+    out.add(emitBuiltinTaskPushDeadline(IGF, clockID, deadlineSeconds,
+                                        deadlineAttoseconds));
+    return;
+  }
+  case BuiltinValueKind::TaskPopDeadline: {
+    auto *record = args.claimNext();
+    emitBuiltinTaskPopDeadline(IGF, record);
+    return;
+  }
   case BuiltinValueKind::CancellationScopePush: {
     out.add(emitBuiltinCancellationScopePush(IGF));
     return;

@@ -18,7 +18,7 @@ import Swift
 /// that the executor continuations allow synchronous resumption which donates
 /// the executors thread to run the resumed task inline.
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @safe
 @frozen
 public struct ExecutorContinuation<Success: ~Copyable, Failure: Error>: ~Copyable, @unchecked Sendable {
@@ -110,7 +110,7 @@ public struct ExecutorContinuation<Success: ~Copyable, Failure: Error>: ~Copyabl
 /// - Throws: Whatever the continuation is resumed with via
 ///   ``ExecutorContinuation/resumeSynchronously(throwing:)``.
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @_alwaysEmitIntoClient
 public nonisolated(nonsending) func withExecutorContinuation<Failure: Error>(
   _ body: (consuming ExecutorContinuation<Void, Failure>) -> Void
@@ -142,7 +142,7 @@ public nonisolated(nonsending) func withExecutorContinuation<Failure: Error>(
 /// leave the `withExecutorContinuation` scope; traps if dropped without being
 /// awaited.
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @safe
 @frozen
 public struct ExecutorContinuationAwaiter<Success: ~Copyable, Failure: Error>: ~Copyable, ~Escapable {
@@ -191,7 +191,7 @@ public struct ExecutorContinuationAwaiter<Success: ~Copyable, Failure: Error>: ~
 ///   - body: Receives both halves of the continuation; enqueues the resume half
 ///     with an executor and awaits the await half, returning a result.
 @_spi(ExperimentalScheduling)
-@available(StdlibDeploymentTarget 9999, *)
+@available(StdlibDeploymentTarget 6.5, *)
 @_alwaysEmitIntoClient
 public nonisolated(nonsending) func withExecutorContinuation<
   Success: ~Copyable,

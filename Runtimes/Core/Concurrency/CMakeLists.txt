@@ -95,6 +95,7 @@ add_library(swift_Concurrency
   Task.swift
   Task+PriorityEscalation.swift
   Task+TaskExecutor.swift
+  Task+Deadline.swift
   TaskCancellation.swift
   CancellationScope.swift
   TaskGroup.swift

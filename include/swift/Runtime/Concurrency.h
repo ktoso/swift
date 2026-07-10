@@ -598,6 +598,60 @@ swift_task_pushTaskExecutorPreference(TaskExecutorRef executor);
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_task_popTaskExecutorPreference(TaskExecutorPreferenceStatusRecord* record);
 
+/// Push a deadline status record onto the current task.
+///
+/// The pushed record participates in `withDeadline` composition: nested
+/// deadlines with the same `clockID` are subsumed by the tightest existing
+/// deadline for that clock. The returned pointer is owned by the runtime and
+/// must be handed back to `swift_task_popDeadline` when the scope exits.
+///
+/// If the given deadline is already subsumed by an outer deadline for the
+/// same clock, the runtime is free to return a nullptr - the pop must accept
+/// that value as a no-op.
+///
+/// The clock identifier should uniquely identify the clock instance. For the
+/// standard clocks, `SystemClockID` raw values are used; custom clocks pass a
+/// stable hash of their `Clock.ID`.
+///
+/// The deadline is passed as the two-component `Swift.Duration` representation
+/// (seconds + attoseconds) relative to the clock's reference point.
+///
+/// Runtime availability: Swift 6.5
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+TaskDeadlineStatusRecord *
+swift_task_pushDeadline(uint64_t clockID,
+                        int64_t deadlineSeconds,
+                        int64_t deadlineAttoseconds);
+
+/// Remove a single deadline record from the current task.
+///
+/// Must be passed the record intended to be removed (as returned by
+/// `swift_task_pushDeadline`). Passing nullptr is a no-op, which supports
+/// the subsumption fast-path where `swift_task_pushDeadline` did not need
+/// to install a new record.
+///
+/// Runtime availability: Swift 6.5
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+void swift_task_popDeadline(TaskDeadlineStatusRecord *record);
+
+/// Find the nearest active deadline installed for the given clock on the current task, if any.
+///
+/// The walk starts at the innermost `TaskDeadlineStatusRecord` and continues
+/// through the record chain, returning the earliest (smallest) deadline whose
+/// `ClockID` matches `clockID`. Since clock instants cannot be compared across
+/// clock types without lossy conversion, only records with the given `clockID`
+/// are considered.
+///
+/// Returns the matching record, or nullptr if no deadline for `clockID` is
+/// currently installed on the task. The caller may read the deadline
+/// components (`getDeadlineSeconds`, `getDeadlineAttoseconds`) off the
+/// returned record; the pointer remains valid for as long as the enclosing
+/// `withDeadline` scope is active.
+///
+/// Runtime availability: Swift 6.5
+SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
+TaskDeadlineStatusRecord * swift_task_findNearestDeadlineForClock(uint64_t clockID);
+
 /// Push a cancellation scope record onto the current task.
 ///
 /// Unlike deadlines, cancellation scope records are never subsumed: every
@@ -622,10 +676,9 @@ void swift_task_popCancellationScope(CancellationScopeRecord *record);
 ///
 /// This is a purely local operation on the scope's own state: it does not
 /// set the enclosing task's cancellation flag and does not invoke any
-/// `withTaskCancellationHandler` handlers registered outside the scope's
-/// dynamic extent. Handlers installed inside the scope's dynamic extent
-/// (i.e. between the scope record and the innermost record) do fire, so
-/// that operations like `Task.sleep` observe the scope cancellation.
+/// `withTaskCancellationHandler` handlers registered on the task. Only code
+/// that checks `Task.isCancelled` while running inside the scope (directly,
+/// not via child tasks) observes the cancellation.
 ///
 /// May be called from any thread, any number of times.
 ///
@@ -633,8 +686,8 @@ void swift_task_popCancellationScope(CancellationScopeRecord *record);
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 void swift_task_cancelCancellationScope(CancellationScopeRecord *record);
 
-/// Create a lightweight `SynchronousJob` that runs `closureContext` under
-/// the given `invoke` function exactly once when an executor schedules it.
+/// Create a lightweight `SynchronousJob` that runs `closureContext` under the
+/// given `invoke` function exactly once when an executor schedules it.
 ///
 /// `priority` is the raw byte from `JobPriority`. Ownership of
 /// `closureContext` is transferred to the job; it will be released after
@@ -648,7 +701,7 @@ void swift_task_cancelCancellationScope(CancellationScopeRecord *record);
 /// Runtime availability: Swift 6.5
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 Job *swift_job_createSynchronous(size_t priority, void *closureContext,
-                                 SynchronousJob::InvokeFn *invoke);
+                          SynchronousJob::InvokeFn *invoke);
 
 SWIFT_EXPORT_FROM(swift_Concurrency) SWIFT_CC(swift)
 size_t swift_task_getJobFlags(AsyncTask* task);

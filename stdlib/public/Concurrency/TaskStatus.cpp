@@ -663,6 +663,151 @@ static void swift_task_popTaskExecutorPreferenceImpl(
 }
 
 /**************************************************************************/
+/******************************** DEADLINES *******************************/
+/**************************************************************************/
+
+/// Compare two deadlines expressed in the (seconds, attoseconds) two-word
+/// `Swift.Duration` representation. Returns a negative value if `a` is
+/// earlier (tighter), positive if `a` is later, and zero if they are equal.
+static int compareDeadline(int64_t aSec, int64_t aAtto,
+                           int64_t bSec, int64_t bAtto) {
+  if (aSec != bSec)
+    return (aSec < bSec) ? -1 : 1;
+  if (aAtto != bAtto)
+    return (aAtto < bAtto) ? -1 : 1;
+  return 0;
+}
+
+/// Walk the current task's status records and return the tightest (earliest)
+/// deadline installed for `clockID`, or nullptr if none.
+static TaskDeadlineStatusRecord *
+findNearestDeadlineForClockOnTask(AsyncTask *task, uint64_t clockID) {
+  // Fast path: no deadline records installed at all.
+  auto status = task->_private()._status().load(std::memory_order_relaxed);
+  if (!status.hasDeadline())
+    return nullptr;
+
+  TaskDeadlineStatusRecord *found = nullptr;
+  withStatusRecordLock(task, [&](ActiveTaskStatus status) {
+    for (auto record : status.records()) {
+      if (record->getKind() != TaskStatusRecordKind::Deadline)
+        continue;
+      auto deadline = cast<TaskDeadlineStatusRecord>(record);
+      if (deadline->getClockID() != clockID) // TODO: need better compare here
+        continue;
+
+      // We do not compare the deadlines here, by construction the nearest one
+      // for a specific clock we find, is going to be the nearest one we care
+      // about, since we never install "more in the future" deadlines than
+      // already installed ones.
+      found = deadline;
+    }
+  });
+  return found;
+}
+
+SWIFT_CC(swift)
+static TaskDeadlineStatusRecord *
+swift_task_pushDeadlineImpl(uint64_t clockID,
+                            int64_t deadlineSeconds,
+                            int64_t deadlineAttoseconds) {
+  auto task = swift_task_getCurrent();
+  if (!task) {
+    // No current task means no scope for the deadline to be attached to.
+    return nullptr;
+  }
+
+  // Subsumption fast-path: if there is already a deadline for the same clock
+  // that is at or before the one we would be installing, skip the push - the
+  // outer deadline governs and we have nothing new to record.
+  if (auto existing = findNearestDeadlineForClockOnTask(task, clockID)) {
+    if (compareDeadline(existing->getDeadlineSeconds(),
+                        existing->getDeadlineAttoseconds(),
+                        deadlineSeconds,
+                        deadlineAttoseconds) <= 0) {
+      SWIFT_TASK_DEBUG_LOG("[Deadline] Subsumed by existing record:%p on "
+                           "task:%p (clock:%llu)",
+                           existing, task,
+                           (unsigned long long)clockID);
+      return nullptr;
+    }
+  }
+
+  void *allocation =
+      _swift_task_alloc_specific(task, sizeof(class TaskDeadlineStatusRecord));
+  auto record = ::new (allocation)
+      TaskDeadlineStatusRecord(clockID, deadlineSeconds, deadlineAttoseconds);
+  SWIFT_TASK_DEBUG_LOG("[Deadline] Create deadline record:%p for task:%p "
+                       "(clock:%llu, %lld.%lld)",
+                       allocation, task,
+                       (unsigned long long)clockID,
+                       (long long)deadlineSeconds,
+                       (long long)deadlineAttoseconds);
+
+  addStatusRecord(task, record,
+                  [&](ActiveTaskStatus oldStatus, ActiveTaskStatus &newStatus) {
+                    // Set the "has deadline" flag so hasActiveDeadline /
+                    // activeDeadline(for:) can bail out without walking the
+                    // record chain when there are no deadlines installed.
+                    newStatus = newStatus.withDeadline();
+                    return true; // always add the record
+                  });
+
+  return record;
+}
+
+SWIFT_CC(swift)
+static void swift_task_popDeadlineImpl(TaskDeadlineStatusRecord *record) {
+  // Pushes that were subsumed return nullptr, and the pop must accept that.
+  if (!record)
+    return;
+
+  SWIFT_TASK_DEBUG_LOG("[Deadline] Remove deadline record:%p from task:%p",
+                       record, swift_task_getCurrent());
+
+  auto task = swift_task_getCurrent();
+  if (!task)
+    return;
+
+  // Track how many deadline records are still installed after removing the
+  // target one. When this drops to zero we clear the HasDeadline flag so that
+  // the fast-path in `Task.hasActiveDeadline` / `Task.activeDeadline(for:)`
+  // stays cheap.
+  int remainingDeadlines = 0;
+  removeStatusRecordWhere(
+      task,
+      /*condition=*/[&](ActiveTaskStatus status, TaskStatusRecord *cur) {
+        assert(status.hasDeadline() && "does not have record!");
+        if (cur->getKind() != TaskStatusRecordKind::Deadline)
+          return false;
+
+        if (cur == record)
+          return true; // remove this record
+
+        remainingDeadlines += 1;
+        return false;
+      },
+      /*updateStatus=*/[&](ActiveTaskStatus oldStatus,
+                            ActiveTaskStatus &newStatus) {
+        if (remainingDeadlines == 0) {
+          assert(oldStatus.hasDeadline());
+          newStatus = newStatus.withoutDeadline();
+        }
+      });
+
+  swift_task_dealloc(record);
+}
+
+SWIFT_CC(swift)
+static TaskDeadlineStatusRecord *
+swift_task_findNearestDeadlineForClockImpl(uint64_t clockID) {
+  auto task = swift_task_getCurrent();
+  if (!task)
+    return nullptr;
+  return findNearestDeadlineForClockOnTask(task, clockID);
+}
+
+/**************************************************************************/
 /************************** CANCELLATION SCOPES **************************/
 /**************************************************************************/
 
@@ -1082,6 +1227,10 @@ static void performCancellationAction(ActiveTaskStatus status, TaskStatusRecord 
   case TaskStatusRecordKind::TaskExecutorPreference:
     break;
 
+  // Deadline records themselves take no cancellation action.
+  case TaskStatusRecordKind::Deadline:
+    break;
+
   // Whole-task cancellation must not implicitly cancel independent
   // cancellation scopes; scopes are only cancelled via their own
   // `CancellationScope.cancel()`.
@@ -1187,6 +1336,9 @@ static void performEscalationAction(AsyncTask *task, TaskStatusRecord *record,
     return;
   /// Executor preference we can ignore.
   case TaskStatusRecordKind::TaskExecutorPreference:
+    return;
+  // Deadline records do not participate in priority escalation.
+  case TaskStatusRecordKind::Deadline:
     return;
   // Cancellation scopes do not participate in priority escalation.
   case TaskStatusRecordKind::CancellationScope:

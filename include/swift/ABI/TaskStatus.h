@@ -452,6 +452,38 @@ public:
   AsyncTask *&getNextWaitingTask();
 };
 
+/// A status record which represents task deadline.
+class TaskDeadlineStatusRecord : public TaskStatusRecord {
+  /// An opaque, per-clock identifier used to determine whether two nested
+  /// deadlines refer to the same clock (and therefore may be coalesced).
+  /// For the standard clocks this is a `SystemClockID` raw value; custom
+  /// clocks pass a stable hash of their `Clock.ID`.
+  uint64_t ClockID;
+
+  /// The deadline instant, encoded as the two-component `Swift.Duration`
+  /// representation (seconds + attoseconds) relative to the clock's reference
+  /// point.
+  int64_t DeadlineSeconds;
+  int64_t DeadlineAttoseconds;
+
+public:
+  TaskDeadlineStatusRecord(uint64_t clockID,
+                           int64_t deadlineSeconds,
+                           int64_t deadlineAttoseconds)
+      : TaskStatusRecord(TaskStatusRecordKind::Deadline),
+        ClockID(clockID),
+        DeadlineSeconds(deadlineSeconds),
+        DeadlineAttoseconds(deadlineAttoseconds) {}
+
+  uint64_t getClockID() const { return ClockID; }
+  int64_t getDeadlineSeconds() const { return DeadlineSeconds; }
+  int64_t getDeadlineAttoseconds() const { return DeadlineAttoseconds; }
+
+  static bool classof(const TaskStatusRecord *record) {
+    return record->getKind() == TaskStatusRecordKind::Deadline;
+  }
+};
+
 /// A status record which represents a scoped cancellation domain that is
 /// independent of whole-task cancellation. Cancelling the scope is a local
 /// operation: it does not set the task's own cancellation flag and does not

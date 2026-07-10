@@ -35,6 +35,13 @@ public struct SuspendingClock: Sendable {
 }
 
 #if !$Embedded
+@available(StdlibDeploymentTarget 6.5, *)
+extension SuspendingClock: Identifiable {
+  public var id: SystemClockID { .suspending }
+}
+#endif
+
+#if !$Embedded
 @available(StdlibDeploymentTarget 5.7, *)
 extension SuspendingClock.Instant: Codable {
 }
@@ -102,7 +109,7 @@ extension SuspendingClock: Clock {
   public func sleep(
     until deadline: Instant, tolerance: Swift.Duration? = nil
   ) async throws {
-    if #available(StdlibDeploymentTarget 9999, *) {
+    if #available(StdlibDeploymentTarget 6.5, *) {
       guard let executor = Task.currentSuspendingClockExecutor else {
         fatalError("No active SuspendingClockExecutor found")
       }
