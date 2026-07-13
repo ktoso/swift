@@ -12,6 +12,8 @@
 
 import Swift
 
+#if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+
 // ==== -----------------------------------------------------------------------
 // MARK: withDeadline
 
@@ -49,14 +51,14 @@ import Swift
 /// ## Cancellation model
 ///
 /// When the deadline expires, `withDeadline` cancels a private cancellation scope
-/// wrapping `operation`, not the enclosing task. This means:
+/// wrapping `body`, not the enclosing task. This means:
 ///
-/// - `Task.isCancelled` observed inside `operation` returns `true` after the
+/// - `Task.isCancelled` observed inside `body` returns `true` after the
 ///   deadline fires.
-/// - `withTaskCancellationHandler` handlers registered inside `operation`
+/// - `withTaskCancellationHandler` handlers registered inside `body`
 ///   fire (so `Task.sleep`, etc. wake up promptly).
 /// - The enclosing task's `Task.isCancelled` is unaffected.
-/// - Structured children spawned inside `operation` are not auto-cancelled
+/// - Structured children spawned inside `body` are not auto-cancelled
 ///   by the deadline; they observe the scope only through the same
 ///   local-check mechanism.
 ///
@@ -90,7 +92,7 @@ import Swift
 ///   - expiration: The instant by which the operation must complete.
 ///   - tolerance: The tolerance used for the sleep.
 ///   - clock: The clock to use for measuring time.
-///   - operation: The asynchronous operation to complete before the deadline.
+///   - body: The asynchronous operation to complete before the deadline.
 ///
 /// - Returns: The result of the operation if it completes successfully before or after the deadline expires.
 /// - Throws: The error thrown by the operation.
@@ -100,7 +102,7 @@ func withDeadline<Return, Failure, C>(
   _ expiration: C.Instant,
   tolerance: C.Instant.Duration? = nil,
   clock: C = ContinuousClock(),
-  operation: nonisolated(nonsending) () async throws(Failure) -> Return
+  body: nonisolated(nonsending) () async throws(Failure) -> Return
 ) async throws(Failure) -> Return
 where Return: ~Copyable, Failure: Error, C: Clock & Identifiable {
   // Push a deadline status record so `Task.hasActiveDeadline` / observers
@@ -115,83 +117,12 @@ where Return: ~Copyable, Failure: Error, C: Clock & Identifiable {
     deadlineAttoseconds: attoseconds)
   defer { unsafe Builtin.taskPopDeadline(record: deadlineRecord) }
 
-  // Try to find an executor that services this clock's timers. If we can't
-  // (unknown clock, or the runtime doesn't have a clock executor for it),
-  // fall back to running the operation without deadline enforcement -
-  // observers can still see the deadline record and cooperatively check it.
-  return try await __withCancellationScope { scope throws(Failure) in
-    guard let disarm = _armDeadlineTimer(
-      scope: scope,
-      expiration: expiration,
-      tolerance: tolerance,
-      clock: clock
-    ) else {
-      return try await operation()
-    }
-    defer { disarm() }
-    return try await operation()
-  }
-}
-
-// ==== -----------------------------------------------------------------------
-// MARK: Timer arming
-
-/// Enqueue a fire-once synchronous job on the clock's current executor that
-/// cancels `scope` when the deadline expires. Returns a closure that
-/// synchronously disarms the timer (a no-op if it has already fired).
-///
-/// Returns `nil` if no executor for this clock exists in the current
-/// preference chain - the caller should then run the operation without
-/// deadline enforcement.
-@available(StdlibDeploymentTarget 6.5, *)
-private func _armDeadlineTimer<C: Clock & Identifiable>(
-  scope: borrowing CancellationScope,
-  expiration: C.Instant,
-  tolerance: C.Instant.Duration?,
-  clock: C
-) -> (@Sendable () -> Void)? {
-  // Building the timer job doesn't require any generic-over-C witness -
-  // it just needs to call `scope.cancel()` when it fires. But we do need
-  // an executor typed by `C` to actually enqueue with a `C.Instant`
-  // deadline; dispatch on the two system clocks that have known executor
-  // protocols today.
-  let priority = UInt8(Task.currentPriority.rawValue)
-  // Copy the raw scope pointer into an unsafe box so the sending closure
-  // doesn't need to move `scope` itself (it's ~Copyable / ~Escapable).
-  let scopeRecord = unsafe scope._record
-  let timerJob = Builtin.createSynchronousJob(priority: priority) {
-    unsafe _taskCancelCancellationScope(record: scopeRecord)
-  }
-
-  if C.self == ContinuousClock.self {
-    guard let executor = Task.currentContinuousClockExecutor else { return nil }
-    let instant = unsafe unsafeBitCast(expiration, to: ContinuousClock.Instant.self)
-    let toleranceValue = tolerance.map { unsafe unsafeBitCast($0, to: ContinuousClock.Duration.self) }
-    let registration = executor.enqueue(
-      ExecutorJob(context: timerJob),
-      at: instant,
-      tolerance: toleranceValue
-    )
-    return { executor.cancel(registration) }
-  }
-  if C.self == SuspendingClock.self {
-    guard let executor = Task.currentSuspendingClockExecutor else { return nil }
-    let instant = unsafe unsafeBitCast(expiration, to: SuspendingClock.Instant.self)
-    let toleranceValue = tolerance.map { unsafe unsafeBitCast($0, to: SuspendingClock.Duration.self) }
-    let registration = executor.enqueue(
-      ExecutorJob(context: timerJob),
-      at: instant,
-      tolerance: toleranceValue
-    )
-    return { executor.cancel(registration) }
-  }
-
-  // Unknown clock - drop the timer job (its retain will be released when
-  // this scope exits without enqueue happening; without a scheduler owning
-  // it, the SynchronousJob leaks its context. That's acceptable while this
-  // primitive is SPI - custom-clock users must plumb through
-  // Continuous/SuspendingClock for now).
-  return nil
+  // Dispatch actual deadline enforcement to the clock: it knows which
+  // executor services its timeline. For the built-in clocks this arms a
+  // synchronous timer job that cancels an internal cancellation scope; for
+  // custom clocks the default `Clock.withDeadline` just runs `body`, with
+  // observers still able to see the deadline via the record pushed above.
+  return try await clock.withDeadline(expiration, tolerance: tolerance, body: body)
 }
 
 // ==== -----------------------------------------------------------------------
@@ -245,3 +176,5 @@ private func _instantComponents<C: Clock & Identifiable>(
   let dur = unsafe unsafeBitCast(clock.now.duration(to: expiration), to: Swift.Duration.self)
   return dur.components
 }
+
+#endif // !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY

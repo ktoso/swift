@@ -38,10 +38,47 @@ public protocol Clock<Duration>: Sendable {
   var now: Instant { get }
   var minimumResolution: Instant.Duration { get }
 
-#if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+#if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
   func sleep(until deadline: Instant, tolerance: Instant.Duration?) async throws
+
+  /// Run `body` under this clock's deadline enforcement.
+  ///
+  /// Clocks that know how to schedule work against their own timeline (for
+  /// example, ``ContinuousClock`` and ``SuspendingClock``) override this to
+  /// arm a cancellation timer via their clock-specific executor. The default
+  /// implementation runs `body` without any timer; observers of the deadline
+  /// status record pushed by the top-level ``withDeadline(_:tolerance:clock:body:)``
+  /// still see the deadline via `Task.hasActiveDeadline`, so cooperative
+  /// cancellation checks continue to work for custom clocks.
+  @available(StdlibDeploymentTarget 6.5, *)
+  nonisolated(nonsending)
+  func withDeadline<Return: ~Copyable, Failure: Error>(
+    _ expiration: Instant,
+    tolerance: Instant.Duration?,
+    body: nonisolated(nonsending) () async throws(Failure) -> Return
+  ) async throws(Failure) -> Return
 #endif
 }
+
+#if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+@available(StdlibDeploymentTarget 6.5, *)
+extension Clock {
+  /// Default: no clock-specific executor is known, so run `body` without
+  /// arming a timer. The deadline status record pushed by the top-level
+  /// ``withDeadline(_:tolerance:clock:body:)`` is still visible inside
+  /// `body`, so cooperative cancellation via `Task.hasActiveDeadline` /
+  /// `Task.isCancelled` still works for custom clocks that opt into
+  /// observation.
+  public nonisolated(nonsending)
+  func withDeadline<Return: ~Copyable, Failure: Error>(
+    _ expiration: Instant,
+    tolerance: Instant.Duration?,
+    body: nonisolated(nonsending) () async throws(Failure) -> Return
+  ) async throws(Failure) -> Return {
+    try await body()
+  }
+}
+#endif
 
 @available(StdlibDeploymentTarget 5.7, *)
 extension Clock {
@@ -108,7 +145,7 @@ extension Clock {
   }
 }
 
-#if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+#if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
 @available(StdlibDeploymentTarget 5.7, *)
 extension Clock {
   /// Suspends for the given duration.

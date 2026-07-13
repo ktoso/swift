@@ -107,7 +107,7 @@ extension ContinuousClock: Clock {
     )
   }
 
-#if !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+#if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
   /// Suspend task execution until a given deadline within a tolerance.
   /// If no tolerance is specified then the system may adjust the deadline
   /// to coalesce CPU wake-ups to more efficiently process the wake-ups in
@@ -171,6 +171,54 @@ extension ContinuousClock: Clock {
   }
 #endif
 }
+
+#if !$Embedded && !SWIFT_STDLIB_TASK_TO_THREAD_MODEL_CONCURRENCY
+@available(StdlibDeploymentTarget 6.5, *)
+extension ContinuousClock {
+  /// Run `body` under a continuous-clock deadline.
+  ///
+  /// Arms a fire-once synchronous timer job on the current continuous-clock
+  /// executor that cancels an internal ``CancellationScope`` when `expiration`
+  /// is reached. `body` executes inside that scope, so it sees
+  /// `Task.isCancelled == true` once the deadline fires; the enclosing task's
+  /// own cancellation state is not affected. The timer is synchronously
+  /// disarmed when `body` returns or throws.
+  ///
+  /// If `expiration` is already in the past when this is called, the scope is
+  /// cancelled up front and `body` runs immediately inside a cancelled scope,
+  /// bypassing the executor round-trip.
+  ///
+  /// - Precondition: A ``ContinuousClockExecutor`` is available in the
+  ///   current preference chain; otherwise this traps.
+  public nonisolated(nonsending)
+  func withDeadline<Return: ~Copyable, Failure: Error>(
+    _ expiration: Instant,
+    tolerance: Instant.Duration?,
+    body: nonisolated(nonsending) () async throws(Failure) -> Return
+  ) async throws(Failure) -> Return {
+    guard let executor = Task.currentContinuousClockExecutor else {
+      fatalError("No active ContinuousClockExecutor found")
+    }
+    return try await __withCancellationScope { scope throws(Failure) -> Return in
+      guard now < expiration else {
+        scope.cancel()
+        return try await body()
+      }
+      // The scope handle is ~Copyable / ~Escapable, so we can't capture it
+      // in the timer closure. Copy the raw record pointer into the closure
+      // and call the runtime cancel directly.
+      let scopeRecord = unsafe scope._record
+      let job = ExecutorJob(priority: JobPriority(Task.currentPriority)) {
+        unsafe _taskCancelCancellationScope(record: scopeRecord)
+      }
+      let registration = executor.enqueue(
+        job, at: expiration, tolerance: tolerance)
+      defer { executor.cancel(registration) }
+      return try await body()
+    }
+  }
+}
+#endif
 
 @available(StdlibDeploymentTarget 5.7, *)
 @_unavailableInEmbedded

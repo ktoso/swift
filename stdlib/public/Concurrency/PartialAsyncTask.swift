@@ -296,6 +296,30 @@ public struct ExecutorJob: Sendable, ~Copyable {
     self.context = job.context
   }
 
+  /// Create a fire-once synchronous job that runs `closure` when scheduled.
+  ///
+  /// The returned ``ExecutorJob`` wraps a runtime-allocated synchronous job
+  /// whose sole responsibility is to invoke `closure` exactly once when the
+  /// executor processes it. Ownership of the underlying job passes to the
+  /// executor once it is enqueued; if the job is never enqueued the closure
+  /// (and its captures) is retained by the job and released when the job is
+  /// destroyed.
+  ///
+  /// This is a low-level primitive used by higher-level scheduling APIs (for
+  /// example, arming a timer job that cancels a `CancellationScope` when a
+  /// deadline expires).
+  @_spi(Concurrency)
+  @available(StdlibDeploymentTarget 6.5, *)
+  public init(
+    priority: JobPriority,
+    _ closure: __owned @escaping () -> Void
+  ) {
+    self.init(
+      context: Builtin.createSynchronousJob(
+        priority: priority.rawValue,
+        body: closure))
+  }
+
   internal(set) public var priority: JobPriority {
     get {
       let raw: UInt8
