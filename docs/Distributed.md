@@ -737,6 +737,41 @@ An empty set is treated as "caller has no entitlements". A target with no annota
 
 - **`@ValidateRemoteCall({...})` inline closure on a protocol requirement is rejected at macro-expansion time.** Cross-module closure re-parse trips a `PreCheckTarget` invariant. Named factory extensions on `RemoteCallValidator` are the supported spelling for cross-module use.
 
+### Offline audit: `swift-inspect distributed audit`
+
+`swift-inspect distributed audit <binary>` walks a shipped Mach-O and lists every distributed accessible function with the validators the compiler attached to it. It reads exactly the runtime metadata described in the "Runtime shape" section above (`__TEXT,__swift5_acfuncs` -> tagged `Flags` pointer -> `__DATA_CONST,__swift5_daval` linked list -> accessor symbol in `__DATA_CONST,__swift5_davala`) and reports one row per distributed method, e.g.:
+
+```
+Distributed accessible functions in libBank.dylib:
+      total: 5
+  validated: 4
+
+  func/var                                  Validators
+  ------------------------------------------------------
+  Bank.readLedger() async throws -> String  1  (@Entitlement(.anyOf(["admin", "auditor"])))
+  Bank.transfer(amount:Int) async throws -> Bool
+                                            1  (@Entitlement("com.example.transfer"))
+  Bank.exportAll() async throws -> String   2  (@Entitlement("com.example.audit"), @ValidateRemoteCall(.trace))
+  Bank.ping() async throws                  -
+```
+
+#### Policy source-text peers (`_desc`)
+
+The `Validators` column above shows the exact **source text of each policy** as the developer wrote it. That's not something the runtime data structures need - `swift5_daval` records only point at accessor closures - so the macro emits a **second peer** alongside every accessor:
+
+- Accessor peer (unchanged): `__daval_<target>_accessor<unique>: _DistributedValidationAccessor`, placed in `__DATA_CONST,__swift5_davala`.
+- Description peer (new): `__daval_<target>_accessor<unique>_desc: (UInt8, UInt8, ...)`, placed in `__TEXT,__cstring` on Mach-O (`swift5_davala_desc` / `.sw5davala_desc$B` on other formats).
+
+The description peer is a null-terminated UTF-8 byte tuple containing the attribute's source form as returned by `SyntaxProtocol.trimmedDescription`, wrapped with the attribute name so both stacked kinds are self-identifying (e.g. `@Entitlement("com.example.transfer")` or `@ValidateRemoteCall(.trace)`). The byte tuple form is required because `@section` accepts only SE-0492 constant-expression literals; `StaticString` and raw `UnsafePointer` initializers are rejected, but a homogeneous tuple of `UInt8`s IS a constant-expression literal and lands at the symbol's address as plain bytes.
+
+The peer's symbol name is a deterministic `<accessorName>_desc` sibling (via a second `context.makeUniqueName` call), so `swift-inspect` looks it up via the accessible-function record's mangled-name path in `LC_SYMTAB` - no section-walking, and each accessor is paired to its own description even when a method carries multiple stacked attributes.
+
+**Opt-out.** Some deployments prefer not to leak the source-form policy text into their shipped binaries (e.g. because the policy string is an internal token). Set the environment variable `SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY=0` (or `false` / `no` / `off`, case-insensitive) at compile time to suppress the description peer entirely. Default is **ON**; offline audit then falls back to displaying the accessor's symbol name only.
+
+**IRGen filtering.** IRGen recovers accessor peers via `visitAuxiliaryDecls` on the target member; the description peers share the `__daval_` prefix, so the recovery filter (`lib/IRGen/GenDistributed.cpp`, `emitDistributedTargetAccessor`) explicitly excludes any peer whose name contains `_desc`. The description peers therefore contribute zero `swift5_daval` records - they are pure metadata for tooling.
+
+**Runtime impact.** Zero. The runtime never reads description peers; they are `@used` only to survive DCE. Enforcement and receive-side lookup are entirely unchanged.
+
 ### Future directions
 
 - **Enforce validation directly in the distributed accessor.** IRGen already knows, when it emits the distributed thunk accessor, whether the target carries validation attributes. Instead of the receive-side lookup, IRGen could emit the "resolve and run the validator" sequence inline in the accessor body, making enforcement unbypassable and eliminating the runtime lookup entirely for the enforcement path. The `swift5_daval` records would remain for optional sender-side pre-flight and tooling. This is a larger change and is deferred.

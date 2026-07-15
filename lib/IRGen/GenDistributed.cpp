@@ -501,9 +501,15 @@ void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
   }
   declForPeers->visitAuxiliaryDecls([&](Decl *peer) {
     if (auto *vd = dyn_cast<VarDecl>(peer)) {
-      if (vd->isStatic() && vd->hasName() &&
-          vd->getBaseIdentifier().str().contains("__daval_"))
-        accessorDecls.push_back(vd);
+      if (vd->isStatic() && vd->hasName()) {
+        auto name = vd->getBaseIdentifier().str();
+        // Accept the macro's accessor peers (`__daval_<target>_accessor<suf>`)
+        // but skip its companion description peers (`__daval_..._desc<suf>`),
+        // which are not accessor closures. Both share the `__daval_` prefix
+        // because they are macro peers of the same attribute expansion.
+        if (name.contains("__daval_") && !name.contains("_desc"))
+          accessorDecls.push_back(vd);
+      }
     }
   });
 

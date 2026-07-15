@@ -94,11 +94,16 @@ internal struct Audit: ParsableCommand {
     print("  " + String(repeating: "-", count: nameColWidth + 14))
     for (row, e) in zip(names, sorted) {
       let vlist: String
-      if e.validatorSymbols.isEmpty {
+      if e.validators.isEmpty {
         vlist = "-"
       } else {
-        let symbols = e.validatorSymbols.map { $0 ?? "<stripped>" }
-        vlist = "\(symbols.count)  (\(symbols.joined(separator: ", ")))"
+        // Prefer the compiler-preserved policy source text when the binary
+        // carries it; fall back to the accessor symbol name otherwise.
+        let items = e.validators.map { v -> String in
+          if let text = v.policyText { return text }
+          return v.accessorSymbol ?? "<stripped>"
+        }
+        vlist = "\(items.count)  (\(items.joined(separator: ", ")))"
       }
       print("  "
             + row.padding(toLength: nameColWidth, withPad: " ", startingAt: 0)

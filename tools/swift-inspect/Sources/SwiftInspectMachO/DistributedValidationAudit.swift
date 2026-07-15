@@ -28,22 +28,40 @@
 
 import Foundation
 
+/// One validator attached to a distributed method, as observed offline.
+public struct DistributedValidator: Equatable {
+  /// Name of the Mach-O symbol holding the validation-accessor closure
+  /// (e.g. `_$s..__daval_transfer_accessor...`). `nil` if the local symbol
+  /// was stripped from the binary.
+  public var accessorSymbol: String?
+  /// Human-readable source form of the policy the compiler recorded next
+  /// to this accessor, e.g. `#"@Entitlement("com.example.transfer")"#`.
+  /// `nil` when the compiler did not emit a description peer (either the
+  /// binary predates this feature, or was built with
+  /// `SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY=0`).
+  public var policyText: String?
+
+  public init(accessorSymbol: String?, policyText: String?) {
+    self.accessorSymbol = accessorSymbol
+    self.policyText = policyText
+  }
+}
+
 /// A single row of audit output: one accessible-function record and any
 /// validators attached to it.
 public struct DistributedAuditEntry: Equatable {
   public var mangledName: String
   public var isDistributed: Bool
   public var hasValidation: Bool
-  /// Symbol names of the validation accessors linked from this entry, in
-  /// list order. `nil` means the symbol was stripped from the binary.
-  public var validatorSymbols: [String?]
+  /// Validators linked from this entry, in list order.
+  public var validators: [DistributedValidator]
 
   public init(mangledName: String, isDistributed: Bool,
-              hasValidation: Bool, validatorSymbols: [String?]) {
+              hasValidation: Bool, validators: [DistributedValidator]) {
     self.mangledName = mangledName
     self.isDistributed = isDistributed
     self.hasValidation = hasValidation
-    self.validatorSymbols = validatorSymbols
+    self.validators = validators
   }
 }
 
@@ -174,7 +192,7 @@ extension MachOFile {
     let isDistributed = (flags & DistributedAuditABI.flagIsDistributed) != 0
     let hasValidation = (flags & DistributedAuditABI.flagHasValidation) != 0
 
-    var validators: [String?] = []
+    var validators: [DistributedValidator] = []
     if hasValidation {
       guard daval != nil else {
         throw DistributedAuditError.hasValidationWithoutDavalSection(
@@ -188,13 +206,13 @@ extension MachOFile {
       mangledName: mangled,
       isDistributed: isDistributed,
       hasValidation: hasValidation,
-      validatorSymbols: validators)
+      validators: validators)
   }
 
   private func walkDavalList(headFlagsOff: Int, flags: UInt32,
                              record: String,
                              daval: MachOSection)
-      throws -> [String?] {
+      throws -> [DistributedValidator] {
     // The Flags word is a tagged relative pointer: bits 2..31 form a
     // signed self-relative offset to the head daval record. Clear the
     // low 2 tag bits before sign-extending.
@@ -202,7 +220,7 @@ extension MachOFile {
     let signedDelta = Int32(bitPattern: masked)
     var recOff = headFlagsOff + Int(signedDelta)
 
-    var out: [String?] = []
+    var out: [DistributedValidator] = []
     var walked = 0
     while true {
       if walked >= DistributedAuditABI.davalListMaxLength {
@@ -229,7 +247,10 @@ extension MachOFile {
           fieldFileOffset: recOff + DistributedAuditABI.davalAccessorFieldOffset,
           delta: Int(accDelta),
           section: daval)
-      out.append(symbolsByVMAddress[accessorVMAddr])
+      let accessorSymbol = symbolsByVMAddress[accessorVMAddr]
+      let policyText = policyTextForAccessor(accessorSymbol)
+      out.append(DistributedValidator(accessorSymbol: accessorSymbol,
+                                      policyText: policyText))
 
       guard let nextDelta = readInt32(
               atFileOffset: recOff + DistributedAuditABI.davalNextFieldOffset) else {
@@ -240,6 +261,80 @@ extension MachOFile {
       recOff = (recOff + DistributedAuditABI.davalNextFieldOffset) + Int(nextDelta)
     }
     return out
+  }
+
+  /// Given a validation accessor's mangled symbol name, look up its companion
+  /// `_desc` symbol emitted by the macro (see
+  /// `lib/Macros/Sources/SwiftMacros/DistributedMacros+ValidateRemoteCall.swift`,
+  /// `emitValidationPeers`). The description peer's mangled name is the
+  /// accessor's mangled name with `_desc` woven in via `makeUniqueName`;
+  /// rather than trying to reconstruct that mangling exactly, we scan for
+  /// any symbol whose name contains `_desc` and whose demangled form points
+  /// at the same underlying property base. That's overkill for now -- in
+  /// practice we can look for the accessor symbol's stem plus `_desc` as a
+  /// substring anywhere in the symbol name.
+  ///
+  /// Precise strategy: extract the accessor's compiler-unique tag (the
+  /// `__daval_..._accessor` chunk plus the trailing per-expansion suffix),
+  /// then find a symbol whose name contains that same tag AND `_desc`.
+  /// This matches both the macro's uniquing and Swift's mangling of static
+  /// property names.
+  private func policyTextForAccessor(_ accessorSymbol: String?) -> String? {
+    guard let sym = accessorSymbol else { return nil }
+    // Both the accessor peer and its `_desc` sibling are emitted from the
+    // same `@Entitlement` / `@ValidateRemoteCall` expansion, so they share
+    // the containing peer-macro attribute path in the Swift mangling:
+    // e.g. `...AAC9exportAll11EntitlementfMp_...` (target `exportAll`,
+    // macro `Entitlement`, peer marker `fMp`). We pin the lookup to that
+    // shared attribute path so stacked attributes don't cross-match.
+    guard let attrTag = auditAttributeTag(inMangledSymbol: sym) else {
+      return nil
+    }
+    // Find the matching description symbol: same attribute path AND has
+    // `_desc` woven into its uniqued name by the macro.
+    for (name, vm) in symbolsByName {
+      guard name.contains(attrTag), name.contains("_desc") else { continue }
+      // The description is a raw byte tuple emitted into __TEXT,__cstring
+      // (see `emitValidationPeers` in the compiler). Constrain the section
+      // lookup to that section so we don't accidentally pick a wider
+      // container segment (e.g. __TEXT) whose skew differs subtly.
+      guard let section = findSection(segment: "__TEXT",
+                                      section: "__cstring") else {
+        return nil
+      }
+      guard vm >= section.vmAddress,
+            vm < section.vmAddress + UInt64(section.size) else {
+        continue
+      }
+      let skew = Int64(section.vmAddress) - Int64(section.fileOffset)
+      let off = Int(Int64(vm) - skew)
+      return readCString(atFileOffset: off)
+    }
+    return nil
+  }
+
+  /// Extracts the per-attribute portion of the mangled name, ending at the
+  /// peer-macro marker `fMp_`. For an accessor like
+  /// `_$s4BankAAC03$s4A62AAC9exportAll11EntitlementfMp_26__daval_exportAll_accessorfMu_...`
+  /// this returns `AAC9exportAll11EntitlementfMp_`, which is present in
+  /// BOTH the accessor and its `_desc` sibling (and in no other attribute's
+  /// symbols, because the attribute path is unique to this expansion).
+  private func auditAttributeTag(inMangledSymbol s: String) -> String? {
+    // `fMp` marks a peer-macro-attribute in Swift mangling. Trailing `_`
+    // is the field separator into the next identifier length prefix.
+    guard let mp = s.range(of: "fMp") else { return nil }
+    let afterMp = mp.upperBound
+    let end: String.Index
+    if afterMp < s.endIndex && s[afterMp] == "_" {
+      end = s.index(after: afterMp)
+    } else {
+      end = afterMp
+    }
+    // Backtrack from `fMp` to the previous length-prefix boundary would
+    // require parsing Swift mangling; the substring we return already
+    // starts partway through and ending at `fMp_`, which is unique enough
+    // for our per-symbol scan. Return the whole prefix through `fMp_`.
+    return String(s[..<end])
   }
 
   /// Turn a field-file-offset + self-relative delta into a VM address so we

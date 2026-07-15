@@ -13,6 +13,29 @@ import SwiftSyntax
 import SwiftSyntaxMacros
 import SwiftDiagnostics
 import SwiftSyntaxBuilder
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
+
+/// Whether to emit the human-readable policy description peer alongside each
+/// validation accessor. Users can opt out at build time by setting
+/// `SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY=0` (or `false` /
+/// `no` / `off`, case-insensitive). Default is ON.
+internal func retainDescriptionInBinary() -> Bool {
+  let name = "SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY"
+  guard let raw = getenv(name) else { return true }
+  let value = String(cString: raw).lowercased()
+  switch value {
+  case "0", "false", "no", "off", "n":
+    return false
+  default:
+    return true
+  }
+}
 
 // ==== -----------------------------------------------------------------------
 // MARK: @ValidateRemoteCall
@@ -60,6 +83,7 @@ extension ValidateRemoteCallMacro: PeerMacro {
     let enclosing = try enclosingTypeName(context,
         attributeName: attributeName, node: node, declaration: declaration)
     let argExpression = customValidatorExpression(from: node)
+    let policyDescription = validateRemoteCallDescription(from: node)
     // Wrap through `RemoteCallValidator<Enclosing.ActorSystem>(...)` so both
     // macro overloads (the closure-taking one and the
     // `RemoteCallValidator`-taking one) funnel through a single emission
@@ -72,8 +96,22 @@ extension ValidateRemoteCallMacro: PeerMacro {
       targetName: targetName,
       enclosingTypeName: enclosing,
       validatorExpression: validatorExpression,
+      policyDescription: policyDescription,
       in: context)
   }
+}
+
+/// Human-readable form of the attribute for offline tooling, e.g.
+/// `@ValidateRemoteCall(.trace)`. Preserves closure literals verbatim; only
+/// collapses any embedded newlines to keep the emitted cstring on one line.
+private func validateRemoteCallDescription(from node: AttributeSyntax) -> String {
+  guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
+    let first = arguments.first
+  else {
+    return "@ValidateRemoteCall"
+  }
+  let text = first.expression.trimmedDescription
+  return "@ValidateRemoteCall(\(text))"
 }
 
 // ==== -----------------------------------------------------------------------
@@ -139,10 +177,17 @@ extension _DistributedValidationMacroImpl {
   ///   constructs the `RemoteCallValidator` value the accessor should return.
   ///   Strings, closures, and arbitrary Swift expressions are all fine here
   ///   because the accessor body is a normal Swift function context.
+  /// - Parameter policyDescription: a short human-readable text form of the
+  ///   attribute the macro was invoked from (e.g.
+  ///   `#"@Entitlement("com.example.transfer")"#`). Emitted as a second peer
+  ///   whose symbol name is `<accessorName>_desc`, so `swift-inspect` and
+  ///   friends can surface it offline. When `nil`, no description peer is
+  ///   emitted (used by callers that already can't recover a source form).
   static func emitValidationPeers(
     targetName: String,
     enclosingTypeName: String,
     validatorExpression: String,
+    policyDescription: String? = nil,
     in context: some MacroExpansionContext
   ) -> [DeclSyntax] {
     // The accessor name is compiler-issued via `makeUniqueName`. Multiple
@@ -187,7 +232,83 @@ extension _DistributedValidationMacroImpl {
           return true
         }
       """
-    return [accessor]
+
+    // Companion policy-description peer: a null-terminated UTF-8 byte tuple
+    // laid down directly into `__cstring` (MachO). `StaticString` cannot be
+    // used with `@section` because it isn't a constant-expression literal,
+    // and a raw `UnsafePointer` initializer also isn't; a homogeneous tuple
+    // of `UInt8`s IS an SE-0492 constant-expression literal and lands at the
+    // symbol's address as plain bytes -- which is exactly what an offline
+    // reader wants. `@used` keeps the symbol alive through DCE; nothing in
+    // user code references it. The symbol name is a deterministic
+    // `<accessorName>_desc` sibling so `swift-inspect` can find it via
+    // the LC_SYMTAB nlist table without any section-walking.
+    //
+    // Users can opt out (e.g. to avoid leaking source-form policy text into
+    // shipped binaries) by setting the environment variable
+    // `SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY=0` at compile
+    // time. Default is ON.
+    //
+    // Best-effort: if the caller didn't hand us a description, no peer is
+    // emitted and the offline reader falls back to displaying the
+    // accessor's symbol name only.
+    var decls: [DeclSyntax] = [accessor]
+    if let policyDescription, retainDescriptionInBinary() {
+      let bytesLiteral = utf8TupleLiteral(nullTerminated: policyDescription)
+      let byteCount = policyDescription.utf8.count + 1  // + trailing NUL
+      let tupleType = uInt8Tuple(count: byteCount)
+      let descName = context.makeUniqueName(
+        "\(accessorName.text)_desc")
+      let descSectionAttrs: DeclSyntax =
+        """
+        #if objectFormat(MachO)
+        @section("__TEXT,__cstring")
+        #elseif objectFormat(ELF) || objectFormat(Wasm)
+        @section("swift5_davala_desc")
+        #elseif objectFormat(COFF)
+        @section(".sw5davala_desc$B")
+        #endif
+        @used
+        """
+      let desc: DeclSyntax =
+        """
+        \(descSectionAttrs)
+        @available(*, deprecated, message: "Implementation detail of Distributed. Do not use directly.")
+        private static let \(descName): \(raw: tupleType) = \(raw: bytesLiteral)
+        """
+      decls.append(desc)
+    }
+    return decls
+  }
+
+  /// Returns `"(UInt8, UInt8, ..., UInt8)"` with `count` elements, e.g.
+  /// `"(UInt8, UInt8, UInt8)"` for `count=3`. A single-element tuple isn't a
+  /// tuple in Swift, so `count == 1` degenerates to just `UInt8`.
+  fileprivate static func uInt8Tuple(count: Int) -> String {
+    precondition(count >= 1)
+    if count == 1 { return "UInt8" }
+    return "(" + Array(repeating: "UInt8", count: count).joined(separator: ", ") + ")"
+  }
+
+  /// Returns a Swift constant-expression tuple literal of the UTF-8 bytes of
+  /// `s`, followed by a trailing NUL byte, e.g. `(0x68, 0x69, 0x00)` for `"hi"`.
+  /// A single-byte payload (empty input plus NUL) degenerates to `0x00`.
+  fileprivate static func utf8TupleLiteral(nullTerminated s: String) -> String {
+    var bytes: [UInt8] = Array(s.utf8)
+    bytes.append(0)
+    let hex = bytes.map { byte -> String in
+      let hi = hexDigit(Int(byte >> 4))
+      let lo = hexDigit(Int(byte & 0x0f))
+      return "0x\(hi)\(lo)"
+    }
+    if hex.count == 1 { return hex[0] }
+    return "(" + hex.joined(separator: ", ") + ")"
+  }
+
+  fileprivate static func hexDigit(_ n: Int) -> Character {
+    precondition(n >= 0 && n < 16)
+    let digits: [Character] = ["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"]
+    return digits[n]
   }
 
   /// Reduces a Swift identifier to characters safe for compositing into another

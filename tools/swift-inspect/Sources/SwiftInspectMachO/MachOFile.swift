@@ -82,6 +82,10 @@ public final class MachOFile {
   public let sliceOffset: Int
   public let sections: [MachOSection]
   public let symbolsByVMAddress: [UInt64: String]
+  /// Reverse index: symbol name to VM address. Populated in the same nlist
+  /// pass; used by callers that need to resolve companion symbols (e.g.
+  /// `<accessor>_desc`) without walking sections.
+  public let symbolsByName: [String: UInt64]
 
   public init(path: String, arch: String? = nil) throws {
     self.path = path
@@ -120,14 +124,22 @@ public final class MachOFile {
 
     var byAddr: [UInt64: String] = [:]
     byAddr.reserveCapacity(symbols.count)
+    var byName: [String: UInt64] = [:]
+    byName.reserveCapacity(symbols.count)
     for s in symbols where s.vmAddress != 0 {
       // Prefer the first mapping we see for a given address; multiple
       // aliases at the same address are uncommon in what we scan.
       if byAddr[s.vmAddress] == nil {
         byAddr[s.vmAddress] = s.name
       }
+      // Same for the reverse map. If a symbol name repeats across a fat
+      // Mach-O slice or a private-linkage collision, we keep the first.
+      if byName[s.name] == nil {
+        byName[s.name] = s.vmAddress
+      }
     }
     self.symbolsByVMAddress = byAddr
+    self.symbolsByName = byName
   }
 
   public func findSection(segment: String, section: String) -> MachOSection? {

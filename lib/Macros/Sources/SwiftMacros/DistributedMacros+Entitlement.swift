@@ -47,6 +47,7 @@ extension EntitlementMacro: PeerMacro {
         attributeName: attributeName, node: node, declaration: declaration)
 
     let policyExpression = entitlementPolicyExpression(from: node)
+    let policyDescription = entitlementPolicyDescription(from: node)
     // `@Entitlement` maps onto a `RemoteCallValidator` whose closure
     // evaluates the entitlement policy against the receive-side task-local
     // entitlement set. The context argument is ignored: entitlement policies
@@ -62,6 +63,7 @@ extension EntitlementMacro: PeerMacro {
       targetName: targetName,
       enclosingTypeName: enclosing,
       validatorExpression: validatorExpression,
+      policyDescription: policyDescription,
       in: context)
   }
 }
@@ -69,6 +71,18 @@ extension EntitlementMacro: PeerMacro {
 
 // ==== -----------------------------------------------------------------------
 // MARK: Argument extraction
+
+/// Human-readable form of the attribute for offline tooling, e.g.
+/// `@Entitlement("com.example.transfer")`. This is the source text the user
+/// wrote, minus comments.
+private func entitlementPolicyDescription(from node: AttributeSyntax) -> String {
+  guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
+    let first = arguments.first
+  else {
+    return "@Entitlement"
+  }
+  return "@Entitlement(\(first.expression.trimmedDescription))"
+}
 
 /// Extracts the argument expression from `@Entitlement("...")` or
 /// `@Entitlement(<policy>)` and returns Swift source text that constructs a
