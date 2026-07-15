@@ -46,6 +46,12 @@ internal struct Audit: ParsableCommand {
   @Flag(help: "Demangle the thunk names (macOS 27.0+; raw mangled by default)")
   var demangle: Bool = false
 
+  @Flag(name: [.short, .long],
+        help: ArgumentHelp("Show every validator, including entries with no "
+                            + "policy text (which get the raw accessor "
+                            + "symbol name instead)"))
+  var verbose: Bool = false
+
   func run() throws {
     let file: MachOFile
     do {
@@ -97,13 +103,23 @@ internal struct Audit: ParsableCommand {
       if e.validators.isEmpty {
         vlist = "-"
       } else {
-        // Prefer the compiler-preserved policy source text when the binary
-        // carries it; fall back to the accessor symbol name otherwise.
-        let items = e.validators.map { v -> String in
+        // Default view: only show validators the compiler preserved policy
+        // source text for. Bare accessor symbol names (a mangled dylib
+        // symbol like `_$s...__daval_transfer_accessor...`) are noise for
+        // the common case; hide them unless the user asks with --verbose.
+        let items = e.validators.compactMap { v -> String? in
           if let text = v.policyText { return text }
-          return v.accessorSymbol ?? "<stripped>"
+          if verbose { return v.accessorSymbol ?? "<stripped>" }
+          return nil
         }
-        vlist = "\(items.count)  (\(items.joined(separator: ", ")))"
+        if items.isEmpty {
+          // Every validator lacks policy text and we're not verbose.
+          // Show the count so the user knows there ARE validators; details
+          // are one --verbose away.
+          vlist = "\(e.validators.count)  --verbose to show"
+        } else {
+          vlist = "\(items.count)  \(items.joined(separator: ", "))"
+        }
       }
       print("  "
             + row.padding(toLength: nameColWidth, withPad: " ", startingAt: 0)
