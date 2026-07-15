@@ -17,6 +17,7 @@ let package = Package(
             dependencies: [
                 "SymbolicationShims",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .target(name: "SwiftInspectAudit"),
                 .target(name: "SwiftInspectClient", condition: .when(platforms: [.windows])),
                 .target(name: "SwiftInspectClientInterface", condition: .when(platforms: [.windows])),
                 .target(name: "SwiftInspectLinux", condition: .when(platforms: [.linux, .android])),
@@ -26,11 +27,15 @@ let package = Package(
             swiftSettings: [.unsafeFlags(["-parse-as-library"])]),
         .target(name: "SwiftInspectClient"),
         .target(
+            name: "SwiftInspectAudit",
+            path: "Sources/SwiftInspectAudit"),
+        .target(
             name: "SwiftInspectMachO",
+            dependencies: ["SwiftInspectAudit"],
             path: "Sources/SwiftInspectMachO"),
         .target(
             name: "SwiftInspectLinux",
-            dependencies: ["LinuxSystemHeaders"],
+            dependencies: ["LinuxSystemHeaders", "SwiftInspectAudit"],
             path: "Sources/SwiftInspectLinux",
             exclude: ["SystemHeaders"],
             cSettings: [.define("_GNU_SOURCE", to: "1")]),

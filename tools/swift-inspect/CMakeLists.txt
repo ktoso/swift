@@ -32,6 +32,12 @@ add_library(SymbolicationShims INTERFACE)
 target_include_directories(SymbolicationShims INTERFACE
   Sources/SymbolicationShims)
 
+# Platform-neutral offline decoder for the distributed remote-call
+# validation ABI. Consumed by whatever platform backend is enabled.
+add_library(SwiftInspectAudit STATIC
+  Sources/SwiftInspectAudit/DistributedValidationAudit.swift)
+set_property(TARGET SwiftInspectAudit PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 if(WIN32)
   add_library(SwiftInspectClientInterface INTERFACE)
   target_include_directories(SwiftInspectClientInterface INTERFACE
@@ -57,6 +63,7 @@ if(ANDROID OR LINUX)
     Sources/SwiftInspectLinux/SystemHeaders)
 
   add_library(SwiftInspectLinux STATIC
+    Sources/SwiftInspectLinux/DistributedAuditReader.swift
     Sources/SwiftInspectLinux/ElfFile.swift
     Sources/SwiftInspectLinux/LinkMap.swift
     Sources/SwiftInspectLinux/MemoryMap.swift
@@ -68,10 +75,12 @@ if(ANDROID OR LINUX)
   target_compile_options(SwiftInspectLinux PRIVATE
     -Xcc -D_GNU_SOURCE)
   target_link_libraries(SwiftInspectLinux PUBLIC
-    LinuxSystemHeaders)
+    LinuxSystemHeaders
+    SwiftInspectAudit)
 endif()
 
 add_executable(swift-inspect
+  Sources/swift-inspect/Operations/DistributedAudit.swift
   Sources/swift-inspect/Operations/DumpArray.swift
   Sources/swift-inspect/Operations/DumpCacheNodes.swift
   Sources/swift-inspect/Operations/DumpConcurrency.swift
@@ -94,7 +103,19 @@ target_compile_options(swift-inspect PRIVATE
   -parse-as-library)
 target_link_libraries(swift-inspect PRIVATE
   ArgumentParser
+  SwiftInspectAudit
   swiftRemoteMirror)
+if(APPLE)
+  # Mach-O backend for `distributed audit` lives here.
+  add_library(SwiftInspectMachO STATIC
+    Sources/SwiftInspectMachO/MachOFile.swift
+    Sources/SwiftInspectMachO/DistributedValidationAudit.swift)
+  target_link_libraries(SwiftInspectMachO PUBLIC
+    SwiftInspectAudit)
+  set_property(TARGET SwiftInspectMachO PROPERTY POSITION_INDEPENDENT_CODE ON)
+  target_link_libraries(swift-inspect PRIVATE
+    SwiftInspectMachO)
+endif()
 if(WIN32)
   target_link_libraries(swift-inspect PRIVATE
     SwiftInspectClientInterface)

@@ -739,7 +739,7 @@ An empty set is treated as "caller has no entitlements". A target with no annota
 
 ### Offline audit: `swift-inspect distributed audit`
 
-`swift-inspect distributed audit <binary>` walks a shipped Mach-O and lists every distributed accessible function with the validators the compiler attached to it. It reads exactly the runtime metadata described in the "Runtime shape" section above (`__TEXT,__swift5_acfuncs` -> tagged `Flags` pointer -> `__DATA_CONST,__swift5_daval` linked list -> accessor symbol in `__DATA_CONST,__swift5_davala`) and reports one row per distributed method, e.g.:
+`swift-inspect distributed audit <binary>` walks a shipped binary and lists every distributed accessible function with the validators the compiler attached to it. It reads the runtime metadata described in the "Runtime shape" section above (`accessible-functions section` -> tagged `Flags` pointer -> `daval` linked list -> accessor symbol in `davala`) and reports one row per distributed method, e.g.:
 
 ```
 Distributed accessible functions in libBank.dylib:
@@ -748,25 +748,35 @@ Distributed accessible functions in libBank.dylib:
 
   func/var                                  Validators
   ------------------------------------------------------
-  Bank.readLedger() async throws -> String  1  (@Entitlement(.anyOf(["admin", "auditor"])))
+  Bank.readLedger() async throws -> String  1  @Entitlement(.anyOf(["admin", "auditor"]))
   Bank.transfer(amount:Int) async throws -> Bool
-                                            1  (@Entitlement("com.example.transfer"))
-  Bank.exportAll() async throws -> String   2  (@Entitlement("com.example.audit"), @ValidateRemoteCall(.trace))
+                                            1  @Entitlement("com.example.transfer")
+  Bank.exportAll() async throws -> String   2  @Entitlement("com.example.audit"), @ValidateRemoteCall(.trace)
   Bank.ping() async throws                  -
 ```
+
+The section names differ by object format; the walker is platform-neutral because the record shapes (accessible-function record, daval linked list, tagged `Flags` pointer) don't:
+
+| Format | acfuncs                                | daval           | davala           | policy-description peer |
+| ------ | -------------------------------------- | --------------- | ---------------- | ----------------------- |
+| Mach-O | `__TEXT,__swift5_acfuncs`              | `__DATA_CONST,__swift5_daval` | `__DATA_CONST,__swift5_davala` | `__TEXT,__cstring` (pooled with other cstrings) |
+| ELF / Wasm | `swift5_accessible_functions`      | `swift5_daval`  | `swift5_davala`  | `swift5_davala_desc`    |
+| COFF | `.sw5acfn$B`                             | `.sw5daval$B`   | `.sw5davala$B`   | `.sw5davala_desc$B`     |
+
+`swift-inspect` implements Mach-O (`SwiftInspectMachO`) and ELF (`SwiftInspectLinux`) backends; both plug into a shared `AuditImageReader` protocol whose default extension is the walker itself (`SwiftInspectAudit/DistributedValidationAudit.swift`). COFF / Wasm backends aren't implemented yet.
 
 #### Policy source-text peers (`_desc`)
 
 The `Validators` column above shows the exact **source text of each policy** as the developer wrote it. That's not something the runtime data structures need - `swift5_daval` records only point at accessor closures - so the macro emits a **second peer** alongside every accessor:
 
-- Accessor peer (unchanged): `__daval_<target>_accessor<unique>: _DistributedValidationAccessor`, placed in `__DATA_CONST,__swift5_davala`.
-- Description peer (new): `__daval_<target>_accessor<unique>_desc: (UInt8, UInt8, ...)`, placed in `__TEXT,__cstring` on Mach-O (`swift5_davala_desc` / `.sw5davala_desc$B` on other formats).
+- Accessor peer (unchanged): `__daval_<target>_accessor<unique>: _DistributedValidationAccessor`, placed in the format's `davala` section.
+- Description peer (new): `__daval_<target>_accessor<unique>_desc: (UInt8, UInt8, ...)`, placed in the format's cstring / `davala_desc` section per the table above.
 
 The description peer is a null-terminated UTF-8 byte tuple containing the attribute's source form as returned by `SyntaxProtocol.trimmedDescription`, wrapped with the attribute name so both stacked kinds are self-identifying (e.g. `@Entitlement("com.example.transfer")` or `@ValidateRemoteCall(.trace)`). The byte tuple form is required because `@section` accepts only SE-0492 constant-expression literals; `StaticString` and raw `UnsafePointer` initializers are rejected, but a homogeneous tuple of `UInt8`s IS a constant-expression literal and lands at the symbol's address as plain bytes.
 
-The peer's symbol name is a deterministic `<accessorName>_desc` sibling (via a second `context.makeUniqueName` call), so `swift-inspect` looks it up via the accessible-function record's mangled-name path in `LC_SYMTAB` - no section-walking, and each accessor is paired to its own description even when a method carries multiple stacked attributes.
+The peer's symbol name is a deterministic `<accessorName>_desc` sibling (via a second `context.makeUniqueName` call), so `swift-inspect` locates it by scanning the binary's symbol table for a symbol that shares the attribute's mangled `fMp_` prefix AND contains `_desc`. This works on any object format because it depends only on the standard symbol table (`LC_SYMTAB` on Mach-O, `SHT_SYMTAB` / `SHT_DYNSYM` on ELF).
 
-**Opt-out.** Some deployments prefer not to leak the source-form policy text into their shipped binaries (e.g. because the policy string is an internal token). Set the environment variable `SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY=0` (or `false` / `no` / `off`, case-insensitive) at compile time to suppress the description peer entirely. Default is **ON**; offline audit then falls back to displaying the accessor's symbol name only.
+**Opt-out.** Some deployments prefer not to leak the source-form policy text into their shipped binaries (e.g. because the policy string is an internal token). Set the environment variable `SWIFT_DISTRIBUTED_VALIDATE_RETAIN_DESCRIPTION_IN_BINARY=0` (or `false` / `no` / `off`, case-insensitive) at compile time to suppress the description peer entirely. Default is **ON**; offline audit then falls back to displaying the accessor's symbol name only (or `--verbose` to force the raw dump).
 
 **IRGen filtering.** IRGen recovers accessor peers via `visitAuxiliaryDecls` on the target member; the description peers share the `__daval_` prefix, so the recovery filter (`lib/IRGen/GenDistributed.cpp`, `emitDistributedTargetAccessor`) explicitly excludes any peer whose name contains `_desc`. The description peers therefore contribute zero `swift5_daval` records - they are pure metadata for tooling.
 

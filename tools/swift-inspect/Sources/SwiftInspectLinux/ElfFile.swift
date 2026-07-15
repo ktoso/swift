@@ -15,7 +15,7 @@ import LinuxSystemHeaders
 
 // TODO: replace this implementation with general purpose ELF parsing support
 // currently private to swift/stdlib/public/Backtrace.
-class ElfFile {
+public class ElfFile {
   public enum ELFError: Error {
     case notELF64(_ filePath: String, _ description: String = "")
     case malformedFile(_ filePath: String, _ description: String = "")
@@ -138,5 +138,91 @@ class ElfFile {
     }
 
     return self.fileData[fileOffset..<(fileOffset + sectionSize)]
+  }
+
+  // ==== -------------------------------------------------------------------
+  // MARK: Section table
+
+  /// One ELF section resolved to its on-disk slice, keyed by name.
+  public struct SectionInfo {
+    public var name: String
+    public var fileOffset: Int
+    public var vmAddress: UInt64
+    public var size: Int
+  }
+
+  /// Enumerate all sections, decoding their names via the section-header
+  /// string table (`.shstrtab`). Skips SHT_NULL and any section whose name
+  /// index falls outside the string table.
+  public func loadSections() throws -> [SectionInfo] {
+    guard let sectionCount = UInt(exactly: self.ehdr.e_shnum) else {
+      throw ELFError.malformedFile(
+        self.filePath, "invalid Elf64_Ehdr.e_shnum: \(self.ehdr.e_shnum)")
+    }
+    guard sectionCount > 0 else { return [] }
+    guard let shstrndx = UInt(exactly: self.ehdr.e_shstrndx),
+          shstrndx < sectionCount else {
+      throw ELFError.malformedFile(
+        self.filePath, "invalid e_shstrndx: \(self.ehdr.e_shstrndx)")
+    }
+    let shstrShdr = try self.loadShdr(index: shstrndx)
+    let shstrData = try self.loadSection(shstrShdr)
+    let shstrBytes: [UInt8] = shstrData.withUnsafeBytes {
+      Array($0.bindMemory(to: UInt8.self))
+    }
+
+    var out: [SectionInfo] = []
+    for index in 0..<sectionCount {
+      let shdr = try self.loadShdr(index: index)
+      if shdr.sh_type == SHT_NULL { continue }
+      guard let nameStart = Int(exactly: shdr.sh_name),
+            nameStart < shstrBytes.count else { continue }
+      guard let nameEnd = shstrBytes[nameStart...].firstIndex(of: 0),
+            let name = String(bytes: shstrBytes[nameStart..<nameEnd],
+                              encoding: .utf8)
+      else { continue }
+      guard let fileOff = Int(exactly: shdr.sh_offset),
+            let size = Int(exactly: shdr.sh_size)
+      else { continue }
+      out.append(SectionInfo(name: name,
+                             fileOffset: fileOff,
+                             vmAddress: shdr.sh_addr,
+                             size: size))
+    }
+    return out
+  }
+
+  // ==== -------------------------------------------------------------------
+  // MARK: Raw reads
+
+  /// Read a NUL-terminated UTF-8 string starting at `off` in the mapped
+  /// file. Bounded to a 4 KB scan window so a missing terminator can't
+  /// stall the walker.
+  public func readCString(atFileOffset off: Int) -> String? {
+    guard off >= 0, off < self.fileData.count else { return nil }
+    let end = min(off + 4096, self.fileData.count)
+    return self.fileData.withUnsafeBytes { raw -> String? in
+      let base = raw.baseAddress!.advanced(by: off).assumingMemoryBound(to: UInt8.self)
+      var len = 0
+      while len < end - off && base.advanced(by: len).pointee != 0 { len += 1 }
+      return String(decoding: UnsafeBufferPointer(start: base, count: len),
+                    as: UTF8.self)
+    }
+  }
+
+  /// Read a signed 32-bit little-endian integer at `off`.
+  public func readInt32(atFileOffset off: Int) -> Int32? {
+    guard off >= 0, off + 4 <= self.fileData.count else { return nil }
+    let bytes = self.fileData[off..<(off + 4)]
+    return bytes.withUnsafeBytes {
+      Int32(bitPattern: $0.load(as: UInt32.self))
+    }
+  }
+
+  /// Read an unsigned 32-bit little-endian integer at `off`.
+  public func readUInt32(atFileOffset off: Int) -> UInt32? {
+    guard off >= 0, off + 4 <= self.fileData.count else { return nil }
+    let bytes = self.fileData[off..<(off + 4)]
+    return bytes.withUnsafeBytes { $0.load(as: UInt32.self) }
   }
 }

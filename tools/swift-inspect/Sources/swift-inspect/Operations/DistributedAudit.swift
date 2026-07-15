@@ -10,16 +10,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// CLI wrapper around `MachOFile.auditDistributedValidation()`. The actual
-// ABI walk lives in the SwiftInspectMachO library so it can be unit-tested
-// without spawning the swift-inspect binary.
-
-#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+// CLI wrapper around the platform-neutral `AuditImageReader` walker in
+// `SwiftInspectAudit`. Dispatches to a Mach-O backend on Darwin and an
+// ELF backend on Linux/Android.
 
 import ArgumentParser
 import Foundation
+import SwiftInspectAudit
+#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
 import Runtime
 import SwiftInspectMachO
+#elseif os(Linux) || os(Android)
+import SwiftInspectLinux
+#endif
 
 /// Grouping command so users type `swift-inspect distributed audit ...`.
 internal struct Distributed: ParsableCommand {
@@ -37,14 +40,16 @@ internal struct Audit: ParsableCommand {
     commandName: "audit",
     abstract: "List distributed methods and their attached remote-call validation")
 
-  @Argument(help: "Path to a Mach-O binary (dylib, executable, or object)")
+  @Argument(help: "Path to a binary (dylib/so, executable, or object)")
   var binaryPath: String
 
+  #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
   @Option(help: "The arch slice to inspect, e.g. arm64, x86_64")
   var arch: String? = nil
 
   @Flag(help: "Demangle the thunk names (macOS 27.0+; raw mangled by default)")
   var demangle: Bool = false
+  #endif
 
   @Flag(name: [.short, .long],
         help: ArgumentHelp("Show every validator, including entries with no "
@@ -53,16 +58,16 @@ internal struct Audit: ParsableCommand {
   var verbose: Bool = false
 
   func run() throws {
-    let file: MachOFile
+    let reader: AuditImageReader
     do {
-      file = try MachOFile(path: binaryPath, arch: arch)
+      reader = try openReader(for: binaryPath)
     } catch {
       throw ValidationError("\(error)")
     }
 
     let entries: [DistributedAuditEntry]
     do {
-      entries = try file.auditDistributedValidation()
+      entries = try reader.auditDistributedValidation()
     } catch {
       throw ValidationError("\(error)")
     }
@@ -76,6 +81,17 @@ internal struct Audit: ParsableCommand {
       return
     }
     printTable(entries: distributed)
+  }
+
+  private func openReader(for path: String) throws -> AuditImageReader {
+    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+    return try MachOFile(path: path, arch: arch)
+    #elseif os(Linux) || os(Android)
+    let elf = try ElfFile(filePath: path)
+    return try ElfDistributedAuditReader(elf: elf)
+    #else
+    throw ValidationError("`distributed audit` is not implemented on this platform")
+    #endif
   }
 
   private func printTable(entries: [DistributedAuditEntry]) {
@@ -103,19 +119,12 @@ internal struct Audit: ParsableCommand {
       if e.validators.isEmpty {
         vlist = "-"
       } else {
-        // Default view: only show validators the compiler preserved policy
-        // source text for. Bare accessor symbol names (a mangled dylib
-        // symbol like `_$s...__daval_transfer_accessor...`) are noise for
-        // the common case; hide them unless the user asks with --verbose.
         let items = e.validators.compactMap { v -> String? in
           if let text = v.policyText { return text }
           if verbose { return v.accessorSymbol ?? "<stripped>" }
           return nil
         }
         if items.isEmpty {
-          // Every validator lacks policy text and we're not verbose.
-          // Show the count so the user knows there ARE validators; details
-          // are one --verbose away.
           vlist = "\(e.validators.count)  --verbose to show"
         } else {
           vlist = "\(items.count)  \(items.joined(separator: ", "))"
@@ -128,12 +137,15 @@ internal struct Audit: ParsableCommand {
   }
 
   private func display(for entry: DistributedAuditEntry) -> String {
+    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
     guard demangle else { return entry.mangledName }
     if #available(macOS 27.0, iOS 27.0, tvOS 27.0, watchOS 27.0, visionOS 27.0, *) {
       return (try? Runtime.demangle(entry.mangledName)) ?? entry.mangledName
     }
     return entry.mangledName
+    #else
+    // Linux: no in-process demangling API on this branch yet. Raw name.
+    return entry.mangledName
+    #endif
   }
 }
-
-#endif  // Darwin

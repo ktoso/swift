@@ -152,6 +152,7 @@ internal struct SwiftInspect: ParsableCommand {
     DumpGenericMetadata.self,
     DumpCacheNodes.self,
     DumpConcurrency.self,
+    Distributed.self,
   ]
 #else
   static let subcommands: [ParsableCommand.Type] = [
