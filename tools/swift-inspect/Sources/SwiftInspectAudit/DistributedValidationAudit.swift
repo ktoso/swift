@@ -42,7 +42,7 @@ import Foundation
 // MARK: Public output
 
 /// One validator attached to a distributed method, as observed offline.
-public struct DistributedValidator: Equatable {
+public struct DistributedValidator: Equatable, Codable {
   /// Name of the symbol holding the validation-accessor closure. `nil` if
   /// the local symbol was stripped from the binary.
   public var accessorSymbol: String?
@@ -60,7 +60,7 @@ public struct DistributedValidator: Equatable {
 }
 
 /// One accessible-function record and any validators attached to it.
-public struct DistributedAuditEntry: Equatable {
+public struct DistributedAuditEntry: Equatable, Codable {
   public var mangledName: String
   public var isDistributed: Bool
   public var hasValidation: Bool

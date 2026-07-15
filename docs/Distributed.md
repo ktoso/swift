@@ -765,6 +765,26 @@ The section names differ by object format; the walker is platform-neutral becaus
 
 `swift-inspect` implements Mach-O (`SwiftInspectMachO`) and ELF (`SwiftInspectLinux`) backends; both plug into a shared `AuditImageReader` protocol whose default extension is the walker itself (`SwiftInspectAudit/DistributedValidationAudit.swift`). COFF / Wasm backends aren't implemented yet.
 
+**Machine-readable output.** Pass `--format=json` for a structured audit suitable for scripting or diffing against a previous run:
+
+```json
+[
+  {
+    "hasValidation": true,
+    "isDistributed": true,
+    "mangledName": "$s4bank4BankC8transferF",
+    "validators": [
+      {
+        "accessorSymbol": "_daval_transfer_accessor_ent_fMp_",
+        "policyText": "@Entitlement(\"com.example.transfer\")"
+      }
+    ]
+  }
+]
+```
+
+Keys are sorted so two audits `diff` cleanly. `null` optionals are elided rather than serialized as `"policyText": null` -- an absent key means "no policy text peer emitted" (either the compiler flag opted out, or the accessor was stripped). Slashes are not escaped so mangled names read the way they appear in symbol tables. The default `--format=text` output is unchanged.
+
 #### Policy source-text peers (`_desc`)
 
 The `Validators` column above shows the exact **source text of each policy** as the developer wrote it. That's not something the runtime data structures need - `swift5_daval` records only point at accessor closures - so the macro emits a **second peer** alongside every accessor:
