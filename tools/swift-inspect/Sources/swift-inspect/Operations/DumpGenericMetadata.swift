@@ -130,7 +130,11 @@ internal struct DumpGenericMetadata: ParsableCommand {
 
       // Update summary
       generics.forEach { metadata in
-        let size = metadata.allocation?.size ?? swift_reflection_metadataSize(process.context, metadata.ptr)
+        // XXX: `swift_reflection_metadataSize` is new on this branch's
+        // SwiftRemoteMirror. Fall back to 0 when it isn't available, so
+        // swift-inspect can be built against an older toolchain. Sizes
+        // reported by --summary are off in that case but the tool works.
+        let size = metadata.allocation?.size ?? 0
         let name = metadata.name
         if metadataSummary.keys.contains(name) {
           metadataSummary[name]!.totalSize += size

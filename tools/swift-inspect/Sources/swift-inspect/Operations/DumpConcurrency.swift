@@ -235,7 +235,9 @@ fileprivate class ConcurrencyDumper {
       allocatorTotalChunks: allocatorTotalChunks,
       childTasks: children,
       asyncBacktrace: asyncBacktraceFrames,
-      name: reflectionInfo.Name.map { String(cString: $0) }
+      // XXX: `Name` is new on this branch's SwiftRemoteMirror. Drop it so
+      // swift-inspect can be built against an older toolchain.
+      name: nil
     )
   }
 

@@ -123,14 +123,20 @@ internal func inspect(options: UniversalOptions,
 @main
 internal struct SwiftInspect: ParsableCommand {
 #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || os(visionOS) || os(Windows)
-  static let subcommands: [ParsableCommand.Type] = [
-    DumpConformanceCache.self,
-    DumpRawMetadata.self,
-    DumpGenericMetadata.self,
-    DumpCacheNodes.self,
-    DumpArrays.self,
-    DumpConcurrency.self,
-  ]
+  static let subcommands: [ParsableCommand.Type] = {
+    var cmds: [ParsableCommand.Type] = [
+      DumpConformanceCache.self,
+      DumpRawMetadata.self,
+      DumpGenericMetadata.self,
+      DumpCacheNodes.self,
+      DumpArrays.self,
+      DumpConcurrency.self,
+    ]
+    #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || os(visionOS)
+    cmds.append(Distributed.self)
+    #endif
+    return cmds
+  }()
 #elseif os(Android)
   static let subcommands: [ParsableCommand.Type] = [
     DumpConformanceCache.self,

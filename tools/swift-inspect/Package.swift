@@ -20,10 +20,14 @@ let package = Package(
                 .target(name: "SwiftInspectClient", condition: .when(platforms: [.windows])),
                 .target(name: "SwiftInspectClientInterface", condition: .when(platforms: [.windows])),
                 .target(name: "SwiftInspectLinux", condition: .when(platforms: [.linux, .android])),
+                .target(name: "SwiftInspectMachO", condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])),
                 .target(name: "AndroidCLib", condition: .when(platforms: [.android])),
             ],
             swiftSettings: [.unsafeFlags(["-parse-as-library"])]),
         .target(name: "SwiftInspectClient"),
+        .target(
+            name: "SwiftInspectMachO",
+            path: "Sources/SwiftInspectMachO"),
         .target(
             name: "SwiftInspectLinux",
             dependencies: ["LinuxSystemHeaders"],
@@ -42,7 +46,11 @@ let package = Package(
             name: "SwiftInspectClientInterface"),
         .testTarget(
             name: "swiftInspectTests",
-            dependencies: ["swift-inspect"]),
+            dependencies: [
+                "swift-inspect",
+                .target(name: "SwiftInspectMachO",
+                        condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])),
+            ]),
         .systemLibrary(
             name: "SymbolicationShims")
     ]
