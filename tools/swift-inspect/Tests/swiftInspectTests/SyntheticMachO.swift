@@ -35,7 +35,7 @@
 import Foundation
 import MachO
 import SwiftInspectAudit
-@testable import SwiftInspectMachO
+import SwiftInspectMachO
 
 // ==== ---------------------------------------------------------------------
 // MARK: Public types

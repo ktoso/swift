@@ -125,6 +125,18 @@ internal struct Audit: ParsableCommand {
     #endif
   }
 
+  /// Sort audit entries in a stable, human-friendly order shared between
+  /// text and JSON output: entries with validators first (the audit-
+  /// interesting ones), then the rest alphabetically by mangled name.
+  /// Keeping this in one place so `diff`ing text vs JSON of the same
+  /// binary reveals only formatting differences, not row-ordering ones.
+  private func stableSorted(_ entries: [DistributedAuditEntry]) -> [DistributedAuditEntry] {
+    entries.sorted { a, b in
+      if a.hasValidation != b.hasValidation { return a.hasValidation }
+      return a.mangledName < b.mangledName
+    }
+  }
+
   /// Emit the audit entries as JSON on stdout. The output is a JSON array
   /// of `DistributedAuditEntry` objects; each entry contains `mangledName`,
   /// `demangledName` (only when `--demangle` is passed on macOS 27+),
@@ -133,13 +145,7 @@ internal struct Audit: ParsableCommand {
   /// Keys are sorted so diffing two audits is meaningful; encoding is
   /// pretty-printed.
   private func printJSON(entries: [DistributedAuditEntry]) throws {
-    // Present in stable order: entries with validators first (they are the
-    // audit-interesting ones), then the rest alphabetically. Match text
-    // mode so scripting against either output shape stays consistent.
-    let sorted = entries.sorted { a, b in
-      if a.hasValidation != b.hasValidation { return a.hasValidation }
-      return a.mangledName < b.mangledName
-    }
+    let sorted = stableSorted(entries)
 
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -169,12 +175,7 @@ internal struct Audit: ParsableCommand {
   }
 
   private func printTable(entries: [DistributedAuditEntry]) {
-    // Present in stable order: entries with validators first (they are the
-    // audit-interesting ones), then the rest alphabetically.
-    let sorted = entries.sorted { a, b in
-      if a.hasValidation != b.hasValidation { return a.hasValidation }
-      return a.mangledName < b.mangledName
-    }
+    let sorted = stableSorted(entries)
 
     let withV = sorted.filter { $0.hasValidation }.count
     print("Distributed accessible functions in \(binaryPath):")

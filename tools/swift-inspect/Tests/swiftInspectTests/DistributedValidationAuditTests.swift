@@ -15,7 +15,7 @@
 import XCTest
 import MachO
 import SwiftInspectAudit
-@testable import SwiftInspectMachO
+import SwiftInspectMachO
 
 final class DistributedValidationAuditTests: XCTestCase {
 
@@ -130,12 +130,18 @@ final class DistributedValidationAuditTests: XCTestCase {
   /// The compiler emits a `<accessor>_desc` peer symbol whose value points
   /// at a nul-terminated policy source string in the cstring section. The
   /// walker resolves it via `auditAttributeTag(inMangledSymbol:)`, which
-  /// stops at the `fMp_` peer-macro marker in the accessor's mangled name
-  /// and looks up any symbol carrying the same tag plus `_desc`.
+  /// stops at the `_` after the `fMp` peer-macro marker in the accessor's
+  /// mangled name and looks up any symbol carrying the same tag plus
+  /// `_desc`. Real compiler-emitted names look like:
+  ///
+  ///   `$s...C<method>11EntitlementfMp_25__daval_<method>_accessorfMu_`
+  ///
+  /// so the tag is the Swift-mangled prefix through `fMp_`; the discriminator
+  /// (`__daval_..._accessorfMu_`) sits after and is unique per expansion.
   func testAudit_policyText_isResolvedFromCompanionDescSymbol() throws {
     var fixture = SyntheticMachO()
     fixture.accessors = [
-      .init(mangledName: "_daval_transfer_accessorfMp_",
+      .init(mangledName: "$s4bank4BankC8transferF11EntitlementfMp_25__daval_transfer_accessorfMu_",
             policyText: "@Entitlement(\"com.example.transfer\")")
     ]
     fixture.acfuncsRecords = [
@@ -148,24 +154,24 @@ final class DistributedValidationAuditTests: XCTestCase {
     XCTAssertEqual(entries[0].validators[0].policyText,
                    "@Entitlement(\"com.example.transfer\")")
     XCTAssertEqual(entries[0].validators[0].accessorSymbol,
-                   "_daval_transfer_accessorfMp_")
+                   "$s4bank4BankC8transferF11EntitlementfMp_25__daval_transfer_accessorfMu_")
   }
 
   /// Multiple validators on the same thunk each get their own `_desc`,
-  /// looked up per-attribute via the peer-macro tag. Note: each accessor's
-  /// unique discriminator sits BEFORE the `fMp` peer-macro marker (matching
-  /// what the compiler emits via `context.makeUniqueName`), so the walker's
-  /// tag extractor produces a distinct tag per validator.
+  /// looked up per-attribute via the peer-macro tag. The attribute-name
+  /// segment (`11Entitlement`, `18ValidateRemoteCall`) sits BEFORE `fMp_`,
+  /// so `auditAttributeTag` produces a distinct tag per validator and the
+  /// walker's substring match resolves to the correct `_desc` sibling.
   func testAudit_stackedValidators_eachResolvesItsOwnPolicyText() throws {
     var fixture = SyntheticMachO()
     fixture.accessors = [
-      .init(mangledName: "_daval_openDoor_accessor_ent_fMp_",
+      .init(mangledName: "$s4home5HomeC8openDoorF11EntitlementfMp_25__daval_openDoor_accessorfMu_",
             policyText: "@Entitlement(.anyOf([\"admin\", \"superuser\"]))"),
-      .init(mangledName: "_daval_openDoor_accessor_vrc_fMp_",
+      .init(mangledName: "$s4home5HomeC8openDoorF18ValidateRemoteCallfMp_25__daval_openDoor_accessorfMu_",
             policyText: "@ValidateRemoteCall(callerIsBankOfficer)"),
     ]
     fixture.acfuncsRecords = [
-      AcfuncsRecord(mangledName: "$s4home5Homeactor6openDoorF",
+      AcfuncsRecord(mangledName: "$s4home5HomeC8openDoorF",
                     isDistributed: true, hasValidation: true,
                     validatorAccessorIndices: [0, 1])
     ]
@@ -184,9 +190,9 @@ final class DistributedValidationAuditTests: XCTestCase {
   func testAudit_mixedValidators_reportsNilPolicyForMissingDesc() throws {
     var fixture = SyntheticMachO()
     fixture.accessors = [
-      .init(mangledName: "_daval_charge_accessor_ent_fMp_",
+      .init(mangledName: "$s4bank4BankC6chargeF11EntitlementfMp_23__daval_charge_accessorfMu_",
             policyText: "@Entitlement(\"com.example.charge\")"),
-      .init(mangledName: "_daval_charge_accessor_none_fMp_",
+      .init(mangledName: "$s4bank4BankC6chargeF18ValidateRemoteCallfMp_23__daval_charge_accessorfMu_",
             policyText: nil),
     ]
     fixture.acfuncsRecords = [
