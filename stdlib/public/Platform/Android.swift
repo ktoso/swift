@@ -13,12 +13,12 @@
 @_exported import SwiftAndroid // Clang module
 import SwiftOverlayShims
 
-nonisolated(unsafe) public var stdin: OpaquePointer {
-  OpaquePointer(_swift_stdlib_stdin())
+nonisolated(unsafe) public var stdin: UnsafeMutablePointer<FILE>! {
+  _swift_stdlib_stdin().assumingMemoryBound(to: FILE.self)
 }
-nonisolated(unsafe) public var stdout: OpaquePointer {
-  OpaquePointer(_swift_stdlib_stdout())
+nonisolated(unsafe) public var stdout: UnsafeMutablePointer<FILE>! {
+  _swift_stdlib_stdout().assumingMemoryBound(to: FILE.self)
 }
-nonisolated(unsafe) public var stderr: OpaquePointer {
-  OpaquePointer(_swift_stdlib_stderr())
+nonisolated(unsafe) public var stderr: UnsafeMutablePointer<FILE>! {
+  _swift_stdlib_stderr().assumingMemoryBound(to: FILE.self)
 }

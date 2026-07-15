@@ -51,3 +51,12 @@ nonisolated func useFromNonisolatedContext() {
     _ = stdout
     _ = stderr
 }
+
+// Make sure we can pass stdout/stderr to `FILE *` parameters of stdio functions 
+// imported from the same overlay.
+func passToStdioFunctions() {
+    setvbuf(stdout, nil, _IOLBF, 0)
+    setvbuf(stderr, nil, _IOLBF, 0)
+    fflush(stdout)
+    fputs("hi", stderr)
+}
