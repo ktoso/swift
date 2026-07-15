@@ -53,6 +53,7 @@ let package = Package(
             name: "swiftInspectTests",
             dependencies: [
                 "swift-inspect",
+                .target(name: "SwiftInspectAudit"),
                 .target(name: "SwiftInspectMachO",
                         condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS])),
             ]),
