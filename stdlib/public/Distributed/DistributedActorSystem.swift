@@ -436,6 +436,28 @@ extension DistributedActorSystem {
     let targetName = target.identifier
     let targetNameUTF8 = Array(targetName.utf8)
 
+    // TODO: include more information like the number of decoded args etc?
+    _traceDistributedExecuteTarget(
+      targetActor: actor, targetIdentifier: target.identifier)
+
+    // Measure how long decoding the incoming invocation takes. Note that the
+    // individual argument values are decoded by the distributed accessor
+    // (via 'decodeNextArgument'), so they are not part of this interval.
+    var decodeTraceID: UInt64 = _traceDistributedDecodeArgumentsBegin(
+      targetActor: actor, targetIdentifier: target.identifier)
+    // Closes the decoding interval. Calling this more than once is harmless,
+    // only the first call is recorded. The 'defer' below guarantees the
+    // interval is closed even when decoding throws.
+    func endDecodeTrace(_ argumentCount: Int, success: Bool) {
+      guard decodeTraceID != 0 else { return }
+      _traceDistributedDecodeArgumentsEnd(
+        decodeTraceID, argumentCount: argumentCount, success: success)
+      decodeTraceID = 0
+    }
+    defer {
+      endDecodeTrace(0, success: false)
+    }
+
     // Gen the generic environment (if any) associated with the target.
     let genericEnv =
       targetNameUTF8.withUnsafeBufferPointer { targetNameUTF8 in
@@ -576,9 +598,30 @@ extension DistributedActorSystem {
       _openExistential(returnTypeFromTypeInfo, do: doDestroyReturnTypeBuffer)
     }
 
+    // Measure the execution of the target itself: how long handling this call
+    // took, excluding decoding the invocation above.
+    var invokeTraceID: UInt64 = 0
+    // Closes the execution interval. Calling this more than once is harmless,
+    // only the first call is recorded. The 'defer' below guarantees the
+    // interval is closed however we leave this function.
+    func endInvokeTrace(_ success: Bool) {
+      guard invokeTraceID != 0 else { return }
+      _traceDistributedInvokeTargetEnd(invokeTraceID, success: success)
+      invokeTraceID = 0
+    }
+    defer {
+      endInvokeTrace(false)
+    }
+
     do {
       let returnType = try invocationDecoder.decodeReturnType() ?? returnTypeFromTypeInfo
       // let errorType = try invocationDecoder.decodeErrorType() // TODO(distributed): decide how to use when typed throws are done
+
+      // Decoding of the invocation is complete
+      endDecodeTrace(argumentTypes.count, success: true)
+
+      invokeTraceID = _traceDistributedInvokeTargetBegin(
+        targetActor: actor, targetIdentifier: target.identifier)
 
       // Execute the target!
       try unsafe await _executeDistributedTarget(
@@ -596,6 +639,9 @@ extension DistributedActorSystem {
       // we must properly deinitialize it.
       executeDistributedTargetHasThrown = false
 
+      // The target ran to completion; the result handler is invoked next
+      endInvokeTrace(true)
+
       if returnType == Void.self {
         try await handler.onReturnVoid()
       } else {
@@ -605,7 +651,13 @@ extension DistributedActorSystem {
           metatype: returnType
         )
       }
+
+      _traceDistributedInvokeResultHandler(
+        targetActor: actor, targetIdentifier: target.identifier, error: nil)
     } catch {
+      _traceDistributedInvokeResultHandler(
+        targetActor: actor, targetIdentifier: target.identifier, error: error)
+
       try await handler.onThrow(error: error)
     }
   }
