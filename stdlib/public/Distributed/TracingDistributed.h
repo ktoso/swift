@@ -27,7 +27,7 @@ struct HeapObject;
 namespace distributed {
 namespace trace {
 
-/// Check if distributed tracing is enabled.
+/// Check if tracing of the Distributed module is enabled.
 ///
 /// This can be used to avoid expensive operations (like string formatting)
 /// when tracing is disabled.
@@ -39,6 +39,26 @@ bool distributed_trace_is_enabled();
 void distributed_remote_call_outbound(HeapObject *localTargetActor,
                                       const char *targetActorId,
                                       const char *targetIdentifier);
+
+/// Begins an interval covering the encoding of an outgoing invocation:
+/// the generic substitutions, arguments, error and return types, up to and
+/// including `doneRecording`.
+///
+/// Returns an opaque trace ID which must be passed to
+/// `distributed_encode_arguments_end`, or 0 if tracing is not enabled.
+///
+/// Only the actor pointer is recorded, not its type or ID; the
+/// `distributed_remote_call_outbound` event emitted for the same call carries
+/// those, and computing them is comparatively expensive.
+uint64_t distributed_encode_arguments_begin(HeapObject *localTargetActor,
+                                            const char *targetIdentifier,
+                                            size_t argumentCount);
+
+/// Ends the interval started by `distributed_encode_arguments_begin`.
+///
+/// A `spanId` of 0 is ignored.
+void distributed_encode_arguments_end(uint64_t spanId, const char *errorType);
+
 /// ==== Inbound -------------------------------------------------------------------------------------------------------
 
 /// Emitted when `DistributedActorSystem/executeDistributedTarget` is invoked by a system implementation.
@@ -46,12 +66,44 @@ void distributed_execute_distributed_target(HeapObject *localTargetActor,
                                             const char *targetActorId,
                                             const char *targetIdentifier);
 
+/// Begins an interval covering the decoding of an incoming invocation:
+/// the generic substitutions, witness tables, parameter types and return type.
+///
+/// Note that the decoding of the individual argument *values* happens inside
+/// the distributed accessor (via `decodeNextArgument`) and is therefore not
+/// part of this interval.
+///
+/// Returns an opaque trace ID which must be passed to
+/// `distributed_decode_arguments_end`, or 0 if tracing is not enabled.
+uint64_t distributed_decode_arguments_begin(HeapObject *localTargetActor,
+                                            const char *targetIdentifier);
+
+/// Ends the interval started by `distributed_decode_arguments_begin`.
+///
+/// A `spanId` of 0 is ignored.
+void distributed_decode_arguments_end(uint64_t spanId, size_t argumentCount,
+                                      const char *errorType);
+
+/// Begins an interval covering the execution of the distributed target itself:
+/// from invoking the user's function until control returns and the result
+/// handler is about to be invoked. This is the "how long did handling this call
+/// take" measurement, excluding decoding the invocation.
+///
+/// Returns an opaque trace ID which must be passed to
+/// `distributed_invoke_target_end`, or 0 if tracing is not enabled.
+uint64_t distributed_invoke_target_begin(HeapObject *localTargetActor,
+                                         const char *targetIdentifier);
+
+/// Ends the interval started by `distributed_invoke_target_begin`.
+///
+/// A `spanId` of 0 is ignored.
+void distributed_invoke_target_end(uint64_t spanId, const char *errorType);
+
 /// Emitted when `swift_findAccessibleFunction` has found (or not) a distributed function accessor.
 void distributed_find_accessible_function(const char *targetName,
                                           size_t targetNameLength,
                                           const void *accessibleFunctionRecord,
                                           const char *funcName,
-                                          const char *funcType,
                                           const void *genericEnv,
                                           const void *funcPtr);
 
@@ -59,9 +111,8 @@ void distributed_find_accessible_function(const char *targetName,
 ///
 /// This will always be after `distributed_execute_distributed_target`.
 void distributed_invoke_result_handler(HeapObject *localActor,
-                                       const char *targetActorId,
                                        const char *targetIdentifier,
-                                       bool success);
+                                       const char *errorType);
 
 } // namespace trace
 } // namespace distributed

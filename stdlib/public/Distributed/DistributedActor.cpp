@@ -33,13 +33,13 @@ findDistributedAccessor(const char *targetNameStart, size_t targetNameLength) {
         targetNameStart, targetNameLength,
         record,
         record ? record->Name.get()                : nullptr,
-        record ? record->FunctionType.get()        : nullptr,
         record ? record->GenericEnvironment.get()  : nullptr,
         record ? *record->Function.get()           : nullptr
     );
   }
 
-  assert(!record || record->Flags.isDistributed() && "Found distributed accessor was not 'distributed'!");
+  assert((!record || record->Flags.isDistributed()) &&
+         "Found distributed accessor was not 'distributed'!");
   return record;
 }
 

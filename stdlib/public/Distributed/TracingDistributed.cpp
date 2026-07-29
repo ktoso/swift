@@ -37,6 +37,41 @@ void swift_distributed_trace_remote_call_outbound(
 
 SWIFT_CC(swift)
 SWIFT_EXPORT_FROM(swiftDistributed)
+uint64_t swift_distributed_trace_encode_arguments_begin(
+    HeapObject *targetActor,
+    const char *targetIdentifier,
+    size_t argumentCount) {
+  return distributed::trace::distributed_encode_arguments_begin(
+      targetActor, targetIdentifier, argumentCount);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+void swift_distributed_trace_encode_arguments_end(uint64_t spanID,
+                                                  const char *errorType) {
+  distributed::trace::distributed_encode_arguments_end(spanID, errorType);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+uint64_t swift_distributed_trace_decode_arguments_begin(
+    HeapObject *targetActor,
+    const char *targetIdentifier) {
+  return distributed::trace::distributed_decode_arguments_begin(
+      targetActor, targetIdentifier);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+void swift_distributed_trace_decode_arguments_end(uint64_t spanID,
+                                                  size_t argumentCount,
+                                                  const char *errorType) {
+  distributed::trace::distributed_decode_arguments_end(spanID, argumentCount,
+                                                       errorType);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
 void swift_distributed_trace_execute_target(
     HeapObject *targetActor,
     const char *targetActorID,
@@ -47,11 +82,26 @@ void swift_distributed_trace_execute_target(
 
 SWIFT_CC(swift)
 SWIFT_EXPORT_FROM(swiftDistributed)
+uint64_t swift_distributed_trace_invoke_target_begin(
+    HeapObject *targetActor,
+    const char *targetIdentifier) {
+  return distributed::trace::distributed_invoke_target_begin(
+      targetActor, targetIdentifier);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+void swift_distributed_trace_invoke_target_end(uint64_t spanID,
+                                               const char *errorType) {
+  distributed::trace::distributed_invoke_target_end(spanID, errorType);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
 void swift_distributed_trace_invoke_result_handler(
     HeapObject *targetActor,
-    const char *targetActorID,
     const char *targetIdentifier,
-    bool success) {
+    const char *errorType) {
   distributed::trace::distributed_invoke_result_handler(
-      targetActor, targetActorID, targetIdentifier, success);
+      targetActor, targetIdentifier, errorType);
 }

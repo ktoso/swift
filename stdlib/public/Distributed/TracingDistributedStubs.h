@@ -30,6 +30,33 @@ inline void distributed_remote_call_outbound(HeapObject *localTargetActor,
                                              const char *targetIdentifier) {
 }
 
+inline uint64_t distributed_encode_arguments_begin(HeapObject *localTargetActor,
+                                                   const char *targetIdentifier,
+                                                   size_t argumentCount) {
+  return 0;
+}
+
+inline void distributed_encode_arguments_end(uint64_t spanId, const char *errorType) {
+}
+
+inline uint64_t distributed_decode_arguments_begin(HeapObject *localTargetActor,
+                                                   const char *targetIdentifier) {
+  return 0;
+}
+
+inline void distributed_decode_arguments_end(uint64_t spanId,
+                                             size_t argumentCount,
+                                             const char *errorType) {
+}
+
+inline uint64_t distributed_invoke_target_begin(HeapObject *localTargetActor,
+                                                const char *targetIdentifier) {
+  return 0;
+}
+
+inline void distributed_invoke_target_end(uint64_t spanId, const char *errorType) {
+}
+
 inline void distributed_execute_distributed_target(HeapObject *localTargetActor,
                                                    const char *targetActorID,
                                                    const char *targetIdentifier) {
@@ -39,15 +66,13 @@ inline void distributed_find_accessible_function(const char *targetName,
                                                  size_t targetNameLength,
                                                  const void *accessibleFunctionRecord,
                                                  const char *funcName,
-                                                 const char *funcType,
                                                  const void *genericEnv,
                                                  const void *funcPtr) {
 }
 
 inline void distributed_invoke_result_handler(HeapObject *localTargetActor,
-                                                    const char *targetActorID,
-                                                    const char *targetIdentifier,
-                                                    bool success) {
+                                              const char *targetIdentifier,
+                                              const char *errorType) {
 }
 
 } // namespace trace

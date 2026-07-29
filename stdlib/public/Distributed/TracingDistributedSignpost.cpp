@@ -20,13 +20,13 @@
 #include <stdio.h>
 
 #define SWIFT_LOG_DISTRIBUTED_SUBSYSTEM "com.apple.swift.distributed"
-#define SWIFT_LOG_DISTRIBUTED_CATEGORY "Distributed"
+#define SWIFT_LOG_DISTRIBUTED_REMOTE_CALLS_CATEGORY "RemoteCalls"
 
 namespace swift {
 namespace distributed {
 namespace trace {
 
-os_log_t DistributedLog;
+os_log_t DistributedRemoteCallsLog;
 swift::once_t LogsToken;
 bool TracingEnabled;
 
@@ -37,7 +37,9 @@ void setupLogs(void *unused) {
   }
 
   TracingEnabled = true;
-  DistributedLog = os_log_create(SWIFT_LOG_DISTRIBUTED_SUBSYSTEM, SWIFT_LOG_DISTRIBUTED_CATEGORY);
+  DistributedRemoteCallsLog =
+      os_log_create(SWIFT_LOG_DISTRIBUTED_SUBSYSTEM,
+                    SWIFT_LOG_DISTRIBUTED_REMOTE_CALLS_CATEGORY);
 }
 
 } // namespace trace
