@@ -64,7 +64,6 @@ set(SWIFT_BENCH_MODULES
     single-source/CharacterProperties
     single-source/CharacterRecognizer
     single-source/Chars
-    single-source/Concurrency/ChildTaskCreation
     single-source/ClassArrayGetter
     single-source/CodableTest
     single-source/Combos
