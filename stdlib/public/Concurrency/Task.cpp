@@ -1854,8 +1854,12 @@ swift_task_addCancellationHandlerImpl(
   auto *record = ::new (allocation)
       CancellationNotificationStatusRecord(unsigned_handler, context);
 
+  // Fetch the current task once and thread it through the record add/remove
+  // and scope-walker paths below.
+  auto *task = swift_task_getCurrent();
+
   bool fireHandlerNow = false;
-  addStatusRecordToSelf(record, [&](ActiveTaskStatus oldStatus, ActiveTaskStatus& newStatus) {
+  addStatusRecord(task, record, [&](ActiveTaskStatus oldStatus, ActiveTaskStatus& newStatus) {
     if (oldStatus.isCancelled()) {
       // We don't fire the cancellation handler here since this function needs
       // to be idempotent
@@ -1867,6 +1871,21 @@ swift_task_addCancellationHandlerImpl(
     }
     return true; // add the record
   });
+
+  // A scope cancellation doesn't set the task's IsCancelled bit; check the
+  // scope walker so we fire the handler immediately if we're installing
+  // inside an already-cancelled scope (e.g. `withDeadline` past deadline).
+  if (!fireHandlerNow && task) {
+    auto status = task->_private()._status().load(std::memory_order_relaxed);
+    if (status.hasTaskCancellationScope()) {
+      if (auto *scope = _swift_task_getCancellationScope(task)) {
+        if (scope->isCancelled()) {
+          fireHandlerNow = true;
+          removeStatusRecord(task, record, [](ActiveTaskStatus, ActiveTaskStatus&){});
+        }
+      }
+    }
+  }
 
   if (fireHandlerNow) {
     record->run();

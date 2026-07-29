@@ -150,6 +150,16 @@ public nonisolated(nonsending) func withDeadline<Return, Failure, C>(
     // the new Job() enqueue at time...
     let scopeRecord = unsafe scope._record
 
+    // If the deadline is already in the past, cancel the scope synchronously
+    // so the operation observes `Task.isCancelled == true` at entry instead
+    // of racing against a detached timer that would need to run first.
+    guard expiration > clock.now else {
+      unsafe _taskCancelTaskCancellationScopeWithReason(
+        record: scopeRecord,
+        reason: UInt(CancellationError.Reason.deadlineExpired.rawValue))
+      return try await operation()
+    }
+
     // TODO: Replace this by picking the "Clock's executor"
     // TODO: Instead of creating a full task here, we want to enqueue a job
     //       at a deadline that cancels the scope; disarming should attempt
