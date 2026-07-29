@@ -100,6 +100,139 @@ mangleDistributedThunkForAccessorRecordName(
   return mangled;
 }
 
+/// Synthesize:
+///
+///   _traceDistributedRemoteCall(targetActor: self,
+///                               targetIdentifier: "<mangledName>")
+static Expr *synthesizeTraceRemoteCall(ASTContext &C, DeclNameLoc dloc,
+                                       VarDecl *selfDecl,
+                                       StringRef mangledName) {
+  Expr *args[] = {
+      // targetActor: some DistributedActor
+      new (C) DeclRefExpr(selfDecl, dloc, /*implicit=*/true,
+                          AccessSemantics::Ordinary,
+                          selfDecl->getInterfaceType()),
+      // targetIdentifier: String
+      new (C) StringLiteralExpr(mangledName, SourceRange(), /*implicit=*/true),
+  };
+  DeclName name(C, C.Id_traceDistributedRemoteCall,
+                {C.Id_targetActor, C.Id_targetIdentifier});
+  auto *fnRef = UnresolvedDeclRefExpr::createImplicit(C, name);
+  return CallExpr::createImplicit(
+      C, fnRef,
+      ArgumentList::forImplicitCallTo(DeclNameRef(name), args, C));
+}
+
+/// Synthesize, appending to \p stmts:
+///
+///   var $encodeSpanID = _traceDistributedEncodeArgumentsBegin(
+///     targetActor: self, targetIdentifier: "<mangledName>",
+///     argumentCount: <argumentCount>)
+///
+/// Returns the '$encodeSpanID' variable. The encoding statements must then be
+/// handed to 'synthesizeTraceEncodeArguments', which wraps them so the interval
+/// is closed on every path.
+static VarDecl *
+synthesizeTraceEncodeArgumentsBegin(ASTContext &C, SourceLoc sloc,
+                                    DeclNameLoc dloc,
+                                    AbstractFunctionDecl *thunk,
+                                    VarDecl *selfDecl, StringRef mangledName,
+                                    unsigned argumentCount,
+                                    SmallVectorImpl<ASTNode> &stmts) {
+  VarDecl *spanIDVar = VarDeclBuilder(thunk, C.getIdentifier("$encodeSpanID"))
+                            .introducer(VarDecl::Introducer::Var);
+
+  Expr *beginArgs[] = {
+      new (C) DeclRefExpr(selfDecl, dloc, /*implicit=*/true,
+                          AccessSemantics::Ordinary,
+                          selfDecl->getInterfaceType()),
+      new (C) StringLiteralExpr(mangledName, SourceRange(), /*implicit=*/true),
+      IntegerLiteralExpr::createFromUnsigned(C, argumentCount, sloc),
+  };
+  DeclName beginName(C, C.Id_traceDistributedEncodeArgumentsBegin,
+                     {C.Id_targetActor, C.Id_targetIdentifier,
+                      C.Id_argumentCount});
+  auto *beginCall = CallExpr::createImplicit(
+      C, UnresolvedDeclRefExpr::createImplicit(C, beginName),
+      ArgumentList::forImplicitCallTo(DeclNameRef(beginName), beginArgs, C));
+
+  stmts.push_back(PatternBindingDecl::createImplicit(
+      C, StaticSpellingKind::None, NamedPattern::createImplicit(C, spanIDVar),
+      beginCall, thunk));
+  stmts.push_back(spanIDVar);
+
+  return spanIDVar;
+}
+
+/// Wrap the invocation encoding statements so the encoding interval is closed
+/// on every path out of them:
+///
+///   do {
+///     <encodingStmts>
+///     _traceDistributedEncodeArgumentsEnd($encodeSpanID)
+///   } catch let $encodeError {
+///     _traceDistributedEncodeArgumentsEnd($encodeSpanID, error: $encodeError)
+///     throw $encodeError
+///   }
+static DoCatchStmt *
+synthesizeTraceEncodeArguments(ASTContext &C, SourceLoc sloc, DeclNameLoc dloc,
+                               AbstractFunctionDecl *thunk,
+                               VarDecl *spanIDVar,
+                               ArrayRef<ASTNode> encodingStmts) {
+  auto implicit = true;
+
+  VarDecl *errorVar = VarDeclBuilder(thunk, C.getIdentifier("$encodeError"))
+                          .introducer(VarDecl::Introducer::Let);
+
+  // Closes the encoding interval. Passing no error means the encoding
+  // succeeded; passing one reports the error's type into the trace.
+  //
+  // The callee is referenced by its base name and the labels are attached to
+  // the arguments, rather than forming a compound 'DeclName'. A compound name
+  // has to spell the callee's *entire* parameter list, so it would stop
+  // resolving the moment another defaulted parameter is added.
+  auto endEncodingCall = [&](bool failed) -> Expr * {
+    SmallVector<Argument, 2> args;
+
+    args.push_back(Argument(sloc, Identifier(),
+                            new (C) DeclRefExpr(ConcreteDeclRef(spanIDVar),
+                                                dloc, implicit)));
+    if (failed) {
+      args.push_back(Argument(sloc, C.Id_error,
+                              new (C) DeclRefExpr(ConcreteDeclRef(errorVar),
+                                                  dloc, implicit)));
+    }
+
+    DeclNameRef name(C.Id_traceDistributedEncodeArgumentsEnd);
+    return CallExpr::createImplicit(
+        C, new (C) UnresolvedDeclRefExpr(name, DeclRefKind::Ordinary, dloc),
+        ArgumentList::createImplicit(C, args));
+  };
+
+  // --- The 'do' body: the encoding itself, then close the interval
+  SmallVector<ASTNode, 8> doBodyStmts(encodingStmts.begin(),
+                                      encodingStmts.end());
+  doBodyStmts.push_back(endEncodingCall(/*failed=*/false));
+  auto *doBody = BraceStmt::create(C, sloc, doBodyStmts, sloc, implicit);
+
+  // --- 'catch let $encodeError': close the interval reporting the error type,
+  // then rethrow
+  auto *errorPattern = NamedPattern::createImplicit(C, errorVar);
+
+  SmallVector<ASTNode, 2> catchBodyStmts;
+  catchBodyStmts.push_back(endEncodingCall(/*failed=*/true));
+  catchBodyStmts.push_back(new (C) ThrowStmt(
+      sloc, new (C) DeclRefExpr(ConcreteDeclRef(errorVar), dloc, implicit)));
+  auto *catchBody = BraceStmt::create(C, sloc, catchBodyStmts, sloc, implicit);
+
+  auto *caseStmt = CaseStmt::createImplicit(
+      C, CaseParentKind::DoCatch,
+      {CaseLabelItem(errorPattern)}, catchBody);
+
+  return DoCatchStmt::create(thunk, LabeledStmtInfo(), sloc, sloc, TypeLoc(),
+                             doBody, {caseStmt}, implicit);
+}
+
 static std::pair<BraceStmt *, bool>
 deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   auto implicit = true;
@@ -224,6 +357,22 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     remoteBranchStmts.push_back(invocationVar);
   }
 
+  // --- Mangle the thunk name; used by the tracing calls and to form the
+  // 'RemoteCallTarget' further below
+  auto mangledAccessorRecordName =
+      mangleDistributedThunkForAccessorRecordName(C, thunk);
+
+  // === Begin measuring how long encoding the invocation takes. The interval is
+  // closed right after 'doneRecording' below, and also on the throwing path out
+  // of any of the encoding calls, so it is never left open
+  VarDecl *encodeSpanIDVar = synthesizeTraceEncodeArgumentsBegin(
+      C, sloc, dloc, thunk, selfDecl, mangledAccessorRecordName,
+      func->getParameters()->size(), remoteBranchStmts);
+
+  // The encoding statements are collected separately so they can be wrapped in
+  // a 'do'/'catch' that closes the encoding interval on every path
+  SmallVector<ASTNode, 8> encodingStmts;
+
   // --- Recording invocation details
   // -- recordGenericSubstitution(s)
   // TODO: trace all these encoding calls as well so we can record timing for them?
@@ -256,7 +405,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
           recordGenericSubArgsList);
       recordGenericSub = TryExpr::createImplicit(C, sloc, recordGenericSub);
 
-      remoteBranchStmts.push_back(recordGenericSub);
+      encodingStmts.push_back(recordGenericSub);
     }
   }
 
@@ -360,8 +509,8 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         auto callArgPB = PatternBindingDecl::createImplicit(
             C, StaticSpellingKind::None, callArgPattern, initCallArgCallExpr, thunk);
 
-        remoteBranchStmts.push_back(callArgPB);
-        remoteBranchStmts.push_back(callArgVar);
+        encodingStmts.push_back(callArgPB);
+        encodingStmts.push_back(callArgVar);
 
         /// --- Pass the argumentRepr to the recordArgument function
         auto recordArgArgsList = ArgumentList::forImplicitCallTo(
@@ -381,7 +530,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
                     recordArgumentName),
                 recordArgArgsList));
 
-        remoteBranchStmts.push_back(tryRecordArgExpr);
+        encodingStmts.push_back(tryRecordArgExpr);
       }
     }
   }
@@ -409,7 +558,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
                 recordErrorTypeName),
             recordArgsList));
 
-    remoteBranchStmts.push_back(tryRecordErrorTyExpr);
+    encodingStmts.push_back(tryRecordErrorTyExpr);
   }
 
   // -- recordReturnType
@@ -442,7 +591,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
                 recordReturnTypeName),
             recordArgsList));
 
-    remoteBranchStmts.push_back(tryRecordReturnTyExpr);
+    encodingStmts.push_back(tryRecordReturnTyExpr);
   }
 
   // -- doneRecording
@@ -462,8 +611,13 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
                 doneRecordingName),
             argsList));
 
-    remoteBranchStmts.push_back(tryDoneRecordingExpr);
+    encodingStmts.push_back(tryDoneRecordingExpr);
   }
+
+  // === Wrap the encoding in a 'do'/'catch' that closes the encoding interval,
+  // marking it failed if any of the 'record...' calls threw
+  remoteBranchStmts.push_back(synthesizeTraceEncodeArguments(
+      C, sloc, dloc, thunk, encodeSpanIDVar, encodingStmts));
 
   // === Prepare the 'RemoteCallTarget'
   VarDecl *targetVar = VarDeclBuilder(thunk, C.Id_target)
@@ -503,60 +657,8 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   }
 
   // === Trace the remoteCall
-  {
-    auto traceRemoteCallRef = UnresolvedDeclRefExpr::createImplicit(
-        C, DeclName(C,
-          C.getIdentifier("_traceDistributedRemoteCall"),
-          {C.getIdentifier("targetActor"), C.getIdentifier("targetIdentifier")}));
-
-    SmallVector<Expr *, 2> traceArgs;
-    // targetActor: some DistributedActor
-    traceArgs.push_back(new (C) DeclRefExpr(selfDecl, dloc, implicit,
-                                            swift::AccessSemantics::Ordinary,
-                                            selfDecl->getInterfaceType()));
-    // targetIdentifier: String
-    StringLiteralExpr *mangledTargetStringLiteral =
-          new (C) StringLiteralExpr(mangledAccessorRecordName,
-                                    SourceRange(), implicit);
-    traceArgs.push_back(mangledTargetStringLiteral);
-
-    auto nameRef = DeclNameRef(traceRemoteCallRef->getName());
-    auto traceArgsList = ArgumentList::forImplicitCallTo(
-        nameRef,
-        traceArgs,
-        C);
-
-    // The trace call:
-    auto traceCallExpr = CallExpr::createImplicit(C, traceRemoteCallRef, traceArgsList);
-
-    // Wrap the trace call in an availability check:
-    // if #available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *) { ... }
-    // We use the target platform's domain and set the query manually since
-    // TypeCheckAvailability won't fill it in for synthesized code with
-    // invalid source locations.
-    auto targetDomain = C.getTargetAvailabilityDomain();
-    auto platformSpec = AvailabilitySpec::createForDomain(
-        C, targetDomain, sloc, llvm::VersionTuple(9999), sloc);
-    auto wildcardSpec = AvailabilitySpec::createWildcard(C, sloc);
-
-    auto availableInfo = PoundAvailableInfo::create(
-        C, sloc, sloc, {platformSpec, wildcardSpec}, sloc,
-        /*isUnavailability=*/false);
-
-    // Set the availability query manually since we have invalid SourceLocs.
-    auto versionRange = VersionRange::allGTE(llvm::VersionTuple(9999));
-    availableInfo->setAvailabilityQuery(AvailabilityQuery::dynamic(
-        targetDomain, AvailabilityRange(versionRange), std::nullopt));
-
-    auto traceBraceStmt = BraceStmt::create(C, sloc, {traceCallExpr}, sloc, implicit);
-
-    StmtConditionElement conds[1] = { availableInfo };
-    auto availabilityIfStmt = new (C) IfStmt(
-        LabeledStmtInfo(), sloc, C.AllocateCopy(conds), traceBraceStmt,
-        /*elseloc=*/sloc, /*else=*/nullptr, /*implicit=*/true);
-
-    remoteBranchStmts.push_back(availabilityIfStmt);
-  }
+  remoteBranchStmts.push_back(synthesizeTraceRemoteCall(
+      C, dloc, selfDecl, mangledAccessorRecordName));
 
   // === Make the 'remoteCall(Void)(...)'
   {

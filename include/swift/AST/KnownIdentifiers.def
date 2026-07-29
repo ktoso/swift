@@ -342,6 +342,11 @@ IDENTIFIER_WITH_NAME(builderSelf, "$builderSelf")
 
 // Distributed actors - tracing hooks
 IDENTIFIER_(traceDistributedRemoteCall)
+IDENTIFIER_(traceDistributedEncodeArgumentsBegin)
+IDENTIFIER_(traceDistributedEncodeArgumentsEnd)
+IDENTIFIER(targetActor)
+IDENTIFIER(targetIdentifier)
+IDENTIFIER(argumentCount)
 
 // Attribute options
 IDENTIFIER(always)
