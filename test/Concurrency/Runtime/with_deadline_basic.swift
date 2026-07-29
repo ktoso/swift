@@ -14,6 +14,7 @@
   static func main() async {
     await test_returns_before_deadline()
     await test_cancels_operation_when_deadline_expires()
+    await test_past_deadline_still_runs_operation()
     await test_ambient_task_uncancelled_after_deadline()
     await test_throws_from_operation_before_deadline()
     await test_custom_clock_deadline_subsumption()
@@ -85,8 +86,41 @@ func test_cancels_operation_when_deadline_expires() async {
   }
 }
 
-// The scope-only cancellation must not touch the enclosing task's own
-// isCancelled flag.
+@available(StdlibDeploymentTarget 6.5, *)
+func test_past_deadline_still_runs_operation() async {
+  print("--- test_past_deadline_still_runs_operation")
+  // CHECK-LABEL: --- test_past_deadline_still_runs_operation
+
+  let clock = ContinuousClock()
+  let pastDeadline = clock.now.advanced(by: .seconds(-60))
+
+  // Body that ignores cancellation runs to completion and returns its value.
+  let ignoringResult = try? await withDeadline(pastDeadline, clock: clock) {
+    return 42
+  }
+  print("ignoring cancel returned: \(ignoringResult ?? -1)")
+  // CHECK: ignoring cancel returned: 42
+
+  // Body that checks isCancelled observes true immediately and can bail.
+  let checkingResult: Int = (try? await withDeadline(pastDeadline, clock: clock) { () -> Int in
+    let observedCancelled = Task.isCancelled
+    print("observed isCancelled at entry: \(observedCancelled)")
+    // CHECK: observed isCancelled at entry: true
+    if observedCancelled { return 7 }
+    return 99
+  }) ?? -1
+  print("checking result: \(checkingResult)")
+  // CHECK: checking result: 7
+
+  // Body that throws via checkCancellation(): reason threads through as
+  // deadlineExpired even for a past-instant deadline.
+  let reasonFromInside = try? await withDeadline(pastDeadline, clock: clock) { () -> CancellationError.Reason? in
+    return Task.cancellationReason
+  }
+  print("reason observed inside: \(reasonFromInside.flatMap { $0.map { "\($0)" } } ?? "nil")")
+  // CHECK: reason observed inside: deadlineExpired
+}
+
 @available(StdlibDeploymentTarget 6.5, *)
 func test_ambient_task_uncancelled_after_deadline() async {
   print("--- test_ambient_task_uncancelled_after_deadline")
