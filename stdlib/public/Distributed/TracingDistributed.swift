@@ -62,20 +62,41 @@ internal func _withDistributedTraceErrorType<Result>(
   }
 }
 
+/// Begins an interval measuring the whole outgoing call: from just before
+/// `remoteCall` is invoked until it returns, spanning encoding, the transport
+/// round trip and decoding the reply.
+///
+/// The returned span ID must be passed to `_traceDistributedRemoteCallEnd`. It
+/// is 0 when tracing is disabled, in which case ending the interval is a no-op.
 @available(SwiftStdlib 5.7, *)
 @_alwaysEmitIntoClient
 public func _traceDistributedRemoteCall(
   targetActor: some DistributedActor,
   targetIdentifier: String
-) {
-  guard #available(anyAppleOS 9999, *) else { return }
-  guard _distributedTraceIsEnabled() else { return }
+) -> UInt64 {
+  guard #available(anyAppleOS 9999, *) else { return 0 }
+  guard _distributedTraceIsEnabled() else { return 0 }
 
   let targetActorID = "\(targetActor.id)"
-  targetActorID.withCString { actorIDPtr in
-    targetIdentifier.withCString { identifierPtr in
-      unsafe _traceRemoteCallOutbound(targetActor, actorIDPtr, identifierPtr)
+  return targetActorID.withCString { actorIDPtr in
+    unsafe targetIdentifier.withCString { identifierPtr in
+      unsafe _traceRemoteCallOutboundBegin(targetActor, actorIDPtr, identifierPtr)
     }
+  }
+}
+
+/// Ends the interval started by `_traceDistributedRemoteCall`.
+@available(SwiftStdlib 5.7, *)
+@_alwaysEmitIntoClient
+public func _traceDistributedRemoteCallEnd(
+  _ spanID: UInt64,
+  error: (any Error)? = nil,
+  failed: Bool = false
+) {
+  guard #available(anyAppleOS 9999, *) else { return }
+  guard spanID != 0 else { return }
+  unsafe _withDistributedTraceErrorType(error, failed: failed) { errorTypePtr in
+    unsafe _traceRemoteCallOutboundEnd(spanID, errorTypePtr)
   }
 }
 
@@ -156,20 +177,42 @@ public func _traceDistributedDecodeArgumentsEnd(
   }
 }
 
+/// Begins an interval measuring the whole inbound execution of a call, from
+/// `executeDistributedTarget` being invoked until it returns, spanning decoding,
+/// invoking the target and the result handler.
+///
+/// The returned span ID must be passed to
+/// `_traceDistributedExecuteTargetEnd`. It is 0 when tracing is disabled, in
+/// which case ending the interval is a no-op.
 @available(SwiftStdlib 5.7, *)
 @_alwaysEmitIntoClient
 public func _traceDistributedExecuteTarget(
   targetActor: some DistributedActor,
   targetIdentifier: String
-) {
-  guard #available(anyAppleOS 9999, *) else { return }
-  guard _distributedTraceIsEnabled() else { return }
+) -> UInt64 {
+  guard #available(anyAppleOS 9999, *) else { return 0 }
+  guard _distributedTraceIsEnabled() else { return 0 }
 
   let targetActorID = "\(targetActor.id)"
-  targetActorID.withCString { actorIDPtr in
-    targetIdentifier.withCString { identifierPtr in
-      unsafe _traceExecuteDistributedTarget(targetActor, actorIDPtr, identifierPtr)
+  return targetActorID.withCString { actorIDPtr in
+    unsafe targetIdentifier.withCString { identifierPtr in
+      unsafe _traceExecuteDistributedTargetBegin(targetActor, actorIDPtr, identifierPtr)
     }
+  }
+}
+
+/// Ends the interval started by `_traceDistributedExecuteTarget`.
+@available(SwiftStdlib 5.7, *)
+@_alwaysEmitIntoClient
+public func _traceDistributedExecuteTargetEnd(
+  _ spanID: UInt64,
+  error: (any Error)? = nil,
+  failed: Bool = false
+) {
+  guard #available(anyAppleOS 9999, *) else { return }
+  guard spanID != 0 else { return }
+  unsafe _withDistributedTraceErrorType(error, failed: failed) { errorTypePtr in
+    unsafe _traceExecuteDistributedTargetEnd(spanID, errorTypePtr)
   }
 }
 
@@ -240,20 +283,36 @@ internal func _traceDistributedIsEnabled() -> Bool
 
 @available(SwiftStdlib 6.5, *)
 @usableFromInline
-@_silgen_name("swift_distributed_trace_remote_call_outbound")
-internal func _traceRemoteCallOutbound(
+@_silgen_name("swift_distributed_trace_remote_call_outbound_begin")
+internal func _traceRemoteCallOutboundBegin(
   _ targetActor: AnyObject,
   _ targetActorID: UnsafePointer<CChar>?,
   _ targetIdentifier: UnsafePointer<CChar>?
+) -> UInt64
+
+@available(SwiftStdlib 6.5, *)
+@usableFromInline
+@_silgen_name("swift_distributed_trace_remote_call_outbound_end")
+internal func _traceRemoteCallOutboundEnd(
+  _ spanID: UInt64,
+  _ errorType: UnsafePointer<CChar>?
 )
 
 @available(SwiftStdlib 6.5, *)
 @usableFromInline
-@_silgen_name("swift_distributed_trace_execute_target")
-internal func _traceExecuteDistributedTarget(
+@_silgen_name("swift_distributed_trace_execute_target_begin")
+internal func _traceExecuteDistributedTargetBegin(
   _ targetActor: AnyObject,
   _ targetActorID: UnsafePointer<CChar>?,
   _ targetIdentifier: UnsafePointer<CChar>?
+) -> UInt64
+
+@available(SwiftStdlib 6.5, *)
+@usableFromInline
+@_silgen_name("swift_distributed_trace_execute_target_end")
+internal func _traceExecuteDistributedTargetEnd(
+  _ spanID: UInt64,
+  _ errorType: UnsafePointer<CChar>?
 )
 
 @available(SwiftStdlib 6.5, *)

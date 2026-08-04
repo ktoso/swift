@@ -27,12 +27,19 @@ bool swift_distributed_trace_is_enabled() {
 
 SWIFT_CC(swift)
 SWIFT_EXPORT_FROM(swiftDistributed)
-void swift_distributed_trace_remote_call_outbound(
+uint64_t swift_distributed_trace_remote_call_outbound_begin(
     HeapObject *targetActor,
     const char *targetActorID,
     const char *targetIdentifier) {
-  distributed::trace::distributed_remote_call_outbound(
+  return distributed::trace::distributed_remote_call_outbound_begin(
       targetActor, targetActorID, targetIdentifier);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+void swift_distributed_trace_remote_call_outbound_end(uint64_t spanID,
+                                                      const char *errorType) {
+  distributed::trace::distributed_remote_call_outbound_end(spanID, errorType);
 }
 
 SWIFT_CC(swift)
@@ -72,12 +79,20 @@ void swift_distributed_trace_decode_arguments_end(uint64_t spanID,
 
 SWIFT_CC(swift)
 SWIFT_EXPORT_FROM(swiftDistributed)
-void swift_distributed_trace_execute_target(
+uint64_t swift_distributed_trace_execute_target_begin(
     HeapObject *targetActor,
     const char *targetActorID,
     const char *targetIdentifier) {
-  distributed::trace::distributed_execute_distributed_target(
+  return distributed::trace::distributed_execute_distributed_target_begin(
       targetActor, targetActorID, targetIdentifier);
+}
+
+SWIFT_CC(swift)
+SWIFT_EXPORT_FROM(swiftDistributed)
+void swift_distributed_trace_execute_target_end(uint64_t spanID,
+                                                const char *errorType) {
+  distributed::trace::distributed_execute_distributed_target_end(spanID,
+                                                                 errorType);
 }
 
 SWIFT_CC(swift)

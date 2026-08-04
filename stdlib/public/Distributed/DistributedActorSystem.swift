@@ -436,9 +436,25 @@ extension DistributedActorSystem {
     let targetName = target.identifier
     let targetNameUTF8 = Array(targetName.utf8)
 
+    // Measure the whole inbound execution: decoding, invoking the target and
+    // the result handler. The nested phases (decode, invoke) draw inside it.
     // TODO: include more information like the number of decoded args etc?
-    _traceDistributedExecuteTarget(
+    var executeSpanID: UInt64 = _traceDistributedExecuteTarget(
       targetActor: actor, targetIdentifier: target.identifier)
+    // Closes the execution interval. Calling this more than once is harmless,
+    // only the first call is recorded. The 'defer' below guarantees the
+    // interval is closed however we leave this function.
+    func endExecuteSpan(error: (any Error)? = nil, failed: Bool = false) {
+      guard executeSpanID != 0 else { return }
+      _traceDistributedExecuteTargetEnd(executeSpanID, error: error,
+                                        failed: failed)
+      executeSpanID = 0
+    }
+    defer {
+      // A 'defer' cannot see the error that is propagating, so this only
+      // reports that the execution did not run to completion
+      endExecuteSpan(failed: true)
+    }
 
     // Measure how long decoding the incoming invocation takes. Note that the
     // individual argument values are decoded by the distributed accessor
@@ -658,6 +674,9 @@ extension DistributedActorSystem {
 
       _traceDistributedInvokeResultHandler(
         targetActor: actor, targetIdentifier: target.identifier, error: nil)
+
+      // The whole inbound execution ran to completion
+      endExecuteSpan()
     } catch {
       // Unlike the 'defer', here the error is in hand, so the execution
       // interval can report which error type it failed with
@@ -665,6 +684,8 @@ extension DistributedActorSystem {
 
       _traceDistributedInvokeResultHandler(
         targetActor: actor, targetIdentifier: target.identifier, error: error)
+
+      endExecuteSpan(error: error)
 
       try await handler.onThrow(error: error)
     }

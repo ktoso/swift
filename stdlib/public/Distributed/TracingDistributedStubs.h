@@ -25,9 +25,14 @@ namespace trace {
 
 inline bool distributed_trace_is_enabled() { return false; }
 
-inline void distributed_remote_call_outbound(HeapObject *localTargetActor,
-                                             const char *targetActorID,
-                                             const char *targetIdentifier) {
+inline uint64_t distributed_remote_call_outbound_begin(HeapObject *localTargetActor,
+                                                       const char *targetActorID,
+                                                       const char *targetIdentifier) {
+  return 0;
+}
+
+inline void distributed_remote_call_outbound_end(uint64_t spanId,
+                                                 const char *errorType) {
 }
 
 inline uint64_t distributed_encode_arguments_begin(HeapObject *localTargetActor,
@@ -57,9 +62,14 @@ inline uint64_t distributed_invoke_target_begin(HeapObject *localTargetActor,
 inline void distributed_invoke_target_end(uint64_t spanId, const char *errorType) {
 }
 
-inline void distributed_execute_distributed_target(HeapObject *localTargetActor,
-                                                   const char *targetActorID,
-                                                   const char *targetIdentifier) {
+inline uint64_t distributed_execute_distributed_target_begin(HeapObject *localTargetActor,
+                                                             const char *targetActorID,
+                                                             const char *targetIdentifier) {
+  return 0;
+}
+
+inline void distributed_execute_distributed_target_end(uint64_t spanId,
+                                                       const char *errorType) {
 }
 
 inline void distributed_find_accessible_function(const char *targetName,

@@ -100,13 +100,23 @@ mangleDistributedThunkForAccessorRecordName(
   return mangled;
 }
 
-/// Synthesize:
+/// Synthesize, appending to \p stmts:
 ///
-///   _traceDistributedRemoteCall(targetActor: self,
-///                               targetIdentifier: "<mangledName>")
-static Expr *synthesizeTraceRemoteCall(ASTContext &C, DeclNameLoc dloc,
-                                       VarDecl *selfDecl,
-                                       StringRef mangledName) {
+///   var $remoteCallSpanID = _traceDistributedRemoteCall(
+///     targetActor: self, targetIdentifier: "<mangledName>")
+///
+/// Returns the '$remoteCallSpanID' variable, which 'synthesizeTraceRemoteCallEnd'
+/// then closes. Split from the end so the begin can sit before the 'do' while
+/// the end sits on both the success and the 'catch' paths inside it.
+static VarDecl *
+synthesizeTraceRemoteCallBegin(ASTContext &C, SourceLoc sloc, DeclNameLoc dloc,
+                               AbstractFunctionDecl *thunk, VarDecl *selfDecl,
+                               StringRef mangledName,
+                               SmallVectorImpl<ASTNode> &stmts) {
+  VarDecl *spanIDVar =
+      VarDeclBuilder(thunk, C.getIdentifier("$remoteCallSpanID"))
+          .introducer(VarDecl::Introducer::Var);
+
   Expr *args[] = {
       // targetActor: some DistributedActor
       new (C) DeclRefExpr(selfDecl, dloc, /*implicit=*/true,
@@ -117,10 +127,116 @@ static Expr *synthesizeTraceRemoteCall(ASTContext &C, DeclNameLoc dloc,
   };
   DeclName name(C, C.Id_traceDistributedRemoteCall,
                 {C.Id_targetActor, C.Id_targetIdentifier});
-  auto *fnRef = UnresolvedDeclRefExpr::createImplicit(C, name);
-  return CallExpr::createImplicit(
-      C, fnRef,
+  auto *beginCall = CallExpr::createImplicit(
+      C, UnresolvedDeclRefExpr::createImplicit(C, name),
       ArgumentList::forImplicitCallTo(DeclNameRef(name), args, C));
+
+  stmts.push_back(PatternBindingDecl::createImplicit(
+      C, StaticSpellingKind::None, NamedPattern::createImplicit(C, spanIDVar),
+      beginCall, thunk));
+  stmts.push_back(spanIDVar);
+
+  return spanIDVar;
+}
+
+/// Synthesize the call that closes the interval opened by
+/// 'synthesizeTraceRemoteCallBegin':
+///
+///   _traceDistributedRemoteCallEnd($remoteCallSpanID)              // success
+///   _traceDistributedRemoteCallEnd($remoteCallSpanID, error: $err) // failure
+///
+/// The callee is referenced by base name with labelled arguments, so a later
+/// defaulted parameter does not break name resolution (mirrors the
+/// encode-arguments wrapper). A null \p errorVar closes it as a success.
+static Expr *
+synthesizeTraceRemoteCallEnd(ASTContext &C, SourceLoc sloc, DeclNameLoc dloc,
+                             VarDecl *spanIDVar, VarDecl *errorVar) {
+  auto implicit = true;
+  SmallVector<Argument, 2> args;
+  args.push_back(Argument(sloc, Identifier(),
+                          new (C) DeclRefExpr(ConcreteDeclRef(spanIDVar), dloc,
+                                              implicit)));
+  if (errorVar) {
+    args.push_back(Argument(sloc, C.Id_error,
+                            new (C) DeclRefExpr(ConcreteDeclRef(errorVar), dloc,
+                                                implicit)));
+  }
+  DeclNameRef name(C.Id_traceDistributedRemoteCallEnd);
+  return CallExpr::createImplicit(
+      C, new (C) UnresolvedDeclRefExpr(name, DeclRefKind::Ordinary, dloc),
+      ArgumentList::createImplicit(C, args));
+}
+
+/// Wrap \p remoteCallExpr so the outbound remote-call interval is measured
+/// around exactly it: begins the interval (appended to \p stmts), then returns
+/// the 'do'/'catch' that runs the call, closes the interval on both paths and
+/// produces the call's result:
+///
+///   do {
+///     let $result = try await system.remoteCall(...)
+///     _traceDistributedRemoteCallEnd($remoteCallSpanID)
+///     return $result
+///   } catch let $remoteCallError {
+///     _traceDistributedRemoteCallEnd($remoteCallSpanID, error: $remoteCallError)
+///     throw $remoteCallError
+///   }
+///
+/// For a 'Void' returning call there is no '$result'; the call runs, the
+/// interval is closed, then the thunk returns.
+static DoCatchStmt *
+wrapTraceRemoteCall(ASTContext &C, SourceLoc sloc, DeclNameLoc dloc,
+                    AbstractFunctionDecl *thunk, VarDecl *selfDecl,
+                    StringRef mangledName, Expr *remoteCallExpr,
+                    bool isVoidReturn, SmallVectorImpl<ASTNode> &stmts) {
+  auto implicit = true;
+
+  VarDecl *spanIDVar = synthesizeTraceRemoteCallBegin(
+      C, sloc, dloc, thunk, selfDecl, mangledName, stmts);
+
+  VarDecl *errorVar =
+      VarDeclBuilder(thunk, C.getIdentifier("$remoteCallError"))
+          .introducer(VarDecl::Introducer::Let);
+
+  // --- The 'do' body: run the call, close the interval, return the result
+  SmallVector<ASTNode, 3> doBodyStmts;
+  if (isVoidReturn) {
+    doBodyStmts.push_back(remoteCallExpr);
+    doBodyStmts.push_back(
+        synthesizeTraceRemoteCallEnd(C, sloc, dloc, spanIDVar, /*errorVar=*/nullptr));
+    doBodyStmts.push_back(ReturnStmt::createImplicit(C, sloc, /*result=*/nullptr));
+  } else {
+    VarDecl *resultVar =
+        VarDeclBuilder(thunk, C.getIdentifier("$remoteCallResult"))
+            .introducer(VarDecl::Introducer::Let);
+    doBodyStmts.push_back(PatternBindingDecl::createImplicit(
+        C, StaticSpellingKind::None, NamedPattern::createImplicit(C, resultVar),
+        remoteCallExpr, thunk));
+    doBodyStmts.push_back(resultVar);
+    doBodyStmts.push_back(
+        synthesizeTraceRemoteCallEnd(C, sloc, dloc, spanIDVar, /*errorVar=*/nullptr));
+    doBodyStmts.push_back(ReturnStmt::createImplicit(
+        C, sloc,
+        new (C) DeclRefExpr(ConcreteDeclRef(resultVar), dloc, implicit)));
+  }
+  auto *doBody = BraceStmt::create(C, sloc, doBodyStmts, sloc, implicit);
+
+  // --- 'catch let $remoteCallError': close the interval reporting the error
+  // type, then rethrow
+  auto *errorPattern = NamedPattern::createImplicit(C, errorVar);
+
+  SmallVector<ASTNode, 2> catchBodyStmts;
+  catchBodyStmts.push_back(
+      synthesizeTraceRemoteCallEnd(C, sloc, dloc, spanIDVar, errorVar));
+  catchBodyStmts.push_back(new (C) ThrowStmt(
+      sloc, new (C) DeclRefExpr(ConcreteDeclRef(errorVar), dloc, implicit)));
+  auto *catchBody = BraceStmt::create(C, sloc, catchBodyStmts, sloc, implicit);
+
+  auto *caseStmt = CaseStmt::createImplicit(C, CaseParentKind::DoCatch,
+                                            {CaseLabelItem(errorPattern)},
+                                            catchBody);
+
+  return DoCatchStmt::create(thunk, LabeledStmtInfo(), sloc, sloc, TypeLoc(),
+                             doBody, {caseStmt}, implicit);
 }
 
 /// Synthesize, appending to \p stmts:
@@ -357,8 +473,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     remoteBranchStmts.push_back(invocationVar);
   }
 
-  // --- Mangle the thunk name; used by the tracing calls and to form the
-  // 'RemoteCallTarget' further below
+  // --- Mangle the thunk name
   auto mangledAccessorRecordName =
       mangleDistributedThunkForAccessorRecordName(C, thunk);
 
@@ -624,10 +739,6 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
                            .introducer(VarDecl::Introducer::Let)
                            .type(remoteCallTargetTy);
 
-  // --- Mangle the thunk name
-  auto mangledAccessorRecordName =
-      mangleDistributedThunkForAccessorRecordName(C, thunk);
-
   {
     StringLiteralExpr *mangledTargetStringLiteral =
         new (C) StringLiteralExpr(mangledAccessorRecordName,
@@ -655,10 +766,6 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     remoteBranchStmts.push_back(targetPB);
     remoteBranchStmts.push_back(targetVar);
   }
-
-  // === Trace the remoteCall
-  remoteBranchStmts.push_back(synthesizeTraceRemoteCall(
-      C, dloc, selfDecl, mangledAccessorRecordName));
 
   // === Make the 'remoteCall(Void)(...)'
   {
@@ -736,8 +843,12 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         CallExpr::createImplicit(C, systemRemoteCallRef, remoteCallArgs);
     remoteCallExpr = AwaitExpr::createImplicit(C, sloc, remoteCallExpr);
     remoteCallExpr = TryExpr::createImplicit(C, sloc, remoteCallExpr);
-    auto returnRemoteCall = ReturnStmt::createImplicit(C, sloc, remoteCallExpr);
-    remoteBranchStmts.push_back(returnRemoteCall);
+    // Measure the outbound remote-call interval around exactly this call: the
+    // wrapper begins the interval, runs the call, then closes it on both the
+    // returning and the throwing path and produces its result.
+    remoteBranchStmts.push_back(wrapTraceRemoteCall(
+        C, sloc, dloc, thunk, selfDecl, mangledAccessorRecordName,
+        remoteCallExpr, isVoidReturn, remoteBranchStmts));
   }
 
   // ---------------------------------------------------------------------------

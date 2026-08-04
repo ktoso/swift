@@ -94,19 +94,19 @@ inline bool distributed_trace_is_enabled() {
 // ==== ------------------------------------------------------------------------
 // MARK: Outbound
 
-inline void distributed_remote_call_outbound(HeapObject *localTargetActor,
-                                             const char *targetActorId,
-                                             const char *targetIdentifier) {
-  ENSURE_LOGS();
+inline uint64_t distributed_remote_call_outbound_begin(HeapObject *localTargetActor,
+                                                       const char *targetActorId,
+                                                       const char *targetIdentifier) {
+  ENSURE_LOGS(0);
 
   if (!os_signpost_enabled(DistributedRemoteCallsLog))
-    return;
+    return 0;
 
   auto typeName = swift_getTypeName(swift_getObjectType(localTargetActor),
                                     /*qualified=*/true);
 
   auto id = os_signpost_id_generate(DistributedRemoteCallsLog);
-  os_signpost_event_emit(
+  os_signpost_interval_begin(
       DistributedRemoteCallsLog, id,
       SWIFT_LOG_DISTRIBUTED_OUTBOUND_REMOTE_CALL_NAME,
       "actor=%p"
@@ -117,6 +117,26 @@ inline void distributed_remote_call_outbound(HeapObject *localTargetActor,
       (int)typeName.length, typeName.data,
       targetActorId ? targetActorId : "<unknown>",
       targetIdentifier ? targetIdentifier : "<unknown>");
+  return id;
+}
+
+inline void distributed_remote_call_outbound_end(uint64_t spanId,
+                                                 const char *errorType) {
+  if (!spanId)
+    return;
+
+  ENSURE_LOGS();
+
+  if (!os_signpost_enabled(DistributedRemoteCallsLog))
+    return;
+
+  os_signpost_interval_end(
+      DistributedRemoteCallsLog, spanId,
+      SWIFT_LOG_DISTRIBUTED_OUTBOUND_REMOTE_CALL_NAME,
+      "success=%{bool}d"
+      " errorType=%{public}s",
+      errorType == nullptr,
+      errorType ? errorType : "");
 }
 
 inline uint64_t distributed_encode_arguments_begin(HeapObject *localTargetActor,
@@ -162,19 +182,19 @@ inline void distributed_encode_arguments_end(uint64_t spanId,
 // ==== ------------------------------------------------------------------------
 // MARK: Inbound
 
-inline void distributed_execute_distributed_target(HeapObject *localTargetActor,
-                                                   const char *targetActorId,
-                                                   const char *targetIdentifier) {
-  ENSURE_LOGS();
+inline uint64_t distributed_execute_distributed_target_begin(HeapObject *localTargetActor,
+                                                             const char *targetActorId,
+                                                             const char *targetIdentifier) {
+  ENSURE_LOGS(0);
 
   if (!os_signpost_enabled(DistributedRemoteCallsLog))
-    return;
+    return 0;
 
   auto typeName = swift_getTypeName(swift_getObjectType(localTargetActor),
                                     /*qualified=*/true);
 
   auto id = os_signpost_id_generate(DistributedRemoteCallsLog);
-  os_signpost_event_emit(
+  os_signpost_interval_begin(
       DistributedRemoteCallsLog, id,
       SWIFT_LOG_DISTRIBUTED_INBOUND_EXECUTE_TARGET_NAME,
       "actor=%p"
@@ -185,6 +205,26 @@ inline void distributed_execute_distributed_target(HeapObject *localTargetActor,
       (int)typeName.length, typeName.data,
       targetActorId ? targetActorId : "<unknown>",
       targetIdentifier ? targetIdentifier : "<unknown>");
+  return id;
+}
+
+inline void distributed_execute_distributed_target_end(uint64_t spanId,
+                                                       const char *errorType) {
+  if (!spanId)
+    return;
+
+  ENSURE_LOGS();
+
+  if (!os_signpost_enabled(DistributedRemoteCallsLog))
+    return;
+
+  os_signpost_interval_end(
+      DistributedRemoteCallsLog, spanId,
+      SWIFT_LOG_DISTRIBUTED_INBOUND_EXECUTE_TARGET_NAME,
+      "success=%{bool}d"
+      " errorType=%{public}s",
+      errorType == nullptr,
+      errorType ? errorType : "");
 }
 
 inline uint64_t distributed_decode_arguments_begin(HeapObject *localTargetActor,

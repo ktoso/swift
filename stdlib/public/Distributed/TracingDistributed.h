@@ -35,10 +35,21 @@ bool distributed_trace_is_enabled();
 
 /// ==== Outbound ------------------------------------------------------------------------------------------------------
 
-/// Emitted when a call on a remote reference distributed actor is made and `remoteCall` will be invoked.
-void distributed_remote_call_outbound(HeapObject *localTargetActor,
-                                      const char *targetActorId,
-                                      const char *targetIdentifier);
+/// Begins an interval covering the whole outgoing call: from just before
+/// `remoteCall` is invoked until it returns (or throws), spanning encoding, the
+/// transport round trip and decoding the reply. The nested phases (such as
+/// `distributed_encode_arguments`) draw inside it.
+///
+/// Returns an opaque trace ID which must be passed to
+/// `distributed_remote_call_outbound_end`, or 0 if tracing is not enabled.
+uint64_t distributed_remote_call_outbound_begin(HeapObject *localTargetActor,
+                                                const char *targetActorId,
+                                                const char *targetIdentifier);
+
+/// Ends the interval started by `distributed_remote_call_outbound_begin`.
+///
+/// A `spanId` of 0 is ignored.
+void distributed_remote_call_outbound_end(uint64_t spanId, const char *errorType);
 
 /// Begins an interval covering the encoding of an outgoing invocation:
 /// the generic substitutions, arguments, error and return types, up to and
@@ -48,7 +59,7 @@ void distributed_remote_call_outbound(HeapObject *localTargetActor,
 /// `distributed_encode_arguments_end`, or 0 if tracing is not enabled.
 ///
 /// Only the actor pointer is recorded, not its type or ID; the
-/// `distributed_remote_call_outbound` event emitted for the same call carries
+/// `distributed_remote_call_outbound` interval opened for the same call carries
 /// those, and computing them is comparatively expensive.
 uint64_t distributed_encode_arguments_begin(HeapObject *localTargetActor,
                                             const char *targetIdentifier,
@@ -61,10 +72,21 @@ void distributed_encode_arguments_end(uint64_t spanId, const char *errorType);
 
 /// ==== Inbound -------------------------------------------------------------------------------------------------------
 
-/// Emitted when `DistributedActorSystem/executeDistributedTarget` is invoked by a system implementation.
-void distributed_execute_distributed_target(HeapObject *localTargetActor,
-                                            const char *targetActorId,
-                                            const char *targetIdentifier);
+/// Begins an interval covering the whole inbound execution of a call, from
+/// `DistributedActorSystem/executeDistributedTarget` being invoked until it
+/// returns (or throws), spanning decoding, invoking the target and the result
+/// handler. The nested phases (decode, invoke) draw inside it.
+///
+/// Returns an opaque trace ID which must be passed to
+/// `distributed_execute_distributed_target_end`, or 0 if tracing is not enabled.
+uint64_t distributed_execute_distributed_target_begin(HeapObject *localTargetActor,
+                                                      const char *targetActorId,
+                                                      const char *targetIdentifier);
+
+/// Ends the interval started by `distributed_execute_distributed_target_begin`.
+///
+/// A `spanId` of 0 is ignored.
+void distributed_execute_distributed_target_end(uint64_t spanId, const char *errorType);
 
 /// Begins an interval covering the decoding of an incoming invocation:
 /// the generic substitutions, witness tables, parameter types and return type.
