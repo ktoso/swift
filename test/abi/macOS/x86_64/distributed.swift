@@ -113,3 +113,13 @@ Added: _$s11Distributed0A5ActorPAAE9whenLocalyqd__Sgqd__xYiYaYbqd_0_YKXEYaqd_0_Y
 
 // Distributed.DistributedRemoteActorReferenceExecutor.checkIsolated() -> ()
 Added: _$s11Distributed0A28RemoteActorReferenceExecutorC13checkIsolatedyyF
+
+// New 'isSynchronousBlockingCall' hint on RemoteCallTarget, set for targets declared '@remoteCall(blocking)'
+// Distributed.RemoteCallTarget.isSynchronousBlockingCall.getter : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0Sbvg
+// Distributed.RemoteCallTarget.isSynchronousBlockingCall.setter : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0Sbvs
+// Distributed.RemoteCallTarget.isSynchronousBlockingCall.modify : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0SbvM
+// property descriptor for Distributed.RemoteCallTarget.isSynchronousBlockingCall : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0SbvpMV
