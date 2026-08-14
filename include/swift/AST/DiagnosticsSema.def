@@ -6522,9 +6522,23 @@ NOTE(distributed_actor_synchronous_access_distributed_computed_property,none,
       "access to %kind0 from outside the distributed actor %1 must be asynchronous",
       (const ValueDecl *, DeclName))
 
-ERROR(remotecall_blocking_requires_distributed,none,
+ERROR(remotecall_requires_distributed,none,
       "'@remoteCall' can only be applied to 'distributed' methods "
-      "and computed properties",
+      "and computed properties; %kind0 is not 'distributed'",
+      (const ValueDecl *))
+
+ERROR(remotecall_oneway_requires_void_result,none,
+      "'@remoteCall(oneway)' %kind0 must return 'Void'",
+      (const ValueDecl *))
+
+ERROR(remotecall_oneway_on_computed_property,none,
+      "'@remoteCall(oneway)' cannot be applied to %kind0; "
+      "oneway calls do not return a value",
+      (const ValueDecl *))
+
+ERROR(remotecall_blocking_oneway_illegal_combination,none,
+      "illegal combination of remote call options: "
+      "'blocking' remote call cannot be 'oneway'",
       ())
 
 ERROR(concurrency_lib_missing,none,

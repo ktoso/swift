@@ -565,7 +565,7 @@ static bool usesFeatureNonexhaustiveAttribute(Decl *decl) {
   return decl->getAttrs().hasAttribute<NonexhaustiveAttr>();
 }
 
-static bool usesFeatureDistributedRemoteBlockingCalls(Decl *decl) {
+static bool usesFeatureDistributedRemoteCallSemantics(Decl *decl) {
   return decl->getAttrs().hasAttribute<RemoteCallAttr>();
 }
 

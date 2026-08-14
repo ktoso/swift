@@ -871,8 +871,7 @@ BridgedCalledAttr_createParsed(BridgedASTContext cContext, SourceLoc atLoc,
 
 BridgedRemoteCallAttr
 BridgedRemoteCallAttr_createParsed(BridgedASTContext cContext, SourceLoc atLoc,
-                                   SourceRange range,
-                                   swift::RemoteCallMode mode) {
+                                   SourceRange range, uint8_t options) {
   return new (cContext.unbridged())
-      RemoteCallAttr(atLoc, range, mode, /*implicit=*/false);
+      RemoteCallAttr(atLoc, range, options, /*implicit=*/false);
 }

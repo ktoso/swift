@@ -114,12 +114,22 @@ Added: _$s11Distributed0A5ActorPAAE9whenLocalyqd__Sgqd__xYiYaYbqd_0_YKXEYaqd_0_Y
 // Distributed.DistributedRemoteActorReferenceExecutor.checkIsolated() -> ()
 Added: _$s11Distributed0A28RemoteActorReferenceExecutorC13checkIsolatedyyF
 
-// New 'isSynchronousBlockingCall' hint on RemoteCallTarget, set for targets declared '@remoteCall(blocking)'
-// Distributed.RemoteCallTarget.isSynchronousBlockingCall.getter : Swift.Bool
-Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0Sbvg
-// Distributed.RemoteCallTarget.isSynchronousBlockingCall.setter : Swift.Bool
-Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0Sbvs
-// Distributed.RemoteCallTarget.isSynchronousBlockingCall.modify : Swift.Bool
-Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0SbvM
-// property descriptor for Distributed.RemoteCallTarget.isSynchronousBlockingCall : Swift.Bool
-Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingC0SbvpMV
+// New 'isSynchronousBlockingRemoteCall' hint on RemoteCallTarget, set for targets declared '@remoteCall(blocking)'
+// Distributed.RemoteCallTarget.isSynchronousBlockingRemoteCall.getter : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingbC0Sbvg
+// Distributed.RemoteCallTarget.isSynchronousBlockingRemoteCall.setter : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingbC0Sbvs
+// Distributed.RemoteCallTarget.isSynchronousBlockingRemoteCall.modify : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingbC0SbvM
+// property descriptor for Distributed.RemoteCallTarget.isSynchronousBlockingRemoteCall : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV021isSynchronousBlockingbC0SbvpMV
+
+// New 'isOnewayRemoteCall' hint on RemoteCallTarget, set for targets declared '@remoteCall(oneway)'
+// Distributed.RemoteCallTarget.isOnewayRemoteCall.getter : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV08isOnewaybC0Sbvg
+// Distributed.RemoteCallTarget.isOnewayRemoteCall.setter : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV08isOnewaybC0Sbvs
+// Distributed.RemoteCallTarget.isOnewayRemoteCall.modify : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV08isOnewaybC0SbvM
+// property descriptor for Distributed.RemoteCallTarget.isOnewayRemoteCall : Swift.Bool
+Added: _$s11Distributed16RemoteCallTargetV08isOnewaybC0SbvpMV

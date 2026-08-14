@@ -5,7 +5,7 @@
 // REQUIRES: distributed
 
 // This test intentionally does NOT enable the 'DistributedRemoteCallSemantics'
-// experimental feature, to verify the feature-gate diagnostic on '@remoteCall'.
+// experimental feature, to verify the feature-gate diagnostic on '@remoteCall(oneway)'.
 
 import Distributed
 import FakeDistributedActorSystems
@@ -14,7 +14,7 @@ typealias DefaultDistributedActorSystem = FakeActorSystem
 
 distributed actor Greeter {
   // Without the experimental feature enabled, '@remoteCall' is rejected.
-  // expected-error@+1{{'remoteCall(blocking)' attribute is only valid when experimental feature DistributedRemoteCallSemantics is enabled}}
-  @remoteCall(blocking)
-  distributed func hello() async -> Int { 0 }
+  // expected-error@+1{{'remoteCall(oneway)' attribute is only valid when experimental feature DistributedRemoteCallSemantics is enabled}}
+  @remoteCall(oneway)
+  distributed func thanks() {}
 }

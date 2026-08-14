@@ -9141,9 +9141,48 @@ void AttributeChecker::visitRemoteCallAttr(RemoteCallAttr *attr) {
   // itself 'distributed', we should imply 'distributed' on it (add the
   // DistributedActorAttr) rather than rejecting the attribute; only reject when
   // the declaration is not a member of a distributed actor at all.
-  if (!VD || !VD->isDistributed()) {
-    diagnoseAndRemoveAttr(attr, diag::remotecall_blocking_requires_distributed);
+  if (!VD) {
+    // Attribute was written on something that isn't a value decl.
+    // '@remoteCall' is declared 'OnFunc | OnAccessor | OnVar', so this is
+    // theoretically unreachable, but defensively diagnose rather than crash.
+    diagnose(attr->getLocation(), diag::attr_name_only_at_non_local_scope,
+             attr->getAttrName());
+    attr->setInvalid();
     return;
+  }
+  if (!VD->isDistributed()) {
+    diagnoseAndRemoveAttr(attr, diag::remotecall_requires_distributed, VD);
+    return;
+  }
+
+  // Cross-option validation: some option combinations are meaningless.
+  // 'blocking' expects a synchronous request/response; 'oneway' explicitly
+  // discards any reply. They contradict each other.
+  if (attr->isBlocking() && attr->isOneway()) {
+    diagnoseAndRemoveAttr(attr,
+                          diag::remotecall_blocking_oneway_illegal_combination);
+    return;
+  }
+
+  // Per-option validation.
+  if (attr->isOneway()) {
+    // Oneway calls are fire-and-forget; a computed property inherently returns
+    // a value, so '@remoteCall(oneway)' on a 'var' is meaningless.
+    if (isa<VarDecl>(VD)) {
+      diagnoseAndRemoveAttr(attr, diag::remotecall_oneway_on_computed_property,
+                            VD);
+      return;
+    }
+
+    // A oneway distributed function must return Void.
+    if (auto *FD = dyn_cast<FuncDecl>(VD)) {
+      auto resultTy = FD->getResultInterfaceType();
+      if (!resultTy->isVoid()) {
+        diagnoseAndRemoveAttr(
+            attr, diag::remotecall_oneway_requires_void_result, VD);
+        return;
+      }
+    }
   }
 }
 

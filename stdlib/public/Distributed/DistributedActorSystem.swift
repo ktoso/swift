@@ -628,12 +628,16 @@ extension DistributedActorSystem {
 public struct RemoteCallTarget: CustomStringConvertible, Hashable {
   private let _identifier: String
 
-  // Backing storage for 'isSynchronousBlockingCall'
-  private var _isSynchronousBlockingCall: Bool
+  // Backing storage for 'isSynchronousBlockingRemoteCall'
+  private var _isSynchronousBlockingRemoteCall: Bool
+
+  // Backing storage for 'isOnewayRemoteCall'
+  private var _isOnewayRemoteCall: Bool
 
   public init(_ identifier: String) {
     self._identifier = identifier
-    self._isSynchronousBlockingCall = false
+    self._isSynchronousBlockingRemoteCall = false
+    self._isOnewayRemoteCall = false
   }
 
   /// The underlying identifier of the target, returned as-is.
@@ -654,9 +658,25 @@ public struct RemoteCallTarget: CustomStringConvertible, Hashable {
   /// when the remote call is issued, and can yield to thread starvation problems
   /// and similar issues unless used carefully.
   @available(SwiftStdlib 6.5, *)
-  public var isSynchronousBlockingCall: Bool {
-    get { _isSynchronousBlockingCall }
-    set { _isSynchronousBlockingCall = newValue }
+  public var isSynchronousBlockingRemoteCall: Bool {
+    get { _isSynchronousBlockingRemoteCall }
+    set { _isSynchronousBlockingRemoteCall = newValue }
+  }
+
+  /// Whether the target was declared '@remoteCall(oneway)'.
+  ///
+  /// This is a runtime hint for the distributed actor system that the remote
+  /// call is fire-and-forget: no peer reply is expected, and the actor system
+  /// is free to complete the local side of the call without awaiting one.
+  ///
+  /// The synthesized thunk still invokes ``remoteCallVoid`` as `try await`, so
+  /// the actor system is allowed to suspend the caller until an outgoing write
+  /// completes and to throw on send failure. It just must not depend on a
+  /// reply from the peer.
+  @available(SwiftStdlib 6.5, *)
+  public var isOnewayRemoteCall: Bool {
+    get { _isOnewayRemoteCall }
+    set { _isOnewayRemoteCall = newValue }
   }
 
   /// Attempts to pretty format the underlying target identifier.

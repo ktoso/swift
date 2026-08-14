@@ -3630,7 +3630,7 @@ class Serializer::DeclSerializer : public DeclVisitor<DeclSerializer> {
       auto abbrCode = S.DeclTypeAbbrCodes[RemoteCallDeclAttrLayout::Code];
       RemoteCallDeclAttrLayout::emitRecord(
           S.Out, S.ScratchRecord, abbrCode,
-          static_cast<uint8_t>(theAttr->getMode()), theAttr->isImplicit());
+          theAttr->getOptions(), theAttr->isImplicit());
       return;
     }
 

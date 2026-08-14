@@ -367,7 +367,7 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
           Res: SerializationRequirement {
     print("  >> remoteCall: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType)), returning:\(String(reflecting: returnType))")
     print(" > execute distributed target: \(target), identifier: \(target.identifier)")
-    if #available(SwiftStdlib 6.5, *), target.isSynchronousBlockingCall {
+    if #available(SwiftStdlib 6.5, *), target.isSynchronousBlockingRemoteCall {
       print("  >> remoteCall: is synchronous blocking call")
     }
     guard let targetActor = activeActors[actor.id] else {
@@ -425,8 +425,11 @@ public final class FakeRoundtripActorSystem: DistributedActorSystem, @unchecked 
           Act.ID == ActorID,
           Err: Error {
     print("  >> remoteCallVoid: on:\(actor), target:\(target), invocation:\(invocation), throwing:\(String(reflecting: errorType))")
-    if #available(SwiftStdlib 6.5, *), target.isSynchronousBlockingCall {
+    if #available(SwiftStdlib 6.5, *), target.isSynchronousBlockingRemoteCall {
       print("  >> remoteCallVoid: is synchronous blocking call")
+    }
+    if #available(SwiftStdlib 6.5, *), target.isOnewayRemoteCall {
+      print("  >> remoteCallVoid: is oneway call")
     }
     guard let targetActor = activeActors[actor.id] else {
       fatalError("Attempted to call mock 'roundtrip' on: \(actor.id) without active actor")

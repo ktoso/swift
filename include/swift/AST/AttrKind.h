@@ -150,14 +150,23 @@ enum class ENUM_EXTENSIBILITY_ATTR(closed) ExecutionSemantics : uint8_t {
   Last_ExecutionSemantics = Once
 };
 
-/// The mode of a '@remoteCall(...)' attribute on a distributed method.
-enum class ENUM_EXTENSIBILITY_ATTR(closed) RemoteCallMode : uint8_t {
-  /// The default async-only mode of distributed funcs.
-  Async SWIFT_NAME("async") = 0,
+/// A single option accepted by the '@remoteCall(...)' attribute on a
+/// distributed method.
+///
+/// Multiple options may be combined on a single attribute (e.g. a future
+/// '@remoteCall(compressed, oneway)'); ``RemoteCallAttr`` stores this as a
+/// bitset keyed on these enumerators. Not every combination is legal at the
+/// Sema layer -- see ``TypeCheckAttr`` for the illegal-combination diagnostics
+/// (e.g. 'blocking' + 'oneway').
+enum class ENUM_EXTENSIBILITY_ATTR(closed) RemoteCallOption : uint8_t {
   /// '@remoteCall(blocking)': hint the actor system to perform the remote
   /// call as a synchronous, blocking IPC.
-  SynchronousBlocking SWIFT_NAME("blocking"),
-  Last_RemoteCallMode = SynchronousBlocking
+  SynchronousBlocking SWIFT_NAME("blocking") = 0,
+  /// '@remoteCall(oneway)': hint the actor system that the remote call is
+  /// fire-and-forget; no peer reply is expected. Only valid on Void-returning
+  /// distributed functions.
+  Oneway SWIFT_NAME("oneway") = 1,
+  Last_RemoteCallOption = Oneway
 };
 
 enum class ENUM_EXTENSIBILITY_ATTR(closed) DeclAttrKind : unsigned {

@@ -1910,12 +1910,16 @@ bool DeclAttribute::printImpl(ASTPrinter &Printer, const PrintOptions &Options,
 
   case DeclAttrKind::RemoteCall: {
     Printer.printAttrName("@remoteCall");
-    switch (cast<RemoteCallAttr>(this)->getMode()) {
-    case RemoteCallMode::Async:
-      break;
-    case RemoteCallMode::SynchronousBlocking:
-      Printer << "(blocking)";
-      break;
+    auto *rc = cast<RemoteCallAttr>(this);
+    SmallVector<StringRef, 2> names;
+    if (rc->has(RemoteCallOption::SynchronousBlocking))
+      names.push_back("blocking");
+    if (rc->has(RemoteCallOption::Oneway))
+      names.push_back("oneway");
+    if (!names.empty()) {
+      Printer << "(";
+      llvm::interleaveComma(names, Printer.getStream());
+      Printer << ")";
     }
     break;
   }
@@ -2181,13 +2185,16 @@ StringRef DeclAttribute::getAttrName() const {
     case ExecutionSemantics::Once:
       return "called(once)";
     }
-  case DeclAttrKind::RemoteCall:
-    switch (cast<RemoteCallAttr>(this)->getMode()) {
-    case RemoteCallMode::Async:
-      return "remoteCall"; // not realy used in practice
-    case RemoteCallMode::SynchronousBlocking:
+  case DeclAttrKind::RemoteCall: {
+    auto *rc = cast<RemoteCallAttr>(this);
+    if (rc->isBlocking() && rc->isOneway())
+      return "remoteCall(blocking, oneway)";
+    if (rc->isBlocking())
       return "remoteCall(blocking)";
-    }
+    if (rc->isOneway())
+      return "remoteCall(oneway)";
+    llvm_unreachable("'@remoteCall' must carry at least one option");
+  }
   }
   llvm_unreachable("bad DeclAttrKind");
 }

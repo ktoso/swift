@@ -468,13 +468,15 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     remoteCallAttrDecl = accessor->getStorage();
   auto *remoteCallAttr = remoteCallAttrDecl->getDistributedRemoteCallAttr();
   bool isBlocking = remoteCallAttr && remoteCallAttr->isBlocking();
+  bool isOneway = remoteCallAttr && remoteCallAttr->isOneway();
 
-  // A '@remoteCall(blocking)' target needs to mutate the freshly constructed
-  // 'RemoteCallTarget', so it must be introduced as a 'var'.
+  // Any '@remoteCall(...)' mode that sets a flag on the freshly constructed
+  // 'RemoteCallTarget' needs it introduced as a 'var'.
+  bool mutatesTarget = isBlocking || isOneway;
   VarDecl *targetVar =
       VarDeclBuilder(thunk, C.Id_target)
-          .introducer(isBlocking ? VarDecl::Introducer::Var
-                                 : VarDecl::Introducer::Let)
+          .introducer(mutatesTarget ? VarDecl::Introducer::Var
+                                    : VarDecl::Introducer::Let)
           .type(remoteCallTargetTy);
 
   {
@@ -509,16 +511,22 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     remoteBranchStmts.push_back(targetPB);
     remoteBranchStmts.push_back(targetVar);
 
-    // --- Set the synchronous blocking call flag on the target
-    if (isBlocking) {
+    // --- Set the '@remoteCall(...)' mode flags on the target
+    auto setTargetFlag = [&](Identifier flagName) {
       auto *targetRef = new (C) DeclRefExpr(
           ConcreteDeclRef(targetVar), dloc, implicit, AccessSemantics::Ordinary,
           remoteCallTargetTy);
-      auto *isSyncRef = UnresolvedDotExpr::createImplicit(
-          C, targetRef, C.Id_isSynchronousBlockingCall);
+      auto *flagRef =
+          UnresolvedDotExpr::createImplicit(C, targetRef, flagName);
       auto *trueExpr = new (C) BooleanLiteralExpr(true, sloc, implicit);
-      auto *assign = new (C) AssignExpr(isSyncRef, sloc, trueExpr, implicit);
+      auto *assign = new (C) AssignExpr(flagRef, sloc, trueExpr, implicit);
       remoteBranchStmts.push_back(assign);
+    };
+    if (isBlocking) {
+      setTargetFlag(C.Id_isSynchronousBlockingRemoteCall);
+    }
+    if (isOneway) {
+      setTargetFlag(C.Id_isOnewayRemoteCall);
     }
   }
 

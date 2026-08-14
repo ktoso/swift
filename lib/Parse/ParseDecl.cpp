@@ -4379,14 +4379,67 @@ ParserStatus Parser::parseNewDeclAttribute(DeclAttributes &Attributes,
   }
 
   case DeclAttrKind::RemoteCall: {
-    auto mode = parseSingleAttrOption<RemoteCallMode>(
-        *this, Loc, AttrRange, AttrName, DK,
-        {{Context.Id_blocking, RemoteCallMode::SynchronousBlocking}});
-    if (!mode)
+    // '@remoteCall' takes at least one comma-separated option identifier,
+    // e.g. '@remoteCall(oneway)' or a future '@remoteCall(compressed, oneway)'.
+    // Sema decides which combinations are legal.
+    SWIFT_DEFER { AttrRange = SourceRange(Loc, PreviousLoc); };
+    if (!isAtAttributeLParen()) {
+      diagnose(Loc, diag::attr_expected_lparen, AttrName,
+               DeclAttribute::isDeclModifier(DK));
+      return makeParserSuccess();
+    }
+    consumeAttributeLParen();
+
+    uint8_t options = 0;
+    bool sawError = false;
+    bool first = true;
+    while (true) {
+      if (Tok.is(tok::r_paren))
+        break;
+      if (!first) {
+        if (!consumeIf(tok::comma)) {
+          diagnose(Tok, diag::attr_expected_comma, AttrName,
+                   DeclAttribute::isDeclModifier(DK));
+          sawError = true;
+          break;
+        }
+      }
+      first = false;
+
+      if (!Tok.is(tok::identifier)) {
+        diagnose(Tok, diag::attr_expected_option_such_as, AttrName,
+                 "'blocking' or 'oneway'");
+        sawError = true;
+        break;
+      }
+
+      Identifier optName = Context.getIdentifier(Tok.getText());
+      SourceLoc optLoc = consumeToken(tok::identifier);
+      std::optional<RemoteCallOption> option;
+      if (optName == Context.Id_blocking)
+        option = RemoteCallOption::SynchronousBlocking;
+      else if (optName == Context.Id_oneway)
+        option = RemoteCallOption::Oneway;
+
+      if (!option) {
+        diagnose(optLoc, diag::attr_unknown_option, optName.str(), AttrName);
+        sawError = true;
+        continue;
+      }
+      options |= (uint8_t(1) << static_cast<uint8_t>(*option));
+    }
+
+    if (!consumeIf(tok::r_paren)) {
+      diagnose(Loc, diag::attr_expected_rparen, AttrName,
+               DeclAttribute::isDeclModifier(DK));
+      return makeParserSuccess();
+    }
+
+    if (sawError || options == 0)
       return makeParserSuccess();
 
     if (!DiscardAttribute)
-      Attributes.add(new (Context) RemoteCallAttr(AtLoc, AttrRange, *mode));
+      Attributes.add(new (Context) RemoteCallAttr(AtLoc, AttrRange, options));
 
     break;
   }

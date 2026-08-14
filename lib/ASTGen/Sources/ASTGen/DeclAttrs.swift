@@ -2786,23 +2786,44 @@ extension ASTGenVisitor {
   }
 
   func generateRemoteCallAttr(attribute node: AttributeSyntax) -> BridgedRemoteCallAttr? {
-    let mode: swift.RemoteCallMode? = self.generateSingleAttrOption(
-      attribute: node,
-      {
-        switch $0.rawText {
-        case "blocking": return .blocking
-        default: return nil
-        }
-      }
-    )
-    guard let mode else {
+    // '@remoteCall(...)' accepts a comma-separated list of option identifiers.
+    guard case .argumentList(let args) = node.arguments else {
+      // TODO: diagnose missing '(...)'
       return nil
     }
+
+    var options: UInt8 = 0
+    var sawError = false
+    for arg in args {
+      guard arg.label == nil, let ref = arg.expression.as(DeclReferenceExprSyntax.self) else {
+        // TODO: diagnose non-identifier / labeled argument
+        sawError = true
+        continue
+      }
+      let name = ref.baseName
+      let option: swift.RemoteCallOption?
+      switch name.rawText {
+      case "blocking": option = .blocking
+      case "oneway": option = .oneway
+      default: option = nil
+      }
+      guard let option else {
+        // TODO: diagnose unknown option
+        sawError = true
+        continue
+      }
+      options |= UInt8(1) << UInt8(option.rawValue)
+    }
+
+    if sawError || options == 0 {
+      return nil
+    }
+
     return .createParsed(
       self.ctx,
       atLoc: self.generateSourceLoc(node.atSign),
       range: self.generateAttrSourceRange(node),
-      mode: mode
+      options: options
     )
   }
 

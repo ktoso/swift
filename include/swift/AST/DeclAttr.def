@@ -943,7 +943,7 @@ DECL_ATTR(remoteCall, RemoteCall,
   OnFunc | OnAccessor | OnVar,
   ABIBreakingToAdd | ABIBreakingToRemove | APIBreakingToAdd | APIBreakingToRemove | ForbiddenInABIAttr,
   178)
-DECL_ATTR_FEATURE_REQUIREMENT(RemoteCall, DistributedRemoteBlockingCalls)
+DECL_ATTR_FEATURE_REQUIREMENT(RemoteCall, DistributedRemoteCallSemantics)
 
 LAST_DECL_ATTR(RemoteCall)
 

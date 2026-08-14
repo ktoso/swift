@@ -153,8 +153,10 @@ enum : unsigned {
 };
 
 enum : unsigned {
-  NumRemoteCallModeBits = countBitsUsed(
-      static_cast<unsigned>(RemoteCallMode::Last_RemoteCallMode))
+  // Bitset width: one bit per enumerator in RemoteCallOption.
+  // Reserve headroom (8 bits) so adding future options doesn't require
+  // widening the inline bitfield each time; the serialization width matches.
+  NumRemoteCallOptionBits = 8
 };
 
 enum : unsigned { NumDeclAttrKindBits = countBitsUsed(NumDeclAttrKinds - 1) };
@@ -312,8 +314,8 @@ protected:
       Semantics : NumExecutionSemanticsBits
     );
 
-    SWIFT_INLINE_BITFIELD(RemoteCallAttr, DeclAttribute, NumRemoteCallModeBits,
-      Mode : NumRemoteCallModeBits
+    SWIFT_INLINE_BITFIELD(RemoteCallAttr, DeclAttribute, NumRemoteCallOptionBits,
+      Options : NumRemoteCallOptionBits
     );
   } Bits;
   // clang-format on
@@ -3914,29 +3916,58 @@ public:
 
 /// Represents a '@remoteCall' attribute with any passed options.
 /// This attribute can only be used with 'distributed' declarations.
+///
+/// The attribute carries a *set* of ``RemoteCallOption`` values (one per bit),
+/// so a call site like ``@remoteCall(oneway)`` sets a single bit and a future
+/// spelling like ``@remoteCall(compressed, oneway)`` sets several. Whether a
+/// given combination of bits is legal is a Sema concern (see
+/// ``diag::remotecall_blocking_oneway_illegal_combination`` for one example).
 class RemoteCallAttr : public DeclAttribute {
-public:
-  RemoteCallAttr(SourceLoc atLoc, SourceRange range, RemoteCallMode mode,
-                 bool implicit = false)
-      : DeclAttribute(DeclAttrKind::RemoteCall, atLoc, range, implicit) {
-    Bits.RemoteCallAttr.Mode = unsigned(mode);
+  static_assert(static_cast<unsigned>(RemoteCallOption::Last_RemoteCallOption) <
+                    NumRemoteCallOptionBits,
+                "RemoteCallOption grew past the inline bitfield width; widen "
+                "NumRemoteCallOptionBits and RemoteCallDeclAttrLayout's bitset "
+                "column together");
+
+  static uint8_t bitFor(RemoteCallOption option) {
+    return uint8_t(1) << static_cast<uint8_t>(option);
   }
 
-  RemoteCallAttr(RemoteCallMode mode)
-      : RemoteCallAttr(SourceLoc(), SourceRange(), mode) {}
+public:
+  RemoteCallAttr(SourceLoc atLoc, SourceRange range, uint8_t options,
+                 bool implicit = false)
+      : DeclAttribute(DeclAttrKind::RemoteCall, atLoc, range, implicit) {
+    Bits.RemoteCallAttr.Options = options;
+  }
 
-  RemoteCallMode getMode() const {
-    return RemoteCallMode(Bits.RemoteCallAttr.Mode);
+  RemoteCallAttr(SourceLoc atLoc, SourceRange range, RemoteCallOption option,
+                 bool implicit = false)
+      : RemoteCallAttr(atLoc, range, bitFor(option), implicit) {}
+
+  explicit RemoteCallAttr(RemoteCallOption option)
+      : RemoteCallAttr(SourceLoc(), SourceRange(), bitFor(option)) {}
+
+  /// The raw bitset of ``RemoteCallOption`` values requested at this site.
+  uint8_t getOptions() const {
+    return static_cast<uint8_t>(Bits.RemoteCallAttr.Options);
+  }
+
+  bool has(RemoteCallOption option) const {
+    return (getOptions() & bitFor(option)) != 0;
   }
 
   bool isBlocking() const {
-    return getMode() == RemoteCallMode::SynchronousBlocking;
+    return has(RemoteCallOption::SynchronousBlocking);
+  }
+
+  bool isOneway() const {
+    return has(RemoteCallOption::Oneway);
   }
 
   static RemoteCallAttr *
   createImplicit(ASTContext &ctx,
-                 RemoteCallMode mode = RemoteCallMode::SynchronousBlocking) {
-    return new (ctx) RemoteCallAttr(/*atLoc*/ {}, /*range*/ {}, mode,
+                 RemoteCallOption option = RemoteCallOption::SynchronousBlocking) {
+    return new (ctx) RemoteCallAttr(/*atLoc*/ {}, /*range*/ {}, bitFor(option),
                                     /*implicit=*/true);
   }
 
@@ -3945,11 +3976,11 @@ public:
   }
 
   RemoteCallAttr *clone(ASTContext &ctx) const {
-    return new (ctx) RemoteCallAttr(AtLoc, Range, getMode(), isImplicit());
+    return new (ctx) RemoteCallAttr(AtLoc, Range, getOptions(), isImplicit());
   }
 
   bool isEquivalent(const RemoteCallAttr *other, Decl *attachedTo) const {
-    return getMode() == other->getMode();
+    return getOptions() == other->getOptions();
   }
 };
 
