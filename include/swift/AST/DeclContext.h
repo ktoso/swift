@@ -84,6 +84,7 @@ namespace swift {
   class StructDecl;
   class AccessorDecl;
   class ClosureExpr;
+  class DeclAttribute;
 
   template <typename T>
   struct AvailableDuringLoweringDeclFilter;
@@ -217,6 +218,17 @@ struct FragileFunctionKind {
 
   Kind kind = None;
 
+  /// The attribute as written in source that induced this fragile kind, so
+  /// diagnostics can render the exact spelling the user typed (e.g. the
+  /// legacy `@_alwaysEmitIntoClient` vs the modern `@export(implementation)`,
+  /// or `@inline(always)` vs `@inlinable`).
+  ///
+  /// Nullable: only set for attribute-driven kinds (Transparent, Inlinable,
+  /// AlwaysEmitIntoClient, BackDeploy) when a corresponding source attribute
+  /// is present. The remaining kinds (DefaultArgument, PropertyInitializer,
+  /// EmbeddedAlwaysEmitIntoClient, None) are synthetic and leave this null.
+  const DeclAttribute *spelledAttribute = nullptr;
+
   friend bool operator==(FragileFunctionKind lhs, FragileFunctionKind rhs) {
     return lhs.kind == rhs.kind;
   }
@@ -226,6 +238,9 @@ struct FragileFunctionKind {
 
   /// Casts to `unsigned` for diagnostic %selects.
   unsigned getSelector() { return static_cast<unsigned>(kind); }
+
+  /// The attribute in source code that induced this fragile kind, if any.
+  const DeclAttribute *getSpelledAttribute() const { return spelledAttribute; }
 };
 
 /// A DeclContext is an AST object which acts as a semantic container

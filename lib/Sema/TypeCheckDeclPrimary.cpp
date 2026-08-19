@@ -3124,7 +3124,7 @@ public:
     if (kind.kind != FragileFunctionKind::None &&
         kind.kind != FragileFunctionKind::EmbeddedAlwaysEmitIntoClient) {
       NTD->diagnose(diag::local_type_in_inlinable_function, NTD->getName(),
-                    kind.getSelector());
+                    kind.getSelector(), kind.getSpelledAttribute());
     }
 
     if (auto *parentDecl = DC->getSelfNominalTypeDecl()) {

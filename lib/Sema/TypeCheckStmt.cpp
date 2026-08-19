@@ -1595,7 +1595,9 @@ public:
                            fragileKind == FragileFunctionKind{FragileFunctionKind::Inlinable}
                              ? diag::discard_in_inlinable_method_warning
                              : diag::discard_in_inlinable_method,
-                           fragileKind.getSelector(), nominalType)
+                           fragileKind.getSelector(),
+                           fragileKind.getSpelledAttribute(),
+                           nominalType)
             .fixItRemove(DS->getSourceRange());
         diagnosed = true;
       } else {
@@ -2717,7 +2719,8 @@ static void checkClassConstructorBody(ClassDecl *classDecl,
     auto kind = ctor->getFragileFunctionKind();
     if (kind.kind != FragileFunctionKind::None) {
       ctor->diagnose(diag::class_designated_init_inlinable_resilient,
-                     classDecl->getDeclaredInterfaceType(), kind.getSelector());
+                     classDecl->getDeclaredInterfaceType(),
+                     kind.getSpelledAttribute());
     }
   }
 

@@ -2414,12 +2414,23 @@ bool Decl::isNeverEmittedIntoClient() const {
   return false;
 }
 
-std::optional<CodeGenerationModel>
-Decl::getExplicitCodeGenerationModel() const {
-  bool sawInlinable = false;
-  for (auto attr : getAttrs()) {
+/// Compute the explicit code generation model for `D` and, if `foundAttr` is
+/// non-null, populate it with the source-spelled attribute that decided it.
+/// Shared implementation of `Decl::getExplicitCodeGenerationModel()` and
+/// `Decl::getExplicitCodeGenerationModelAttribute()`.
+static std::optional<CodeGenerationModel>
+getExplicitCodeGenerationModelImpl(const Decl *D,
+                                   const DeclAttribute **foundAttr) {
+  auto set = [&](const DeclAttribute *attr) {
+    if (foundAttr)
+      *foundAttr = attr;
+  };
+
+  const DeclAttribute *inlinableAttr = nullptr;
+  for (auto attr : D->getAttrs()) {
     // @export
     if (auto exportAttr = dyn_cast<ExportAttr>(attr)) {
+      set(exportAttr);
       switch (exportAttr->exportKind) {
         case ExportKind::Interface:
           return CodeGenerationModel::Interface;
@@ -2430,16 +2441,20 @@ Decl::getExplicitCodeGenerationModel() const {
     }
 
     // @_alwaysEmitIntoClient - historical spelling for @export(implementation)
-    if (isa<AlwaysEmitIntoClientAttr>(attr))
+    if (isa<AlwaysEmitIntoClientAttr>(attr)) {
+      set(attr);
       return CodeGenerationModel::Implementation;
+    }
 
     // @_neverEmitIntoClient - historical spelling for @export(interface)
-    if (isa<NeverEmitIntoClientAttr>(attr))
+    if (isa<NeverEmitIntoClientAttr>(attr)) {
+      set(attr);
       return CodeGenerationModel::Interface;
+    }
 
     // @inlinable
     if (isa<InlinableAttr>(attr)) {
-      sawInlinable = true;
+      inlinableAttr = attr;
       continue;
     }
 
@@ -2447,13 +2462,15 @@ Decl::getExplicitCodeGenerationModel() const {
     // (open, public, package) declarations.
     if (auto inlineAttr = dyn_cast<InlineAttr>(attr)) {
       if (inlineAttr->getKind() == InlineKind::Always) {
-        if (auto valueDecl = dyn_cast<ValueDecl>(this)) {
+        if (auto valueDecl = dyn_cast<ValueDecl>(D)) {
           AccessScope access =
                 valueDecl->getFormalAccessScope(
                     nullptr, /*treatUsableFromInlineAsPublic*/false,
                     /*ignoreImportAccessLevel*/false);
           if (access.isPublicOrPackage()) {
-            sawInlinable = true;
+            // Prefer @inlinable if we saw one earlier; otherwise this one wins.
+            if (!inlinableAttr)
+              inlinableAttr = inlineAttr;
           }
         }
       }
@@ -2463,26 +2480,40 @@ Decl::getExplicitCodeGenerationModel() const {
 
   // If we saw an inlinable attribute but no other explicit attribute,
   // treat as inlinable.
-  if (sawInlinable)
+  if (inlinableAttr) {
+    set(inlinableAttr);
     return CodeGenerationModel::Inlinable;
+  }
 
   // An accessor inherits its code generation model from the variable or
   // subscript it implements, so that `@export(...)` on a var or subscript
   // controls the linkage of its accessors as well as its storage.
   //
   // We only inherit when the storage has effective public visibility.
-  if (auto accessor = dyn_cast<AccessorDecl>(this)) {
+  if (auto accessor = dyn_cast<AccessorDecl>(D)) {
     if (auto storage = accessor->getStorage()) {
       AccessScope access =
           storage->getFormalAccessScope(
               nullptr, /*treatUsableFromInlineAsPublic*/false,
               /*ignoreImportAccessLevel*/false);
       if (access.isPublic())
-        return storage->getExplicitCodeGenerationModel();
+        return getExplicitCodeGenerationModelImpl(storage, foundAttr);
     }
   }
 
   return std::nullopt;
+}
+
+std::optional<CodeGenerationModel>
+Decl::getExplicitCodeGenerationModel() const {
+  return getExplicitCodeGenerationModelImpl(this, /*foundAttr=*/nullptr);
+}
+
+const DeclAttribute *
+Decl::getExplicitCodeGenerationModelAttribute() const {
+  const DeclAttribute *attr = nullptr;
+  (void)getExplicitCodeGenerationModelImpl(this, &attr);
+  return attr;
 }
 
 /// Determine the code generation model that is required by the given

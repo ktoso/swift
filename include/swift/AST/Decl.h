@@ -1145,6 +1145,16 @@ public:
   std::optional<CodeGenerationModel>
   getExplicitCodeGenerationModel() const;
 
+  /// The source-spelled attribute that determined this declaration's
+  /// explicit code generation model, if any.
+  ///
+  /// Returns the same attribute that `getExplicitCodeGenerationModel()`
+  /// consulted (`@export(...)`, `@_alwaysEmitIntoClient`, `@_neverEmitIntoClient`,
+  /// `@inlinable`, or `@inline(always)`), or `nullptr` if the model is
+  /// unspecified. Used by diagnostics to render the attribute as the user
+  /// wrote it in source.
+  const DeclAttribute *getExplicitCodeGenerationModelAttribute() const;
+
   /// Compute the code generation model for the declaration, combining the
   /// explicitly-specified information from attributes with defaults
   /// based on Embedded Swift or feature flags.

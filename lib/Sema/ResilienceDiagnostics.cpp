@@ -92,7 +92,8 @@ bool TypeChecker::diagnoseInlinableDeclRefAccess(SourceLoc loc,
           auto diagID = diag::resilience_decl_unavailable;
           Context.Diags
               .diagnose(loc, diagID, D, accessor->getFormalAccess(),
-                        fragileKind.getSelector())
+                        fragileKind.getSelector(),
+                        fragileKind.getSpelledAttribute())
               .warnUntilLanguageModeIf(
                   !Context.LangOpts.hasFeature(Feature::StrictAccessControl),
                   LanguageMode::future);
@@ -149,7 +150,8 @@ bool TypeChecker::diagnoseInlinableDeclRefAccess(SourceLoc loc,
 
   AccessLevel diagAccessLevel = declAccessScope.accessLevelForDiagnostics();
   Context.Diags.diagnose(loc, diagID, D, diagAccessLevel,
-                         fragileKind.getSelector());
+                         fragileKind.getSelector(),
+                         fragileKind.getSpelledAttribute());
 
   Context.Diags.diagnose(D, diag::resilience_decl_declared_here, D);
 
@@ -225,7 +227,8 @@ static bool diagnoseTypeAliasDeclRefExportability(SourceLoc loc,
                   diag::inlinable_typealias_desugars_to_type_from_hidden_module,
                   TAD, definingModule->getNameStr(), D->getNameStr(),
                   fragileKind.getSelector(), definingModule->getName(),
-                  static_cast<unsigned>(originKind))
+                  static_cast<unsigned>(originKind),
+                  fragileKind.getSpelledAttribute())
         .warnUntilLanguageModeIf(warnPreSwift6, LanguageMode::v6)
         .limitBehaviorIfMorePermissive(commonBehavior);
   }
@@ -433,7 +436,8 @@ static bool diagnoseValueDeclRefExportability(SourceLoc loc, const ValueDecl *D,
   } else {
     ctx.Diags.diagnose(loc, diag::inlinable_decl_ref_from_hidden_module, D,
                        fragileKind.getSelector(), definingModule->getName(),
-                       static_cast<unsigned>(originKind))
+                       static_cast<unsigned>(originKind),
+                       fragileKind.getSpelledAttribute())
         .warnUntilLanguageModeIf(downgradeToWarning == DowngradeToWarning::Yes,
                                  LanguageMode::v6)
         .limitBehaviorIfMorePermissive(commonBehavior);

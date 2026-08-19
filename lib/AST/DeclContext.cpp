@@ -14,6 +14,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ASTWalker.h"
 #include "swift/AST/AccessScope.h"
+#include "swift/AST/Attr.h"
 #include "swift/AST/AvailabilityContext.h"
 #include "swift/AST/ClangModuleLoader.h"
 #include "swift/AST/DeclExportabilityVisitor.h"
@@ -522,6 +523,19 @@ FragileFunctionKind DeclContext::getFragileFunctionKind() const {
 FragileFunctionKind
 swift::FragileFunctionKindRequest::evaluate(Evaluator &evaluator,
                                             DeclContext *context) const {
+  // Return the source-spelled attribute (if any) for BackDeployed. Accessors
+  // inherit from their storage decl.
+  auto backDeploySpelledAttributeOnAFD =
+      [](const AbstractFunctionDecl *AFD) -> const DeclAttribute * {
+    if (auto *attr = AFD->getAttrs().getAttribute<BackDeployedAttr>())
+      return attr;
+    if (auto accessor = dyn_cast<AccessorDecl>(AFD))
+      if (auto *attr =
+              accessor->getStorage()->getAttrs().getAttribute<BackDeployedAttr>())
+        return attr;
+    return nullptr;
+  };
+
   for (const auto *dc = context->getLocalContext(); dc && dc->isLocalContext();
        dc = dc->getParent()) {
     // Default argument initializer contexts have their resilience expansion
@@ -607,19 +621,23 @@ swift::FragileFunctionKindRequest::evaluate(Evaluator &evaluator,
 
       // If the function is public, @_transparent implies @inlinable.
       if (AFD->isTransparent()) {
-        return {FragileFunctionKind::Transparent};
+        return {FragileFunctionKind::Transparent,
+                AFD->getAttrs().getAttribute<TransparentAttr>()};
       }
 
       if (AFD->hasAttributeWithInlinableSemantics()) {
-        return {FragileFunctionKind::Inlinable};
+        return {FragileFunctionKind::Inlinable,
+                AFD->getExplicitCodeGenerationModelAttribute()};
       }
 
       if (AFD->isAlwaysEmittedIntoClient()) {
-        return {FragileFunctionKind::AlwaysEmitIntoClient};
+        return {FragileFunctionKind::AlwaysEmitIntoClient,
+                AFD->getExplicitCodeGenerationModelAttribute()};
       }
 
       if (AFD->isBackDeployed()) {
-        return {FragileFunctionKind::BackDeploy};
+        return {FragileFunctionKind::BackDeploy,
+                backDeploySpelledAttributeOnAFD(AFD)};
       }
 
       // Property and subscript accessors inherit @_alwaysEmitIntoClient,
@@ -627,13 +645,16 @@ swift::FragileFunctionKindRequest::evaluate(Evaluator &evaluator,
       if (auto accessor = dyn_cast<AccessorDecl>(AFD)) {
         auto *storage = accessor->getStorage();
         if (storage->hasAttributeWithInlinableSemantics()) {
-          return {FragileFunctionKind::Inlinable};
+          return {FragileFunctionKind::Inlinable,
+                  storage->getExplicitCodeGenerationModelAttribute()};
         }
         if (storage->isAlwaysEmittedIntoClient()) {
-          return {FragileFunctionKind::AlwaysEmitIntoClient};
+          return {FragileFunctionKind::AlwaysEmitIntoClient,
+                  storage->getExplicitCodeGenerationModelAttribute()};
         }
         if (storage->isBackDeployed()) {
-          return {FragileFunctionKind::BackDeploy};
+          return {FragileFunctionKind::BackDeploy,
+                  storage->getAttrs().getAttribute<BackDeployedAttr>()};
         }
       }
 

@@ -39,14 +39,14 @@ func internalFunc2() {} //expected-note{{global function 'internalFunc2()' is no
 
 @inline(always) // implies @inlinable
 public func publicFuncUsingInternal() {
-  internalFunc2() //expected-error{{global function 'internalFunc2()' is internal and cannot be referenced from an '@inlinable' function}}
+  internalFunc2() //expected-error{{global function 'internalFunc2()' is internal and cannot be referenced from an '@inline(always)' function}}
 }
 
 func internalFunc3() {} //expected-note{{global function 'internalFunc3()' is not '@usableFromInline' or public}}
 
 @inline(always) // implies @inlinable
 package func packageFuncUsingInternal() {
-  internalFunc3() //expected-error{{global function 'internalFunc3()' is internal and cannot be referenced from an '@inlinable' function}}
+  internalFunc3() //expected-error{{global function 'internalFunc3()' is internal and cannot be referenced from an '@inline(always)' function}}
 }
 
 @inline(always)
@@ -66,7 +66,7 @@ func internalFunc4() {} //expected-note{{global function 'internalFunc4()' is no
 @inline(always)
 public var x: Int {
    get {
-       internalFunc4() // expected-error{{global function 'internalFunc4()' is internal and cannot be referenced from an '@inlinable' function}}
+       internalFunc4() // expected-error{{global function 'internalFunc4()' is internal and cannot be referenced from an '@inline(always)' function}}
        return 1
    }
 }

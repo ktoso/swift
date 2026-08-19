@@ -5664,13 +5664,13 @@ GROUPED_ERROR(opaque_type_unsupported_availability,OpaqueTypeInference,none,
 //------------------------------------------------------------------------------
 // MARK: Discard Statement
 //------------------------------------------------------------------------------
-#define FRAGILE_FUNC_KIND \
-  "%select{a '@_transparent' function|" \
-  "an '@inlinable' function|" \
-  "an '@export(implementation)' function|" \
+#define FRAGILE_FUNC_KIND(A) \
+  "%select{a '%" #A "' function|" \
+  "an '%" #A "' function|" \
+  "an '%" #A "' function|" \
   "a default argument value|" \
   "a property initializer in a '@frozen' type|" \
-  "a '@backDeployed' function|" \
+  "a '%" #A "' function|" \
   "an embedded function not marked '@export(interface)'}"
 
 ERROR(discard_wrong_context_decl,none,
@@ -5680,11 +5680,11 @@ ERROR(discard_no_deinit,none,
       "'discard' has no effect for type %0 unless it has a deinitializer",
       (Type))
 ERROR(discard_in_inlinable_method,none,
-      "'discard' statement cannot be used in " FRAGILE_FUNC_KIND "0 inside of type %1, which is not '@frozen'",
-      (unsigned, Type))
+      "'discard' statement cannot be used in " FRAGILE_FUNC_KIND(1) "0 inside of type %2, which is not '@frozen'",
+      (unsigned, DeclAttribute, Type))
 WARNING(discard_in_inlinable_method_warning,none,
-        "'discard' statement cannot be used in " FRAGILE_FUNC_KIND "0 inside of type %1, which is not '@frozen'; this will become an error",
-        (unsigned, Type))
+        "'discard' statement cannot be used in " FRAGILE_FUNC_KIND(1) "0 inside of type %2, which is not '@frozen'; this will become an error",
+        (unsigned, DeclAttribute, Type))
 ERROR(discard_wrong_context_closure,none,
       "'discard' statement cannot appear in closure",
       ())
@@ -7786,21 +7786,21 @@ ERROR(usable_from_inline_attr_in_protocol,none,
       "'@usableFromInline' attribute cannot be used in protocols", ())
 
 ERROR(local_type_in_inlinable_function,
-      none, "type %0 cannot be nested inside " FRAGILE_FUNC_KIND "1",
-      (Identifier, unsigned))
+      none, "type %0 cannot be nested inside " FRAGILE_FUNC_KIND(2) "1",
+      (Identifier, unsigned, DeclAttribute))
 
 ERROR(resilience_decl_unavailable,
       none, "%kind0 is %select{private|fileprivate|internal|package|%error|%error}1 and "
-      "cannot be referenced from " FRAGILE_FUNC_KIND "2",
-      (const ValueDecl *, AccessLevel, unsigned))
+      "cannot be referenced from " FRAGILE_FUNC_KIND(3) "2",
+      (const ValueDecl *, AccessLevel, unsigned, DeclAttribute))
 
 WARNING(resilience_decl_unavailable_warn,
         none, "%kind0 is %select{private|fileprivate|internal|package|%error|%error}1 and "
-        "should not be referenced from " FRAGILE_FUNC_KIND "2",
-        (const ValueDecl *, AccessLevel, unsigned))
+        "should not be referenced from " FRAGILE_FUNC_KIND(3) "2",
+        (const ValueDecl *, AccessLevel, unsigned, DeclAttribute))
 
 ERROR(inlinable_decl_ref_from_hidden_module,
-      none, "%kind0 cannot be used in " FRAGILE_FUNC_KIND "1 "
+      none, "%kind0 cannot be used in " FRAGILE_FUNC_KIND(4) "1 "
       "because %select{%2 was imported implementation-only|"
       "it is an SPI imported from %2|"
       "it is SPI|"
@@ -7810,10 +7810,10 @@ ERROR(inlinable_decl_ref_from_hidden_module,
       "it was imported via the internal bridging header|"
       "%2 was not imported publicly|"
       "%0 is marked '@_implementationOnly'}3",
-      (const ValueDecl *, unsigned, Identifier, unsigned))
+      (const ValueDecl *, unsigned, Identifier, unsigned, DeclAttribute))
 
 ERROR(inlinable_typealias_desugars_to_type_from_hidden_module,
-      none, "%0 aliases '%1.%2' and cannot be used in " FRAGILE_FUNC_KIND "3 "
+      none, "%0 aliases '%1.%2' and cannot be used in " FRAGILE_FUNC_KIND(6) "3 "
       "because %select{%4 has been imported as implementation-only|"
       "it is an SPI imported from %4|"
       "<<ERROR>>|"
@@ -7823,15 +7823,15 @@ ERROR(inlinable_typealias_desugars_to_type_from_hidden_module,
       "it was imported via the internal bridging header|"
       "%4 was not imported publicly|"
       "%0 is marked '@_implementationOnly'}5",
-      (const TypeAliasDecl *, StringRef, StringRef, unsigned, Identifier, unsigned))
+      (const TypeAliasDecl *, StringRef, StringRef, unsigned, Identifier, unsigned, DeclAttribute))
 
 NOTE(missing_import_inserted,
      none, "The missing import of module %0 will be added implicitly",
      (Identifier))
 
 ERROR(availability_macro_in_inlinable, none,
-      "availability macro cannot be used in " FRAGILE_FUNC_KIND "0",
-      (unsigned))
+      "availability macro cannot be used in " FRAGILE_FUNC_KIND(1) "0",
+      (unsigned, DeclAttribute))
 
 #undef FRAGILE_FUNC_KIND
 
@@ -7841,8 +7841,8 @@ NOTE(resilience_decl_declared_here,
 
 ERROR(class_designated_init_inlinable_resilient,none,
       "initializer for class %0 is "
-      "'%select{@_transparent|@inlinable|@export(implementation)|%error}1' and must "
-      "delegate to another initializer", (Type, unsigned))
+      "'%1' and must "
+      "delegate to another initializer", (Type, DeclAttribute))
 
 ERROR(attribute_invalid_on_stored_property,
       none, "'%0' attribute cannot be applied to stored properties", (DeclAttribute))

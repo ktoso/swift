@@ -5645,7 +5645,8 @@ static bool diagnoseAvailabilityCondition(PoundAvailableInfo *info,
       if (availSpec->getMacroLoc().isValid()) {
         diags.diagnose(availSpec->getMacroLoc(),
                        swift::diag::availability_macro_in_inlinable,
-                       fragileKind.getSelector());
+                       fragileKind.getSelector(),
+                       fragileKind.getSpelledAttribute());
         return true;
       }
     }
