@@ -3,13 +3,13 @@
 // RUN: %target-swift-frontend -module-name Lib -emit-module -emit-module-path %t/Lib.swiftmodule -O -parse-as-library -target %target-swift-5.7-abi-triple -I %t %s -DLIB
 // RUN: %target-swift-frontend -emit-sil -module-name Client -O -parse-as-library -target %target-swift-5.7-abi-triple -I %t %s -DCLIENT -o /dev/null
 
+// Also validate under library evolution + TBD/IR cross-check, the mode used
+// by the source-compat suite build that surfaced the original bug.
+// RUN: %target-swift-frontend -emit-ir -validate-tbd-against-ir=all -enable-library-evolution -module-name Lib -O -parse-as-library -target %target-swift-5.7-abi-triple -I %t %s -DLIB -o /dev/null
+
 // REQUIRES: concurrency
 // REQUIRES: distributed
 // UNSUPPORTED: back_deploy_concurrency
-
-// Reproduces a SILFunction type mismatch uncovered by DistributedCluster.
-// This happens only for a synchronous distributed var decl, across modules.
-// rdar://180980491
 
 import Distributed
 import FakeDistributedActorSystems
@@ -32,6 +32,15 @@ public distributed actor WorkerPool<W: DistWorker>: DistributedActor {
   public distributed func count() async throws -> Int {
     self.workers.count
   }
+}
+
+public protocol Greeter: DistributedActor where ActorSystem == FakeActorSystem {
+  distributed var greeting: String { get }
+}
+
+public distributed actor Host: Greeter {
+  public typealias ActorSystem = FakeActorSystem
+  public distributed var greeting: String { "hello" }
 }
 
 #endif
@@ -59,5 +68,12 @@ public func use(_ system: FakeActorSystem) async throws {
   // distributed thunk to be deserialized.
   _ = try await pool.size
   _ = try await pool.count()
+}
+
+public func useGreeter(_ system: FakeActorSystem) async throws {
+  let host = Host(actorSystem: system)
+  // Reading a distributed var declared as a protocol requirement across
+  // modules forces the getter thunk (mangled ...vgTE) to be deserialized.
+  _ = try await host.greeting
 }
 #endif
