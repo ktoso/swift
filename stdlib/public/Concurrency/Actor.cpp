@@ -23,7 +23,11 @@
 #endif
 
 #include "../CompatibilityOverride/CompatibilityOverride.h"
+#if !SWIFT_CONCURRENCY_EMBEDDED
+// Private.h pulls in the demangler and other hosted C++ facilities, which are
+// unavailable when building for embedded (freestanding) targets.
 #include "../runtime/Private.h"
+#endif
 #include "swift/ABI/Actor.h"
 #include "swift/ABI/Task.h"
 #include "ExecutorBridge.h"
