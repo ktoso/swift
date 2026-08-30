@@ -3167,6 +3167,7 @@ enum class ImplicitMemberAction : uint8_t {
   ResolveCodingKeys,
   ResolveEncodable,
   ResolveDecodable,
+  ResolveEmbeddedDistributedReceiveDispatch,
 };
 
 class ResolveImplicitMemberRequest
