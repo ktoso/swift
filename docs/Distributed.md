@@ -628,7 +628,7 @@ Standard runtime entry points unavailable in the embedded `Distributed` module:
 
 Runtime entry points enabled in embedded (`stdlib/public/Concurrency/Actor.cpp`):
 
-- `swift_distributedActor_remote_initialize` — yes, needed for `Greeter.resolve(id:using:)`. The embedded variant uses the full instance size for remote proxy allocation (it doesn't trim by the field-offset vector, because `getFieldOffsets()` requires `getResilientMetadataBounds`, which the embedded runtime doesn't provide). Over-allocates by the user-defined property sizes; a follow-up should plumb a non-resilient-only field-offset path.
+- `swift_distributedActor_remote_initialize_embedded` — the embedded-only variant of `swift_distributedActor_remote_initialize`, needed for `Greeter.resolve(id:using:)`. It takes the remote-proxy allocation size and alignment mask precomputed by IRGen from `ClassLayout`, because the minimal embedded `ClassMetadata` carries no field-offset vector, `InstanceSize`, or `InstanceAlignMask` for the runtime to read. See `lib/IRGen/GenDistributed.cpp::emitDistributedActorInitializeRemote` and the trim numbers under "Heap-per-instance" below. The non-embedded `getDistributedRemoteActorAllocSize` path is unused under embedded.
 - `swift_distributed_actor_is_remote` — yes, restricted to the `DefaultActor` path. Non-default-actor distributed actors are not supported in embedded yet.
 - `swift_nonDefaultDistributedActor_initialize` — guarded out under embedded; if the user declares a non-default-actor distributed actor, `swift_distributedActor_remote_initialize` traps.
 
