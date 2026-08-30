@@ -1614,7 +1614,7 @@ static FuncDecl *createEmbeddedDistributedReceiveDispatch(
       { targetParam, invocationDecoderParam, resultHandlerParam },
       sloc);
 
-  DeclName name(C, C.getIdentifier("_executeDistributedTarget"), paramList);
+  DeclName name(C, C.Id_executeDistributedTarget, paramList);
 
   auto *funcDecl = FuncDecl::createImplicit(
       C, StaticSpellingKind::None, name, sloc,
@@ -1645,6 +1645,14 @@ void swift::synthesizeEmbeddedDistributedReceiveDispatch(
   if (!actor || !actor->isDistributedActor())
     return;
   if (!isEmbeddedDistributedActorSystem(actor))
+    return;
+
+  // This runs both eagerly from `checkDistributedActor` and lazily from
+  // `synthesizeSemanticMembersIfNeeded` when another file looks the member up,
+  // so it has to be idempotent. `lookupDirect` deliberately does not trigger
+  // synthesis, so consulting it here cannot recurse
+  if (!actor->lookupDirect(actor->getASTContext().Id_executeDistributedTarget)
+           .empty())
     return;
 
   // Collect the distributed funcs from the actor.
