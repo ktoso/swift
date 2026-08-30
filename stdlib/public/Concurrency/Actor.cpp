@@ -2962,17 +2962,17 @@ void swift::swift_nonDefaultDistributedActor_initialize(NonDefaultDistributedAct
 /// instance, so we can trim the allocation at the offset where the first
 /// user-defined field would begin.
 ///
-/// Under embedded Swift this trim is not currently feasible: the embedded
+/// Under embedded Swift this computation is not possible: the embedded
 /// `ClassMetadata` layout is intentionally minimal (just superclass + destroy
 /// + ivarDestroyer pointers; see `stdlib/public/core/EmbeddedRuntime.swift`)
 /// and does NOT carry a `TargetClassDescriptor` or field-offset vector. The
 /// non-embedded path reads `description->NumFields` and projects
 /// `metadata->getFieldOffsets()[3]`, neither of which exists in the embedded
-/// metadata. To enable trimming under embedded would require either extending
-/// the embedded class metadata to carry the trim-size, or having the compiler
-/// emit a per-actor static constant. For now we always allocate the full
-/// instance size for remote proxies in embedded; that's safe but over-allocates
-/// by the sum of user-defined property sizes
+/// metadata. Embedded therefore does not use this function at all: IRGen
+/// computes the trim size and alignment mask at compile time from `ClassLayout`
+/// and passes them to the dedicated
+/// `swift_distributedActor_remote_initialize_embedded` entry point below. See
+/// `lib/IRGen/GenDistributed.cpp::emitDistributedActorInitializeRemote`
 static size_t
 getDistributedRemoteActorAllocSize(const ClassMetadata *metadata) {
 #if !SWIFT_CONCURRENCY_EMBEDDED
