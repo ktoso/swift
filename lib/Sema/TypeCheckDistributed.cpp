@@ -775,6 +775,29 @@ bool swift::checkDistributedActorProperty(VarDecl *var, bool diagnose) {
     return true;
   }
 
+  // A 'distributed' property can only be declared inside a distributed actor,
+  // exactly like a 'distributed' method. This has to be checked before the
+  // serialization requirement lookup below, which digs the actor system out of
+  // the enclosing type and cannot cope with there not being one. A non-type
+  // context, e.g. file scope or a function body, has no 'Self' type to ask
+  auto *dc = var->getDeclContext();
+  Type selfTy;
+  if (dc->isTypeContext())
+    selfTy = dc->getSelfTypeInContext();
+
+  if (!selfTy || !selfTy->isDistributedActor()) {
+    if (diagnose) {
+      auto diagnostic =
+          var->diagnose(diag::distributed_property_not_in_distributed_actor);
+
+      if (auto *protoDecl = dc->getSelfProtocolDecl()) {
+        diagnoseDistributedFunctionInNonDistributedActorProtocol(protoDecl,
+                                                                 diagnostic);
+      }
+    }
+    return true;
+  }
+
   auto serializationRequirement =
       getDistributedActorSerializationType(var->getDeclContext());
 
