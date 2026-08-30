@@ -3048,7 +3048,11 @@ swift::swift_distributedActor_remote_initialize(const Metadata *actorType) {
 OpaqueValue*
 swift::swift_distributedActor_remote_initialize_embedded(
     const Metadata *actorType, size_t allocSize, size_t alignMask) {
-  const ClassMetadata *metadata = actorType->getClassObject();
+  // The only inline definition of Metadata::getClassObject() lives in
+  // ../runtime/Private.h, which the embedded build cannot include (it pulls in
+  // the demangler). Embedded metadata is always native Swift class metadata,
+  // which is its own class object, so cast directly
+  const ClassMetadata *metadata = cast<ClassMetadata>(actorType);
 
   HeapObject *alloc = swift_allocObject(metadata, allocSize, alignMask);
 
