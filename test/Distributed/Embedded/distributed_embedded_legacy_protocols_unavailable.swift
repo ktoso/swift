@@ -1,6 +1,5 @@
 // RUN: %target-swift-frontend -typecheck -verify -verify-ignore-unrelated -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 %s
 
-// REQUIRES: swift_in_compiler
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 
