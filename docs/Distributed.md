@@ -609,7 +609,12 @@ func remoteCall<Act>(
 }
 ```
 
-The synthesis lives in `lib/Sema/CodeSynthesisDistributedActor.cpp` (`synthesizeEmbeddedDistributedReceiveDispatch`, `createEmbeddedDistributedReceiveDispatch`, `deriveBodyEmbeddedDistributedReceiveDispatch`, `buildEmbeddedDispatchBranch`). It runs from `checkDistributedActor` in `lib/Sema/TypeCheckDistributed.cpp`, alongside the existing per-distributed-func thunk synthesis.
+The synthesis lives in `lib/Sema/CodeSynthesisDistributedActor.cpp` (`synthesizeEmbeddedDistributedReceiveDispatch`, `createEmbeddedDistributedReceiveDispatch`, `deriveBodyEmbeddedDistributedReceiveDispatch`, `buildEmbeddedDispatchBranch`). It is driven from two places, and is idempotent so that both may run:
+
+- Eagerly from `checkDistributedActor` in `lib/Sema/TypeCheckDistributed.cpp`, alongside the existing per-distributed-func thunk synthesis. This is what registers the function with `SF->addDelayedFunction` so SILGen emits it.
+- Lazily from `NominalTypeDecl::synthesizeSemanticMembersIfNeeded` (`lib/AST/Decl.cpp`) via `ImplicitMemberAction::ResolveEmbeddedDistributedReceiveDispatch`, so that a *lookup* of `_executeDistributedTarget` triggers the synthesis.
+
+The lazy path matters because the eager pass runs per source file, while the natural caller of `_executeDistributedTarget` is the actor system's `remoteCall`, which normally lives in a different file from the actor. Without it, sema reports "value of type 'Greeter' has no member '_executeDistributedTarget'" whenever the two are not in the same file. This is the same mechanism `CodingKeys` / `Encodable` / `Decodable` use. Covered by `distributed_embedded_multifile_dispatch_exec.swift`.
 
 The synthesis is opt-out: it does nothing when the actor's `ActorSystem` does not conform to `EmbeddedDistributedActorSystem`. Non-embedded distributed actors continue to use the runtime-demangler-based `swift_distributed_execute_target` path.
 
@@ -681,6 +686,13 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 - `distributed_embedded_roundtrip_exec.swift` — full executable: builds a remote reference via `Greeter.resolve`, calls `hello` on it, takes the remote branch through the encoder/`remoteCall`/decoder, asserts the result flows back.
 - `distributed_embedded_any_some_param_diag.swift` — `-verify` test pinning Phase 2 sema: `any P` with `@Resolvable` accepted; `some P` rejected with "use 'any P' instead"; `any P` without `@Resolvable` rejected; user-written generic distributed funcs rejected.
 - `distributed_embedded_resolvable_any_roundtrip_exec.swift` — full Phase 2 executable: `Hub.dispatch(to: any RWorker)` invoked with a `$RWorker` proxy, inner `worker.work(name:)` re-enters the stub transport and dispatches to the concrete `WorkerImpl.work`, result flows back.
+- `distributed_embedded_multifile_dispatch_exec.swift` — the actor and the actor system live in separate files (the actor is in `Inputs/multifile_dispatch_actor.swift`), exercised in both file orders. Pins the lazy-synthesis path for `_executeDistributedTarget`; every other test here is single-file.
+
+Note when adding tests here: gate on `swift_feature_Embedded` plus
+`optimized_stdlib` / `executable_test` / OS as appropriate. Do **not** write
+`// REQUIRES: swift_in_compiler` — that feature is not defined anywhere in the
+repository, so it silently marks the test `UNSUPPORTED` forever. Every test in
+this directory carried it at one point and none of them ran.
 
 ## Code-size overhead
 
@@ -1018,3 +1030,7 @@ to the user via the implicit `$P: P` existential conversion.
   distributed methods, picked up after the design is settled.
 
 - **Non-default-actor distributed actors.** Currently trap at runtime in embedded (the `NonDefaultDistributedActor` machinery is gated out). Either re-enable it under embedded or diagnose at the actor declaration site.
+
+- **`distributed var` is not dispatched.** The sender side works: `checkDistributedActor` synthesizes the thunk for a `distributed var` via its `VarDecl` arm. But the receive-side dispatch table does not, because the collection loop in `synthesizeEmbeddedDistributedReceiveDispatch` only walks `dyn_cast<FuncDecl>(member)`, and a `distributed var`'s getter is an `AccessorDecl` nested inside the `VarDecl` rather than a direct member of the actor. The result is no dispatch branch, so reading a `distributed var` on a remote reference throws `EmbeddedDistributedTargetNotFound` at runtime with no compile-time diagnostic. There is no test coverage for `distributed var` in this directory at all.
+
+  To support it: add a `VarDecl` arm to that collection loop keyed on `var->getDistributedThunk()`, emit a branch on the getter thunk's mangled name whose body reads the property and hands the value to `onReturn(_:)` (no arguments to decode, so it is simpler than a method branch), and extend `checkEmbeddedDistributedFunctionCoverage` to cover the getter's return type so a missing overload is a compile-time error rather than a runtime one.
