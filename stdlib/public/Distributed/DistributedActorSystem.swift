@@ -409,11 +409,13 @@ public protocol DistributedActorSystem<SerializationRequirement>: Sendable {
   ) async throws
 }
 
+#if !$Embedded
 @available(SwiftStdlib 6.5, *)
 extension DistributedActorSystem {
   /// Default implementation, does nothing.
   public func resignRemoteID(_ id: ActorID) {}
 }
+#endif // !$Embedded
 
 // ==== ----------------------------------------------------------------------------------------------------------------
 // MARK: Execute Distributed Methods
@@ -662,6 +664,7 @@ extension DistributedActorSystem {
 }
 #endif // !$Embedded
 
+#if !$Embedded
 @export(implementation)
 @available(SwiftStdlib 5.7, *)
 internal func _validateMatchingInvocationDecoder<
@@ -713,6 +716,7 @@ internal func _validateMatchingResultHandler<
       errorCode: errorCode)
   }
 }
+#endif // !$Embedded
 
 /// Represents a 'target' of a distributed call, such as a `distributed func` or
 /// `distributed` computed property. Identification schemes may vary between
