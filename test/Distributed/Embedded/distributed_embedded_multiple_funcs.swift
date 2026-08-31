@@ -97,11 +97,13 @@ distributed actor MultiFuncActor {
   }
 }
 
-// Each distributed func has its own TE thunk.
-// CHECK-DAG: sil hidden [thunk] [distributed]{{.*}}MultiFuncActorC5hello4nameS2S_tYaKFTE
-// CHECK-DAG: sil hidden [thunk] [distributed]{{.*}}MultiFuncActorC6squareyS2iYaKFTE
-// CHECK-DAG: sil hidden [thunk] [distributed]{{.*}}MultiFuncActorC8repeated_5countSiSS_SitYaKFTE
-// CHECK-DAG: sil hidden [thunk] [distributed]{{.*}}MultiFuncActorC6notifyyySSYaKFTE
+// Each distributed func has its own TE thunk. The `_executeDistributedTarget`
+// witness references these thunks, so under Embedded's CMO their linkage is
+// promoted; match with or without the `hidden` keyword.
+// CHECK-DAG: sil{{( hidden)?}} [thunk] [distributed]{{.*}}MultiFuncActorC5hello4nameS2S_tYaKFTE
+// CHECK-DAG: sil{{( hidden)?}} [thunk] [distributed]{{.*}}MultiFuncActorC6squareyS2iYaKFTE
+// CHECK-DAG: sil{{( hidden)?}} [thunk] [distributed]{{.*}}MultiFuncActorC8repeated_5countSiSS_SitYaKFTE
+// CHECK-DAG: sil{{( hidden)?}} [thunk] [distributed]{{.*}}MultiFuncActorC6notifyyySSYaKFTE
 
 // Both String and Int decode overloads are emitted on MyDecoder.
 // CHECK-DAG: sil{{.*}}@${{.+}}MyDecoderV18decodeNextArgumentyS2SmKF

@@ -28,7 +28,9 @@ set(swift_distributed_link_libraries
 add_swift_target_library(swiftDistributed ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_STDLIB
   DistributedActor.cpp
   DistributedActor.swift
+  DistributedActor+Embedded.swift
   DistributedActorSystem.swift
+  DistributedActorSystem+Embedded.swift
   DistributedAssertions.swift
   DistributedDefaultExecutor.swift
   DistributedMacros.swift
@@ -143,7 +145,9 @@ if(SWIFT_SHOULD_BUILD_EMBEDDED_STDLIB AND SWIFT_SHOULD_BUILD_EMBEDDED_DISTRIBUTE
 
       DistributedActor.cpp
       DistributedActor.swift
+      DistributedActor+Embedded.swift
       DistributedActorSystem.swift
+      DistributedActorSystem+Embedded.swift
       DistributedAssertions.swift
       DistributedDefaultExecutor.swift
       DistributedMacros.swift

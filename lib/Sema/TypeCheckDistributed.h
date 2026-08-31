@@ -64,12 +64,15 @@ void diagnoseDistributedFunctionInNonDistributedActorProtocol(
 /// Emit a FixIt suggesting to add Codable to the nominal type.
 void addCodableFixIt(const NominalTypeDecl *nominal, InFlightDiagnostic &diag);
 
-/// Synthesize a `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
-/// instance method on the given distributed actor, dispatching by mangled
-/// target name to each of the actor's distributed functions. Only runs
-/// when the actor is compiled under the Embedded feature. No-op otherwise.
-void synthesizeEmbeddedDistributedReceiveDispatch(
-    SourceFile *SF, ClassDecl *actor);
+/// Create the `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+/// instance method for the given distributed actor, dispatching by mangled
+/// target name to each of the actor's distributed functions. Returns the
+/// synthesized FuncDecl (with a body synthesizer attached), or null when the
+/// actor is not an embedded distributed actor or its actor system type is
+/// unavailable. The returned decl is not added to the actor; the derived
+/// conformance machinery publishes it as the witness for the
+/// `DistributedActor._executeDistributedTarget` requirement.
+FuncDecl *createEmbeddedDistributedReceiveDispatch(ClassDecl *actor);
 
 }
 

@@ -29,23 +29,18 @@
 // The compiler-synthesized `_executeDistributedTarget` must be visible from a
 // file OTHER than the one declaring the `distributed actor`.
 //
-// `synthesizeEmbeddedDistributedReceiveDispatch` is driven eagerly from
-// `TypeChecker::checkDistributedActor`, which runs per-source-file. A reference
-// from another file could therefore be resolved before the actor's own file had
-// been checked, and sema would report:
-//
-//   error: value of type 'Greeter' has no member '_executeDistributedTarget'
+// `_executeDistributedTarget` is a real `DistributedActor` protocol requirement
+// (in the Embedded protocol shape) whose witness is produced by the derived-
+// conformance machinery, the same path that derives `resolve` / `id` /
+// `actorSystem` / `unownedExecutor`. Because it is a genuine witness, a
+// reference from another file resolves it through normal conformance lookup, so
+// synthesis does not depend on which file the frontend type-checks first.
 //
 // This is not a corner case: the actor system's `remoteCall` is the natural
 // caller of `_executeDistributedTarget`, and a real actor system lives in its
 // own file (or its own module-internal file) rather than next to every actor.
-// Every other test in this directory is single-file, which is precisely why
-// this went unnoticed.
-//
-// The fix routes synthesis through `NominalTypeDecl::synthesizeSemanticMembers-
-// IfNeeded` (see `ImplicitMemberAction::ResolveEmbeddedDistributedReceive-
-// Dispatch`), the same lazy-member mechanism `CodingKeys` / `Encodable` /
-// `Decodable` use, so the lookup itself triggers the synthesis.
+// Every other test in this directory is single-file, which is why this path
+// needs its own coverage.
 //
 // `Greeter` is declared in Inputs/multifile_dispatch_actor.swift.
 
