@@ -29,5 +29,9 @@ public distributed actor GreeterImpl: Greeter {
   public distributed func farewell(name: String) -> String {
     return "Goodbye, \(name)!"
   }
+
+  public distributed func note(_ message: String) {
+    print("[swift] server noted: \(message)")
+  }
 }
 

@@ -287,7 +287,9 @@ public final class EmbeddedFakeRoundtripActorSystem: DistributedActorSystem, @un
     // Take the serialized response back across the wire and rebuild the decoder
     // the caller reads its return value from
     let responseWire = resultBuffer.returnBytes
+
     // ==================== NETWORK: response -> caller ====================
+
     let responseBuffer = CallBuffer()
     responseBuffer.argBytes = responseWire
     return InvocationDecoder(buffer: responseBuffer)
@@ -299,6 +301,25 @@ public final class EmbeddedFakeRoundtripActorSystem: DistributedActorSystem, @un
     invocation: inout InvocationEncoder
   ) async throws
       where Act: DistributedActor, Act.ActorSystem == EmbeddedFakeRoundtripActorSystem {
-    fatalError("not used in this test")
+    print("[swift] remoteCallVoid reached")
+    guard let dispatch = active[actor.id] else {
+      fatalError("no local actor hosted for the target id")
+    }
+
+    // Same request crossing as `remoteCall`: hand the callee a copy of the
+    // serialized arguments over the wire
+    let requestWire = invocation.buffer.argBytes
+    // ==================== NETWORK: request -> callee =====================
+    let requestBuffer = CallBuffer()
+    requestBuffer.argBytes = requestWire
+    var decoder = InvocationDecoder(buffer: requestBuffer)
+
+    // The callee decodes its arguments and runs the target. A void target
+    // resolves through the handler's `onReturnVoid`, which writes an empty
+    // response - there is nothing to read back, so unlike `remoteCall` this
+    // returns no decoder
+    let resultBuffer = ResultBuffer()
+    let handler = ResultHandler(buffer: resultBuffer)
+    try await dispatch(target, &decoder, handler)
   }
 }
