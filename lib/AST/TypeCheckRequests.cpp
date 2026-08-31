@@ -1327,9 +1327,6 @@ void swift::simple_display(llvm::raw_ostream &out,
   case ImplicitMemberAction::ResolveDecodable:
     out << "resolve Decodable.init(from:)";
     break;
-  case ImplicitMemberAction::ResolveEmbeddedDistributedReceiveDispatch:
-    out << "resolve _executeDistributedTarget(target:invocationDecoder:resultHandler:)";
-    break;
   }
 }
 

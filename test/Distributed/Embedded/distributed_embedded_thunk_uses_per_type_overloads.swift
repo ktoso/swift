@@ -85,7 +85,7 @@ distributed actor Greeter {
 // the user's encoder, not a generic-over-SerializationRequirement one.
 // Confirm the call site references the exact non-generic user method.
 
-// CHECK-LABEL: sil hidden{{.*}} @${{.*}}GreeterC5hello4nameS2S_tYaKFTE
+// CHECK-LABEL: sil{{.*}} @${{.*}}GreeterC5hello4nameS2S_tYaKFTE
 // CHECK: function_ref @${{.+}}MyEncoderV14recordArgumentyy11Distributed010RemoteCallK0VySSGKF
 // CHECK: function_ref @${{.+}}MySystemC10remoteCall2on6target10invocation
 // CHECK: function_ref @${{.+}}MyDecoderV18decodeNextArgumentyS2SmKF

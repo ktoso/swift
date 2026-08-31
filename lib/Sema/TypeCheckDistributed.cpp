@@ -937,8 +937,7 @@ static void emitEmbeddedMissingOverloadNoteWithFixIt(
 ///
 /// Emits diagnostics for missing overloads and returns true if any were
 /// missing.
-static bool checkEmbeddedDistributedFunctionCoverage(
-    AbstractFunctionDecl *func) {
+static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func) {
   auto &ctx = func->getASTContext();
 
   auto *actorOrExt = func->getDeclContext();
@@ -1313,9 +1312,8 @@ bool CheckDistributedFunctionRequest::evaluate(
     return true;
   }
 
-  // Embedded Swift: verify the actor system's concrete encoder/decoder/
-  // handler types have the per-type overloads the synthesized thunk and
-  // accessor will reference.
+  // Embedded Swift: verify the actor system's concrete encoder/decoder/result-handler
+  // types have the per-type overloads the synthesized thunk and accessor will reference.
   if (C.LangOpts.hasFeature(Feature::Embedded)) {
     if (checkEmbeddedDistributedFunctionCoverage(func))
       return true;
@@ -1392,6 +1390,26 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
   recordRequiredImportAccessLevelForDecl(C.getDistributedActorDecl(), nominal,
                                          nominal->getEffectiveAccess(), loc);
 
+  // Under Embedded Swift the serialization surface is monomorphized: every
+  // recordArgument / decodeNextArgument / onReturn call, and the synthesized
+  // receiver-side dispatch, resolves to a concrete per-type overload on the
+  // actor system's encoder/decoder/handler. That requires a concrete
+  // `ActorSystem`. An actor generic over its actor system has an archetype
+  // system with no such overloads, so reject it up front with a clear error
+  // instead of failing confusingly later during synthesis.
+  //
+  // Only concrete distributed actors carry a bound `ActorSystem`; the
+  // `DistributedActor` protocol (and its extensions) reach this check too, but
+  // `getDistributedActorSystemType` asserts on a `ProtocolDecl`
+  if (C.LangOpts.hasFeature(Feature::Embedded) && !isa<ProtocolDecl>(nominal)) {
+    Type systemTy = getDistributedActorSystemType(nominal);
+    if (systemTy && !systemTy->hasError() && !systemTy->getAnyNominal()) {
+      nominal->diagnose(
+          diag::distributed_embedded_generic_actor_system_not_supported);
+      return;
+    }
+  }
+
   // ==== Constructors
   // --- Get the default initializer
   // If applicable, this will create the default 'init(transport:)' initializer
@@ -1433,13 +1451,6 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
         SF->addDelayedFunction(thunk);
       }
     }
-  }
-
-  // Under Embedded Swift, synthesize the per-actor receiver-side
-  // dispatch method `_executeDistributedTarget(target:invocationDecoder:
-  // resultHandler:)`. This is no-op for non-embedded distributed actors.
-  if (auto *classDecl = dyn_cast<ClassDecl>(nominal)) {
-    synthesizeEmbeddedDistributedReceiveDispatch(SF, classDecl);
   }
 }
 

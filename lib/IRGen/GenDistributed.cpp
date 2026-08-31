@@ -460,8 +460,9 @@ void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
   // generic `decodeNextArgument<Arg>()` via a dispatch thunk). Embedded
   // actor systems dispatch via the compiler-synthesized per-actor
   // `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
-  // method instead (see `synthesizeEmbeddedDistributedReceiveDispatch`
-  // in lib/Sema/CodeSynthesisDistributedActor.cpp). Skip emitting the
+  // method instead (see `createEmbeddedDistributedReceiveDispatch`
+  // in lib/Sema/CodeSynthesisDistributedActor.cpp, derived as a
+  // `DistributedActor` protocol witness). Skip emitting the
   // standard accessor; emitting it would pull in references to the
   // standard dispatch thunk of
   // `DistributedTargetInvocationDecoder.decodeNextArgument`, which the

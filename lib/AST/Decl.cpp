@@ -7008,19 +7008,6 @@ void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
     }
   }
 
-  // `_executeDistributedTarget(target:invocationDecoder:resultHandler:)` is
-  // synthesized on distributed actors compiled under the Embedded feature.
-  // Unlike the cases above it is normally referenced from a *different* file in
-  // the same module (the actor system's `remoteCall` calls it), and the eager
-  // synthesis in `checkDistributedActor` may not have run for the actor's file
-  // by then. Drive it from the lookup instead. Matched on the base name so both
-  // the compound and the bare spelling trigger it.
-  if (!action && !baseName.isSpecial() &&
-      baseName.getIdentifier() == Context.Id_executeDistributedTarget) {
-    action.emplace(
-        ImplicitMemberAction::ResolveEmbeddedDistributedReceiveDispatch);
-  }
-
   if (auto actionToTake = action) {
     (void)evaluateOrDefault(Context.evaluator,
         ResolveImplicitMemberRequest{this, actionToTake.value()}, {});

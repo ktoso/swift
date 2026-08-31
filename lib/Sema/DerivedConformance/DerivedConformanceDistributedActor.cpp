@@ -736,6 +736,29 @@ static ValueDecl *deriveDistributedActor_unownedExecutor(DerivedConformance &der
 }
 
 /******************************************************************************/
+/*********** EXECUTE-DISTRIBUTED-TARGET FUNCTION (EMBEDDED ONLY) **************/
+/******************************************************************************/
+
+/// Derive the witness for the Embedded-only
+/// `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+/// requirement. Delegates to the shared builder in
+/// `CodeSynthesisDistributedActor.cpp`, then publishes the result through the
+/// derived-conformance context so it gains cross-file visibility (the actor
+/// system's `remoteCall`, potentially in a different file, calls it).
+static FuncDecl *
+deriveDistributedActor_executeDistributedTarget(DerivedConformance &derived) {
+  auto *classDecl = dyn_cast<ClassDecl>(derived.Nominal);
+  assert(classDecl && classDecl->isDistributedActor());
+
+  auto *fn = createEmbeddedDistributedReceiveDispatch(classDecl);
+  if (!fn)
+    return nullptr;
+
+  derived.addMembersToConformanceContext({fn});
+  return fn;
+}
+
+/******************************************************************************/
 /**************************** ENTRY POINTS ************************************/
 /******************************************************************************/
 
@@ -757,6 +780,13 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
     // if we are invoked here we know for sure it is for the "right" function
     if (func->getName().getBaseName() == Context.Id_resolve) {
       return deriveDistributedActor_resolve(*this);
+    }
+
+    // `_executeDistributedTarget` is an Embedded-only requirement; the
+    // derivable check in `getDerivableRequirement` already gated on the
+    // Embedded feature before we get here
+    if (func->getName().getBaseName() == Context.Id_executeDistributedTarget) {
+      return deriveDistributedActor_executeDistributedTarget(*this);
     }
   }
 

@@ -1488,19 +1488,6 @@ ResolveImplicitMemberRequest::evaluate(Evaluator &evaluator,
     (void)evaluateTargetConformanceTo(decodableProto);
     break;
   }
-  case ImplicitMemberAction::ResolveEmbeddedDistributedReceiveDispatch: {
-    // `_executeDistributedTarget(target:invocationDecoder:resultHandler:)` is
-    // synthesized on every distributed actor compiled under the Embedded
-    // feature. It is also synthesized eagerly from
-    // `checkDistributedActor`, but a reference from a *different* file in the
-    // same module can be resolved before that runs, so honor the lookup here
-    // too. `synthesizeEmbeddedDistributedReceiveDispatch` is a no-op when the
-    // member already exists or the actor is not an embedded one.
-    if (auto *classDecl = dyn_cast<ClassDecl>(target))
-      synthesizeEmbeddedDistributedReceiveDispatch(
-          target->getParentSourceFile(), classDecl);
-    break;
-  }
   }
   return std::make_tuple<>();
 }
