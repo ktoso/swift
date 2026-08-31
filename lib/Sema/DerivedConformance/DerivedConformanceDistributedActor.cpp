@@ -741,10 +741,13 @@ static ValueDecl *deriveDistributedActor_unownedExecutor(DerivedConformance &der
 
 /// Derive the witness for the Embedded-only
 /// `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
-/// requirement. Delegates to the shared builder in
-/// `CodeSynthesisDistributedActor.cpp`, then publishes the result through the
-/// derived-conformance context so it gains cross-file visibility (the actor
-/// system's `remoteCall`, potentially in a different file, calls it).
+/// requirement. Builds the body via the shared helper in
+/// `CodeSynthesisDistributedActor.cpp` and adds it to the conformance context,
+/// exactly like every other derived witness (`resolve`, `unownedExecutor`).
+///
+/// Deriving it as a real protocol witness (rather than the old hand-synthesized
+/// member) is what makes it visible cross-file: the actor system's `remoteCall`
+/// can be in a different file and still resolve the call through the conformance.
 static FuncDecl *
 deriveDistributedActor_executeDistributedTarget(DerivedConformance &derived) {
   auto *classDecl = dyn_cast<ClassDecl>(derived.Nominal);
