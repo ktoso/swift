@@ -30,15 +30,14 @@ public struct B_ID: Sendable, Hashable {
   public init(id: UInt64) { self.id = id }
 }
 
-public struct B_E: EmbeddedDistributedTargetInvocationEncoder {
+public struct B_E: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension B_E {
-  public mutating func recordReturnType(_ type: Int.Type) throws {}
 }
 
-public struct B_D: EmbeddedDistributedTargetInvocationDecoder {
+public struct B_D: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension B_D {
@@ -47,7 +46,7 @@ extension B_D {
   public mutating func decodeNextArgument(_ type: Int.Type) throws -> Int { 0 }
 }
 
-public struct B_H: EmbeddedDistributedTargetInvocationResultHandler {
+public struct B_H: DistributedTargetInvocationResultHandler {
   public init() {}
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws { fatalError() }
@@ -65,7 +64,7 @@ public final class TargetBox: @unchecked Sendable {
   public init() {}
 }
 
-public final class B_Sys: EmbeddedDistributedActorSystem, @unchecked Sendable {
+public final class B_Sys: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = B_ID
   public typealias InvocationEncoder = B_E
   public typealias InvocationDecoder = B_D

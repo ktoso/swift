@@ -41,7 +41,7 @@ final class CallBuffer {
 // ==== ----------------------------------------------------------------------
 // MARK: Encoder / Decoder / ResultHandler with $RWorker overloads
 
-public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+public struct MyEncoder: DistributedTargetInvocationEncoder {
   let buffer: CallBuffer
   init(buffer: CallBuffer) { self.buffer = buffer }
 
@@ -54,11 +54,9 @@ extension MyEncoder {
   public mutating func recordArgument(_ argument: RemoteCallArgument<$RWorker>) throws {
     buffer.argWorker = argument.value
   }
-  public mutating func recordReturnType(_ type: String.Type) throws {}
-  public mutating func recordReturnType(_ type: $RWorker.Type) throws {}
 }
 
-public struct MyDecoder: EmbeddedDistributedTargetInvocationDecoder {
+public struct MyDecoder: DistributedTargetInvocationDecoder {
   let buffer: CallBuffer
   init(buffer: CallBuffer) { self.buffer = buffer }
 }
@@ -75,7 +73,7 @@ extension MyDecoder {
   }
 }
 
-public struct MyResultHandler: EmbeddedDistributedTargetInvocationResultHandler {
+public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   let buffer: CallBuffer
   init(buffer: CallBuffer) { self.buffer = buffer }
 
@@ -101,7 +99,7 @@ public struct MyActorID: Sendable, Hashable {
   public init(id: UInt64) { self.id = id }
 }
 
-public final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
+public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder

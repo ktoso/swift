@@ -6236,9 +6236,9 @@ ERROR(distributed_actor_func_param_not_codable,none,
       "serialization requirement '%3'",
       (Identifier, Type, const AbstractFunctionDecl *, StringRef))
 
-// Embedded Swift: per-type overload coverage for the
-// EmbeddedDistributedTargetInvocation{Encoder,Decoder,ResultHandler}
-// protocol family. Under Embedded, the user provides non-generic
+// Embedded Swift: per-type overload coverage for the embedded
+// `DistributedTargetInvocation{Encoder,Decoder,ResultHandler}` shapes.
+// Under Embedded, the user provides non-generic
 // overloads on their concrete encoder/decoder/handler types for each
 // type used in a distributed func; the compiler verifies coverage at
 // type-check time and emits these diagnostics for missing overloads.
@@ -6249,11 +6249,6 @@ ERROR(distributed_embedded_missing_record_argument,none,
 ERROR(distributed_embedded_missing_decode_next_argument,none,
       "embedded distributed actor system decoder %0 is missing an "
       "overload of 'decodeNextArgument' for type %1 in %kindonly2",
-      (Type, Type, const AbstractFunctionDecl *))
-ERROR(distributed_embedded_missing_record_return_type,none,
-      "embedded distributed actor system encoder %0 is missing an "
-      "overload of 'recordReturnType' for the return type %1 of "
-      "%kindonly2",
       (Type, Type, const AbstractFunctionDecl *))
 ERROR(distributed_embedded_missing_on_return,none,
       "embedded distributed actor system result handler %0 is missing "

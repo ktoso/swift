@@ -112,16 +112,18 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
          funcDC->getSelfNominalTypeDecl()->isDistributedActor() &&
          "Distributed function must be part of distributed actor");
 
-  // True when the enclosing distributed actor's `ActorSystem` conforms to
-  // `EmbeddedDistributedActorSystem`. In that mode we emit a different
+  // True when the enclosing distributed actor is compiled under the Embedded
+  // feature. In that mode we emit a different
   // thunk shape that uses non-generic per-type encode/decode overloads on
   // the user's concrete encoder/decoder/handler types, skips
   // `recordErrorType`, omits the `throwing:` and `returning:` labels on
   // `remoteCall`, and (for non-Void returns) decodes the result via
   // `decoder.decodeNextArgument(R.self)` on the decoder returned by
   // `remoteCall`.
+  auto *selfNominal = funcDC->getSelfNominalTypeDecl();
   const bool isEmbeddedSystem =
-      isEmbeddedDistributedActorSystem(funcDC->getSelfNominalTypeDecl());
+      selfNominal && selfNominal->isDistributedActor() &&
+      selfNominal->getASTContext().LangOpts.hasFeature(Feature::Embedded);
 
   auto selfDecl = thunk->getImplicitSelfDecl();
   selfDecl->addAttribute(new (C) KnownToBeLocalAttr(implicit));
@@ -234,8 +236,8 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
 
   // --- Recording invocation details
   // -- recordGenericSubstitution(s)
-  // Skipped under Embedded: the EmbeddedDistributedTargetInvocationEncoder
-  // has no `recordGenericSubstitution` requirement, and generic distributed
+  // Skipped under Embedded: the embedded `DistributedTargetInvocationEncoder`
+  // shape has no `recordGenericSubstitution` requirement, and generic distributed
   // funcs are rejected by sema before we get here. The remaining generic
   // env entries are protocol-extension `Self` parameters (e.g. the thunks
   // synthesized for `@Resolvable` protocol extensions), which carry no
@@ -408,9 +410,9 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   }
 
   // -- recordErrorType
-  // Skipped under Embedded: the EmbeddedDistributedTargetInvocationEncoder
-  // does not have a `recordErrorType` requirement (errors travel as
-  // `any Error` and need no separate metatype recording).
+  // Skipped under Embedded: the embedded `DistributedTargetInvocationEncoder`
+  // shape does not have a `recordErrorType` requirement (errors travel as
+  // `any Error` and need no separate metatype recording)
   if (func->hasThrows() && !isEmbeddedSystem) {
     auto recordErrorTypeName = DeclName(C, C.Id_recordErrorType,
                                         /*labels=*/{Identifier()});
@@ -437,7 +439,12 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   }
 
   // -- recordReturnType
-  if (!isVoidReturn) {
+  // Skipped under Embedded: the return type carries no wire metadata there.
+  // The receiver-side dispatch knows each target's concrete return type
+  // statically (from the mangled target name), and the sender decodes the
+  // result via `decoder.decodeNextArgument(R.self)`, so there is nothing for
+  // a `recordReturnType` overload to do
+  if (!isVoidReturn && !isEmbeddedSystem) {
     auto recordReturnTypeName = DeclName(C, C.Id_recordReturnType,
                                          /*labels=*/{Identifier()});
 
@@ -646,8 +653,8 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
       auto resultType =
           func->mapTypeIntoEnvironment(func->getResultInterfaceType());
       // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`
-      // The decoder's overload is on `$P`, and the embedded `recordReturnType`
-      // call above already substituted, so the wire-level shape is `$P`
+      // so the decoder's per-type overload is looked up on `$P`, the same
+      // wire-level shape the sender used
       Type decodedReturnType = resultType;
       if (Type stubTy = getDistributedResolvableProtocolStubType(resultType))
         decodedReturnType = func->mapTypeIntoEnvironment(stubTy);
@@ -1134,8 +1141,8 @@ addDistributedActorCodableConformance(
 // ==== ----------------------------------------------------------------------
 // MARK: Embedded receiver-side dispatch synthesis
 //
-// For every `distributed actor` whose `ActorSystem` conforms to
-// `EmbeddedDistributedActorSystem`, the compiler synthesizes:
+// For every `distributed actor` compiled under the Embedded feature, the
+// compiler synthesizes:
 //
 //   nonisolated public func _executeDistributedTarget(
 //     target: RemoteCallTarget,
@@ -1561,14 +1568,13 @@ static FuncDecl *createEmbeddedDistributedReceiveDispatch(
   const SourceLoc sloc = SourceLoc();
 
   // Look up the actor system, then its InvocationDecoder/ResultHandler
-  // type witnesses against EmbeddedDistributedActorSystem.
+  // type witnesses against DistributedActorSystem.
   Type systemTy = getDistributedActorSystemType(actor);
   if (!systemTy || systemTy->hasError())
     return nullptr;
 
-  auto *embeddedDAS =
-      C.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
-  if (!embeddedDAS)
+  auto *das = C.getDistributedActorSystemDecl();
+  if (!das)
     return nullptr;
 
   auto *systemNominal = systemTy->getAnyNominal();
@@ -1576,7 +1582,7 @@ static FuncDecl *createEmbeddedDistributedReceiveDispatch(
     return nullptr;
 
   auto sysConf = lookupConformance(
-      systemNominal->getDeclaredInterfaceType(), embeddedDAS);
+      systemNominal->getDeclaredInterfaceType(), das);
   if (sysConf.isInvalid())
     return nullptr;
 
@@ -1644,7 +1650,7 @@ void swift::synthesizeEmbeddedDistributedReceiveDispatch(
     SourceFile *SF, ClassDecl *actor) {
   if (!actor || !actor->isDistributedActor())
     return;
-  if (!isEmbeddedDistributedActorSystem(actor))
+  if (!actor->getASTContext().LangOpts.hasFeature(Feature::Embedded))
     return;
 
   // This runs both eagerly from `checkDistributedActor` and lazily from

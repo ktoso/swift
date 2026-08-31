@@ -457,18 +457,18 @@ Embedded Swift has constraints that make the standard distributed runtime unusab
 
 These constraints rule out the standard `DistributedActorSystem` protocol shape, where `remoteCall<Act, Err, Res>`, `recordArgument<Value>`, `decodeNextArgument<Argument>`, and `onReturn<Success>` are all generic over a `SerializationRequirement` that's usually `Codable` (a value-type protocol, not class-bound).
 
-Under Embedded, distributed actors instead use a **parallel protocol family** that's free of those generics, plus per-type non-generic overloads provided by the user. Most of the rest of the distributed actor machinery (the `distributed actor` keyword, `distributed func` synthesis, `is-remote` check, `Greeter.resolve(id:using:)`) is reused as-is, with small compiler branches where the standard family doesn't fit.
+Under Embedded, distributed actors use the **same `DistributedActorSystem` protocol family**, but that family is defined with an `#if $Embedded` branch that drops the `SerializationRequirement` generics and replaces them with per-type non-generic overloads provided by the user. There is no separate embedded protocol: the single protocol name compiles to two different shapes depending on the `Embedded` feature. This is what makes a `distributed actor` and its actor-system conformance clause source-portable across the two modes; only the serialization layer (the encoder/decoder/handler members and the `remoteCall` signatures) is mode-specific. Most of the rest of the distributed actor machinery (the `distributed actor` keyword, `distributed func` synthesis, `is-remote` check, `Greeter.resolve(id:using:)`) is reused as-is, with small compiler branches where the embedded shape differs.
 
 ## The protocol family
 
-Defined in `stdlib/public/Distributed/EmbeddedDistributedActorSystem.swift`, gated behind `#if $Embedded`:
+The embedded shape lives in the `#if $Embedded` branch of `stdlib/public/Distributed/DistributedActorSystem.swift`; the `#else` branch is the standard, non-embedded family, byte-identical to what ships today. Under `#if $Embedded`, `DistributedActorSystem` is:
 
 ```swift
-public protocol EmbeddedDistributedActorSystem: Sendable {
+public protocol DistributedActorSystem: Sendable {
   associatedtype ActorID: Sendable & Hashable
-  associatedtype InvocationEncoder: EmbeddedDistributedTargetInvocationEncoder
-  associatedtype InvocationDecoder: EmbeddedDistributedTargetInvocationDecoder
-  associatedtype ResultHandler: EmbeddedDistributedTargetInvocationResultHandler
+  associatedtype InvocationEncoder: DistributedTargetInvocationEncoder
+  associatedtype InvocationDecoder: DistributedTargetInvocationDecoder
+  associatedtype ResultHandler: DistributedTargetInvocationResultHandler
 
   func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
     where Act: DistributedActor, Act.ID == ActorID
@@ -493,19 +493,20 @@ public protocol EmbeddedDistributedActorSystem: Sendable {
     where Act: DistributedActor, Act.ID == ActorID
 }
 
-public protocol EmbeddedDistributedTargetInvocationEncoder {
+public protocol DistributedTargetInvocationEncoder {
   mutating func doneRecording() throws
-  // Per-type recordArgument(_: RemoteCallArgument<T>) and recordReturnType(_: T.Type)
-  // overloads are NOT requirements; the user provides them via extensions
-  // (see below) for each type that appears in a distributed func signature.
+  // Per-type recordArgument(_: RemoteCallArgument<T>) overloads are NOT
+  // requirements; the user provides them via extensions (see below) for
+  // each parameter type that appears in a distributed func signature. The
+  // return type is not recorded under Embedded (it carries no wire metadata).
 }
 
-public protocol EmbeddedDistributedTargetInvocationDecoder {
+public protocol DistributedTargetInvocationDecoder {
   // Per-type decodeNextArgument(_: T.Type) -> T overloads are NOT
   // requirements; provided by extensions on the concrete decoder.
 }
 
-public protocol EmbeddedDistributedTargetInvocationResultHandler {
+public protocol DistributedTargetInvocationResultHandler {
   func onReturnVoid() async throws
   func onThrow(error: any Error) async throws
   // Per-type onReturn(_: T) async throws overloads are NOT requirements;
@@ -513,14 +514,14 @@ public protocol EmbeddedDistributedTargetInvocationResultHandler {
 }
 ```
 
-`DistributedActor` itself is reused. Under `#if $Embedded`, its `associatedtype ActorSystem` is constrained to `EmbeddedDistributedActorSystem` instead of `DistributedActorSystem`, and the `SerializationRequirement` associated type is dropped from the protocol. See the `#if $Embedded` branch in `stdlib/public/Distributed/DistributedActor.swift`.
+`DistributedActor` itself is reused, and its `associatedtype ActorSystem` is constrained to `DistributedActorSystem` in both modes. The only embedded difference is that the `#if $Embedded` branch of the protocol drops the `SerializationRequirement` associated type (and the `where` clause that ties it to the system's). See the `#if $Embedded` branch in `stdlib/public/Distributed/DistributedActor.swift`.
 
 ## Per-type overloads (no generic dispatch)
 
 The serialization-shaped methods are **not** protocol requirements; they're discovered by name lookup against the user's concrete encoder/decoder/handler types. Users add an overload per type they actually use in any `distributed func` signature, typically in an extension:
 
 ```swift
-struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+struct MyEncoder: DistributedTargetInvocationEncoder {
   mutating func doneRecording() throws { ... }
 }
 
@@ -530,7 +531,6 @@ struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
 extension MyEncoder {
   mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws { ... }
   mutating func recordArgument(_ argument: RemoteCallArgument<Int>)    throws { ... }
-  mutating func recordReturnType(_ type: String.Type) throws { ... }
 }
 
 extension MyDecoder {
@@ -547,15 +547,15 @@ The synthesized distributed thunk emits these as plain method lookups (overload-
 
 ## Compiler synthesis under Embedded
 
-`deriveBodyDistributed_thunk` in `lib/Sema/CodeSynthesisDistributedActor.cpp` branches on `isEmbeddedDistributedActorSystem(actor)`. When true, it:
+`deriveBodyDistributed_thunk` in `lib/Sema/CodeSynthesisDistributedActor.cpp` branches on whether the enclosing distributed actor is compiled under the Embedded feature (a distributed actor plus `LangOpts.hasFeature(Feature::Embedded)`). When true, it:
 
-1. Emits `encoder.recordArgument(RemoteCallArgument(label:name:value:))` per parameter — same wrapper struct used by standard distributed, just dispatched against a non-generic per-type overload at the call site.
-2. Emits `encoder.recordReturnType(R.self)` for the return type.
+1. Emits `encoder.recordArgument(RemoteCallArgument(label:name:value:))` per parameter - same wrapper struct used by standard distributed, just dispatched against a non-generic per-type overload at the call site.
+2. **Skips** `encoder.recordReturnType(...)` - the return type carries no wire metadata under Embedded; the receiver-side dispatch already knows each target's concrete return type statically from the mangled target name.
 3. **Skips** `encoder.recordErrorType(...)` (the embedded encoder protocol has no such method; errors travel as `any Error`).
-4. Calls `system.remoteCall(on:target:invocation:)` (or `remoteCallVoid(on:target:invocation:)`) — note no `throwing:` or `returning:` labels.
-5. For non-`Void` returns, binds the returned `InvocationDecoder` to a local `__decoder` and emits `try decoder.decodeNextArgument(R.self)` — again, overload-resolved on the user's concrete decoder.
+4. Calls `system.remoteCall(on:target:invocation:)` (or `remoteCallVoid(on:target:invocation:)`) - note no `throwing:` or `returning:` labels.
+5. For non-`Void` returns, binds the returned `InvocationDecoder` to a local `__decoder` and emits `try decoder.decodeNextArgument(R.self)` - again, overload-resolved on the user's concrete decoder.
 
-All four are non-generic call sites at the SIL level; the user's extension methods are called directly.
+The real call sites (`recordArgument`, `remoteCall`, `decodeNextArgument`) are non-generic at the SIL level; the user's extension methods are called directly.
 
 ## Coverage diagnostic
 
@@ -567,11 +567,11 @@ note: add this overload to 'MyEncoder' (or to an extension of it):
   mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws
 ```
 
-Diagnostic IDs: `distributed_embedded_missing_record_argument`, `distributed_embedded_missing_decode_next_argument`, `distributed_embedded_missing_record_return_type`, `distributed_embedded_missing_on_return`, plus the note `distributed_embedded_missing_overload_note`. See `include/swift/AST/DiagnosticsSema.def`.
+Diagnostic IDs: `distributed_embedded_missing_record_argument`, `distributed_embedded_missing_decode_next_argument`, `distributed_embedded_missing_on_return`, plus the note `distributed_embedded_missing_overload_note`. See `include/swift/AST/DiagnosticsSema.def`.
 
 ## Receiver-side dispatch: compiler-synthesized `_executeDistributedTarget`
 
-For every `distributed actor` whose `ActorSystem` conforms to `EmbeddedDistributedActorSystem`, the compiler synthesizes an instance method on the actor:
+For every `distributed actor` in a module compiled under the Embedded feature, the compiler synthesizes an instance method on the actor:
 
 ```swift
 extension Greeter {
@@ -616,7 +616,7 @@ The synthesis lives in `lib/Sema/CodeSynthesisDistributedActor.cpp` (`synthesize
 
 The lazy path matters because the eager pass runs per source file, while the natural caller of `_executeDistributedTarget` is the actor system's `remoteCall`, which normally lives in a different file from the actor. Without it, sema reports "value of type 'Greeter' has no member '_executeDistributedTarget'" whenever the two are not in the same file. This is the same mechanism `CodingKeys` / `Encodable` / `Decodable` use. Covered by `distributed_embedded_multifile_dispatch_exec.swift`.
 
-The synthesis is opt-out: it does nothing when the actor's `ActorSystem` does not conform to `EmbeddedDistributedActorSystem`. Non-embedded distributed actors continue to use the runtime-demangler-based `swift_distributed_execute_target` path.
+The synthesis is opt-out: it does nothing outside Embedded mode. Non-embedded distributed actors continue to use the runtime-demangler-based `swift_distributed_execute_target` path.
 
 ## What's gated where
 
@@ -656,7 +656,6 @@ Runtime entry points enabled in embedded (`stdlib/public/Concurrency/Actor.cpp`)
          RemoteCallArgument(label: "name",
                             name: "name",
                             value: name))
-     try enc.recordReturnType(String.self)        ────► MyEncoder.recordReturnType(String.Type)
      try enc.doneRecording()
      var dec = try await system.remoteCall(on: self, target: ..., invocation: &enc)
                                                   │
@@ -687,6 +686,8 @@ All embedded-distributed tests live under `test/Distributed/Embedded/`:
 - `distributed_embedded_any_some_param_diag.swift` — `-verify` test pinning Phase 2 sema: `any P` with `@Resolvable` accepted; `some P` rejected with "use 'any P' instead"; `any P` without `@Resolvable` rejected; user-written generic distributed funcs rejected.
 - `distributed_embedded_resolvable_any_roundtrip_exec.swift` — full Phase 2 executable: `Hub.dispatch(to: any RWorker)` invoked with a `$RWorker` proxy, inner `worker.work(name:)` re-enters the stub transport and dispatches to the concrete `WorkerImpl.work`, result flows back.
 - `distributed_embedded_multifile_dispatch_exec.swift` — the actor and the actor system live in separate files (the actor is in `Inputs/multifile_dispatch_actor.swift`), exercised in both file orders. Pins the lazy-synthesis path for `_executeDistributedTarget`; every other test here is single-file.
+- `distributed_embedded_source_portability.swift` - one file with two RUN lines (with and without `-enable-experimental-feature Embedded`). The same portable `distributed actor` + actor-system core compiles in both modes; only the serialization layer (encoder/decoder/handler, plus the actor `ID`'s `Codable` conformance) is gated behind `#if $Embedded` / `#else`. Guards against the two protocol families drifting apart.
+- `distributed_embedded_removed_protocol_names.swift` - `-verify` test asserting the removed parallel protocol names (`EmbeddedDistributedActorSystem`, `EmbeddedDistributedTargetInvocationEncoder`, `EmbeddedDistributedTargetInvocationDecoder`, `EmbeddedDistributedTargetInvocationResultHandler`) are gone: referencing them yields "cannot find type ... in scope".
 
 Note when adding tests here: gate on `swift_feature_Embedded` plus
 `optimized_stdlib` / `executable_test` / OS as appropriate. Do **not** write
@@ -776,7 +777,7 @@ There is **no per-method metadata table** in embedded distributed.
 Non-embedded distributed emits a `__swift5_acfuncs` section indexed
 by mangled-name lookup at runtime (`swift_findAccessibleFunction`);
 embedded drops both the section and the runtime lookup, dispatching
-via the user's specialized `EmbeddedDistributedActorSystem.remoteCall<Greeter>`
+via the user's specialized `DistributedActorSystem.remoteCall<Greeter>`
 overload, which the optimizer picks per-actor. (This is what
 `distributed_embedded_no_forbidden_symbols.swift` enforces.)
 
@@ -875,7 +876,6 @@ the type at every wire-level position:
 
 ```
 encoder.recordArgument(RemoteCallArgument<$RWorker>(label:"to", name:"worker", value: $worker))
-encoder.recordReturnType($RWorker.self)   // for `-> any RWorker` returns
 RemoteCallTarget("<mangled name of $RWorker.work's thunk>")
 system.remoteCall(on: ..., target: ..., invocation: &enc) -> decoder
 return try decoder.decodeNextArgument($RWorker.self)  // for `-> any RWorker` returns

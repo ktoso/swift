@@ -7009,7 +7009,7 @@ void NominalTypeDecl::synthesizeSemanticMembersIfNeeded(DeclName member) {
   }
 
   // `_executeDistributedTarget(target:invocationDecoder:resultHandler:)` is
-  // synthesized on distributed actors using an `EmbeddedDistributedActorSystem`.
+  // synthesized on distributed actors compiled under the Embedded feature.
   // Unlike the cases above it is normally referenced from a *different* file in
   // the same module (the actor system's `remoteCall` calls it), and the eager
   // synthesis in `checkDistributedActor` may not have run for the actor's file

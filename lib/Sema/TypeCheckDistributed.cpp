@@ -716,6 +716,14 @@ bool swift::checkDistributedActorSystem(const NominalTypeDecl *system) {
   if (!swift::ensureDistributedModuleLoaded(nominal))
     return true;
 
+  // Under Embedded Swift, `DistributedActorSystem` has no
+  // `SerializationRequirement` associated type; the serialization-shaped
+  // requirements are replaced by per-type encoder/decoder/handler overloads,
+  // whose presence is verified by `checkEmbeddedDistributedFunctionCoverage`.
+  // There is therefore nothing to check here.
+  if (nominal->getASTContext().LangOpts.hasFeature(Feature::Embedded))
+    return false;
+
   // === AssociatedTypes
   // --- SerializationRequirement MUST be a protocol TODO(distributed): rdar://91663941
   // we may lift this in the future and allow classes but this requires more
@@ -922,8 +930,8 @@ static void emitEmbeddedMissingOverloadNoteWithFixIt(
     note.fixItInsertAfter(insertLoc, fixItText);
 }
 
-/// For a `distributed func` whose enclosing actor uses an
-/// `EmbeddedDistributedActorSystem`, verify that the system's concrete
+/// For a `distributed func` whose enclosing actor is compiled under the
+/// Embedded feature, verify that the system's concrete
 /// encoder / decoder / handler types provide non-generic per-type
 /// overloads for every type used in the function's signature.
 ///
@@ -969,13 +977,12 @@ static bool checkEmbeddedDistributedFunctionCoverage(
 
   // Look up the InvocationEncoder/Decoder/ResultHandler type witnesses on
   // the user's concrete actor system.
-  auto *embeddedDAS =
-      ctx.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
-  if (!embeddedDAS)
+  auto *das = ctx.getDistributedActorSystemDecl();
+  if (!das)
     return false;
 
   auto sysConf = lookupConformance(
-      systemNominal->getDeclaredInterfaceType(), embeddedDAS);
+      systemNominal->getDeclaredInterfaceType(), das);
   if (sysConf.isInvalid())
     return false;
 
@@ -1089,8 +1096,9 @@ static bool checkEmbeddedDistributedFunctionCoverage(
   }
 
   // If the function returns a non-Void value, also require:
-  //   encoder.recordReturnType(_: R.Type)
   //   handler.onReturn(_: R) async throws
+  // The return type carries no wire metadata under Embedded, so no
+  // `recordReturnType` overload is required.
   if (auto *funcDecl = dyn_cast<FuncDecl>(func)) {
     Type returnInterfaceTy = funcDecl->getResultInterfaceType();
     if (!returnInterfaceTy->isVoid()) {
@@ -1135,21 +1143,8 @@ static bool checkEmbeddedDistributedFunctionCoverage(
         }
       }
 
-      if (encoderTy &&
-          !hasEmbeddedDistributedOverload(
-              actorOrExt, encoderTy, ctx.Id_recordReturnType, returnTy,
-              /*isMetatype=*/true)) {
-        func->diagnose(
-            diag::distributed_embedded_missing_record_return_type, encoderTy,
-            printableReturnTy, func);
-        llvm::SmallString<128> sigBuf;
-        llvm::raw_svector_ostream sig(sigBuf);
-        sig << "mutating func recordReturnType(_ type: " << printableReturnTy
-            << ".Type) throws";
-        emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, encoderTy,
-                                                StringRef(sigBuf));
-        anyMissing = true;
-      }
+      // No `recordReturnType` coverage check under Embedded: the return type
+      // is not recorded on the wire, so the encoder needs no overload for it.
 
       if (handlerTy &&
           !hasEmbeddedDistributedOverload(
@@ -1542,8 +1537,7 @@ GetDistributedActorConcreteArgumentDecodingMethodRequest::evaluate(
     Evaluator &evaluator, NominalTypeDecl *decl) const {
   auto &ctx = decl->getASTContext();
 
-  // Under Embedded Swift, distributed actors use the
-  // `EmbeddedDistributedActorSystem` family which has no
+  // Under Embedded Swift, the `DistributedActorSystem` protocol has no
   // `SerializationRequirement` associated type. The user provides
   // per-type non-generic `decodeNextArgument(_: T.Type) -> T` overloads
   // on their concrete decoder; there is no single

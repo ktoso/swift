@@ -211,34 +211,6 @@ Type swift::getDistributedActorIDType(NominalTypeDecl *actor) {
   return getAssociatedTypeOfDistributedSystemOfActor(actor, C.Id_ActorID);
 }
 
-bool swift::isEmbeddedDistributedActorSystem(NominalTypeDecl *actor) {
-  if (!actor || !actor->isDistributedActor())
-    return false;
-
-  auto &C = actor->getASTContext();
-  auto *embeddedProto =
-      C.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
-  if (!embeddedProto)
-    return false;
-
-  // For protocols themselves (e.g. a `@Resolvable` protocol inheriting
-  // DistributedActor), `getDistributedActorSystemType` is unsafe; the
-  // protocol may not constrain `ActorSystem` to a concrete type. Use
-  // the generic-signature-aware variant.
-  Type systemTy;
-  if (isa<ProtocolDecl>(actor)) {
-    systemTy = getConcreteReplacementForProtocolActorSystemType(actor);
-  } else {
-    systemTy = getDistributedActorSystemType(actor);
-  }
-  if (!systemTy || systemTy->hasError())
-    return false;
-
-  // If the system type itself is a protocol composition or archetype,
-  // ask via lookup; otherwise check for direct conformance.
-  return !lookupConformance(systemTy, embeddedProto).isInvalid();
-}
-
 Identifier swift::getDistributedResolvableProtocolStubName(ProtocolDecl *proto) {
   if (!proto)
     return Identifier();
@@ -352,12 +324,11 @@ Type swift::getDistributedActorSerializationType(
     DeclContext *actorOrExtension) {
   auto &ctx = actorOrExtension->getASTContext();
 
-  // Under Embedded Swift, the EmbeddedDistributedActorSystem protocol family
-  // has no `SerializationRequirement` associated type. Returning `Any` here
-  // disables the standard "parameter conforms to SerializationRequirement"
-  // diagnostic (which is replaced under Embedded by a WMO-end check that
-  // verifies the user's encoder/decoder/handler have the right per-type
-  // overloads).
+  // Under Embedded Swift, `DistributedActorSystem` has no
+  // `SerializationRequirement` associated type. Returning `Any` here disables
+  // the standard "parameter conforms to SerializationRequirement" diagnostic
+  // (which is replaced under Embedded by a WMO-end check that verifies the
+  // user's encoder/decoder/handler have the right per-type overloads).
   if (ctx.LangOpts.hasFeature(Feature::Embedded)) {
     return ctx.TheAnyType;
   }
@@ -486,16 +457,6 @@ Type swift::getAssociatedTypeOfDistributedSystemOfActor(
     ctx.Diags.diagnose(getLoc(), diag::broken_stdlib_type,
                        "DistributedActorSystem");
     return ErrorType::get(ctx);
-  }
-
-  // Under Embedded Swift, `DistributedActor` constrains `ActorSystem` to
-  // `EmbeddedDistributedActorSystem` instead. Pick that protocol for the
-  // associated-type lookups (e.g. `ID == ActorSystem.ActorID`).
-  if (ctx.LangOpts.hasFeature(Feature::Embedded)) {
-    if (auto *embeddedProto =
-            ctx.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem)) {
-      actorSystemProtocol = embeddedProto;
-    }
   }
 
   AssociatedTypeDecl *memberTypeDecl =

@@ -17,23 +17,22 @@ public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
-public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
   public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
-  public mutating func recordReturnType(_ type: String.Type) throws {}
 }
 
-public struct MyDecoder: EmbeddedDistributedTargetInvocationDecoder {
+public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
   public mutating func decodeNextArgument(_: String.Type) throws -> String { "" }
 }
 
-public struct MyResultHandler: EmbeddedDistributedTargetInvocationResultHandler {
+public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public init() {}
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws {}
@@ -42,7 +41,7 @@ extension MyResultHandler {
   public func onReturn(_ value: String) async throws {}
 }
 
-public final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
+public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
@@ -91,7 +90,6 @@ public protocol RWorker: DistributedActor where ActorSystem == MySystem {
 // per-type coverage check to pass for `any RWorker`.
 extension MyEncoder {
   public mutating func recordArgument(_ argument: RemoteCallArgument<$RWorker>) throws {}
-  public mutating func recordReturnType(_ type: $RWorker.Type) throws {}
 }
 extension MyDecoder {
   public mutating func decodeNextArgument(_: $RWorker.Type) throws -> $RWorker {

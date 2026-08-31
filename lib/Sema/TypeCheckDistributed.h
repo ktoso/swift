@@ -67,8 +67,7 @@ void addCodableFixIt(const NominalTypeDecl *nominal, InFlightDiagnostic &diag);
 /// Synthesize a `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
 /// instance method on the given distributed actor, dispatching by mangled
 /// target name to each of the actor's distributed functions. Only runs
-/// when the actor's `ActorSystem` conforms to
-/// `EmbeddedDistributedActorSystem`. No-op otherwise.
+/// when the actor is compiled under the Embedded feature. No-op otherwise.
 void synthesizeEmbeddedDistributedReceiveDispatch(
     SourceFile *SF, ClassDecl *actor);
 

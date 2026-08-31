@@ -7667,10 +7667,6 @@ SpecialProtocol irgen::getSpecialProtocolID(ProtocolDecl *P) {
   case KnownProtocolKind::DistributedTargetInvocationEncoder:
   case KnownProtocolKind::DistributedTargetInvocationDecoder:
   case KnownProtocolKind::DistributedTargetInvocationResultHandler:
-  case KnownProtocolKind::EmbeddedDistributedActorSystem:
-  case KnownProtocolKind::EmbeddedDistributedTargetInvocationEncoder:
-  case KnownProtocolKind::EmbeddedDistributedTargetInvocationDecoder:
-  case KnownProtocolKind::EmbeddedDistributedTargetInvocationResultHandler:
   case KnownProtocolKind::CxxConvertibleToBool:
   case KnownProtocolKind::CxxConvertibleToCollection:
   case KnownProtocolKind::CxxDictionary:

@@ -139,17 +139,6 @@ static SILArgument *findFirstDistributedActorSystemArg(SILFunction &F) {
   auto *DAS = C.getDistributedActorSystemDecl();
   Type systemTy = DAS->getDeclaredInterfaceType();
 
-  // Under Embedded Swift, the actor system conforms to
-  // `EmbeddedDistributedActorSystem` instead. Look up either family.
-  ProtocolDecl *embeddedDAS = nullptr;
-  Type embeddedSystemTy;
-  if (C.LangOpts.hasFeature(Feature::Embedded)) {
-    embeddedDAS =
-        C.getProtocol(KnownProtocolKind::EmbeddedDistributedActorSystem);
-    if (embeddedDAS)
-      embeddedSystemTy = embeddedDAS->getDeclaredInterfaceType();
-  }
-
   for (auto arg : F.getArguments()) {
     // TODO(distributed): also be able to locate a generic system
     Type argTy = arg->getType().getASTType();
@@ -166,19 +155,6 @@ static SILArgument *findFirstDistributedActorSystemArg(SILFunction &F) {
     auto result = lookupConformance(argTy, DAS);
     if (!result.isInvalid()) {
       return arg;
-    }
-
-    // Embedded variant: same checks against the embedded protocol.
-    if (embeddedDAS) {
-      auto conformsToEmbedded =
-          lookupConformance(argDecl->getInterfaceType(), embeddedDAS);
-      if (argTy->isEqual(embeddedSystemTy) || conformsToEmbedded) {
-        return arg;
-      }
-      auto embeddedResult = lookupConformance(argTy, embeddedDAS);
-      if (!embeddedResult.isInvalid()) {
-        return arg;
-      }
     }
   }
 

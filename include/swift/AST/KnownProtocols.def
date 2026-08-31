@@ -135,10 +135,6 @@ PROTOCOL(DistributedActorSystem)
 PROTOCOL(DistributedTargetInvocationEncoder)
 PROTOCOL(DistributedTargetInvocationDecoder)
 PROTOCOL(DistributedTargetInvocationResultHandler)
-PROTOCOL(EmbeddedDistributedActorSystem)
-PROTOCOL(EmbeddedDistributedTargetInvocationEncoder)
-PROTOCOL(EmbeddedDistributedTargetInvocationDecoder)
-PROTOCOL(EmbeddedDistributedTargetInvocationResultHandler)
 
 // C++ Standard Library Overlay:
 CXX_PROTOCOL(CxxConvertibleToBool)
