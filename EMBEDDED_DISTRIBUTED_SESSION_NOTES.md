@@ -29,6 +29,49 @@ onto current `main`, made the test suite actually execute, fixed two real bugs
 that the dead test suite had been hiding, and lifted the single-file
 restriction.
 
+### Update (2026-08-31): protocol collapse for source portability
+
+The parallel `EmbeddedDistributedActorSystem` +
+`EmbeddedDistributedTargetInvocation{Encoder,Decoder,ResultHandler}` protocol
+family was **removed**. Its embedded shape now lives inside the single
+`DistributedActorSystem` family via an `#if $Embedded` branch in
+`stdlib/public/Distributed/DistributedActorSystem.swift` (the `#else` branch is
+byte-identical to the shipping non-embedded family). `DistributedActor` keeps
+one name too; its `#if $Embedded` branch just drops the `SerializationRequirement`
+associated type. A `distributed actor` and its actor-system conformance clause
+are now source-portable across the two modes - only the serialization layer
+(encoder/decoder/handler members and `remoteCall` signatures) stays
+mode-specific, `#if`-split by the user.
+
+Compiler side: the embedded distributed shape is no longer selected by a
+separate conformance or a named predicate; each site checks
+`actor->isDistributedActor() && LangOpts.hasFeature(Feature::Embedded)`
+inline. The four `PROTOCOL(EmbeddedDistributed*)`
+`KnownProtocolKind`s and their `ASTContext`/`GenMeta` cases are gone, the
+ad-hoc-requirement checker is gated off embedded shapes, and `checkDistributedActorSystem`
+early-returns under embedded (no `SerializationRequirement` to look up). The
+error struct `EmbeddedDistributedTargetNotFound` and the C++ symbol names
+(`checkEmbeddedDistributedFunctionCoverage`, `synthesizeEmbeddedDistributedReceiveDispatch`,
+`ResolveEmbeddedDistributedReceiveDispatch`) were kept as-is.
+
+### Update (2026-08-31): stop recording the return type under Embedded
+
+The embedded thunk no longer emits `encoder.recordReturnType(R.self)`, and the
+coverage checker no longer requires a `recordReturnType(_:)` overload on the
+user's encoder. The return type carries no wire metadata under Embedded: the
+receiver-side dispatch already knows each target's concrete return type
+statically from the mangled target name, and the sender decodes the result via
+`decoder.decodeNextArgument(R.self)`. Changes: the synthesis block in
+`deriveBodyDistributed_thunk` is gated `!isEmbeddedSystem`
+(`lib/Sema/CodeSynthesisDistributedActor.cpp`), the recordReturnType coverage
+check is removed from `checkEmbeddedDistributedFunctionCoverage`
+(`lib/Sema/TypeCheckDistributed.cpp`), and the now-unused
+`distributed_embedded_missing_record_return_type` diagnostic is deleted from
+`include/swift/AST/DiagnosticsSema.def`. `decodeReturnType`/`decodeErrorType`
+were already never emitted on the embedded path (they live only in the
+non-embedded `executeDistributedTarget`), so no change there. The embedded test
+encoders dropped their now-dead `recordReturnType` overloads accordingly.
+
 ### Test results at `9d00efc1275`
 
 | Suite | Result |
@@ -382,12 +425,6 @@ force-push (or a fresh branch).
   `recordGenericSubstitution(T.self)`, which has no embedded wire shape.
   Diagnosed as `distributed_embedded_some_param_not_supported` (with a "use
   'any P' instead" fix-it) and `distributed_embedded_generic_func_not_supported`.
-- **No source portability.** Under `#if $Embedded`, `DistributedActor`'s
-  `ActorSystem` constraint changes and `SerializationRequirement` is dropped, so
-  the same `distributed actor` source cannot compile both embedded and
-  non-embedded without the user `#if`-ing their own system type. Inherent to the
-  parallel-protocol-family approach and the main design cost to state in any
-  pitch.
 - The coverage diagnostic scales linearly with API surface: every distinct type
   in any distributed signature needs 3-4 hand-written overloads, with no macro
   to generate them yet.
@@ -421,14 +458,15 @@ Also expect 47 unsupported tests across `test/Distributed/` + `test/embedded/`
 
 The full design writeup lives in **`docs/Distributed.md`**, section
 `# Distributed in Embedded Swift`. It covers the four embedded constraints that
-rule out the standard runtime, the parallel protocol family, the sender and
+rule out the standard runtime, the single `DistributedActorSystem` protocol
+family with its `#if $Embedded` branch, the sender and
 receiver paths, Phase 2 `any P` handling, what is gated where, measured code
 size and heap costs, and the open-work list. That doc is the source of truth;
 this file is only the session/logistics layer on top of it.
 
 Other key locations:
 
-- `stdlib/public/Distributed/EmbeddedDistributedActorSystem.swift` — the protocol family
+- `stdlib/public/Distributed/DistributedActorSystem.swift` — the single protocol family; the `#if $Embedded` branch is the embedded shape
 - `lib/Sema/CodeSynthesisDistributedActor.cpp` — thunk + receive-dispatch synthesis
 - `lib/Sema/TypeCheckDistributed.cpp` — coverage diagnostic, `checkDistributedActor`
 - `lib/IRGen/GenDistributed.cpp` — embedded remote-init, skipped accessor emission

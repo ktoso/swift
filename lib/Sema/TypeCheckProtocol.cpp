@@ -6056,10 +6056,20 @@ void ConformanceChecker::resolveValueWitnesses() {
   // These protocol requirements are not expressible in Swift today, but as
   // the type system gains the required abilities, we should strive to move
   // them to plain-old protocol requirements.
-  if (Proto->isSpecificProtocol(KnownProtocolKind::DistributedActorSystem) ||
-      Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder) ||
-      Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationDecoder) ||
-      Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationResultHandler)) {
+  //
+  // Under Embedded Swift these are not ad-hoc: the embedded shape of
+  // `DistributedActorSystem` declares `remoteCall`/`remoteCallVoid` as ordinary
+  // (non-generic-over-`SerializationRequirement`) requirements verified by
+  // normal witness matching, and the encoder/decoder/handler expose only
+  // ordinary requirements. Their per-type record/decode/onReturn overloads are
+  // intentionally not requirements and are checked separately by
+  // `checkEmbeddedDistributedFunctionCoverage`. Running the non-embedded ad-hoc
+  // checker here would wrongly reject those embedded shapes.
+  if (!Context.LangOpts.hasFeature(Feature::Embedded) &&
+      (Proto->isSpecificProtocol(KnownProtocolKind::DistributedActorSystem) ||
+       Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder) ||
+       Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationDecoder) ||
+       Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationResultHandler))) {
     checkDistributedActorSystemAdHocProtocolRequirements(
         Context, Proto, Conformance, Adoptee, /*diagnose=*/true);
   }

@@ -14,24 +14,23 @@ public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
-public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
   // String overloads only - intentionally NO Int overloads
   public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
-  public mutating func recordReturnType(_ type: String.Type) throws {}
 }
 
-public struct MyDecoder: EmbeddedDistributedTargetInvocationDecoder {
+public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
   public mutating func decodeNextArgument(_: String.Type) throws -> String { "" }
 }
 
-public struct MyResultHandler: EmbeddedDistributedTargetInvocationResultHandler {
+public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public init() {}
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws {}
@@ -40,7 +39,7 @@ extension MyResultHandler {
   public func onReturn(_ value: String) async throws {}
 }
 
-public final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
+public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
@@ -83,14 +82,12 @@ distributed actor Greeter {
 
   // Int-using func triggers the missing-overload diagnostic on
   // encoder.recordArgument(_:RemoteCallArgument<Int>), decoder.decodeNextArgument(_:Int.Type),
-  // encoder.recordReturnType(_:Int.Type), and handler.onReturn(_:Int).
+  // and handler.onReturn(_:Int).
   // The parameter label is `_` (since `square(_ x: Int)`).
-  // expected-error@+8{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for type 'Int' in distributed instance method}}
-  // expected-note@+7{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws}}
-  // expected-error@+6{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for type 'Int' in distributed instance method}}
-  // expected-note@+5{{add this overload to 'MySystem.InvocationDecoder' (aka 'MyDecoder') (or to an extension of it):  mutating func decodeNextArgument(_ type: Int.Type) throws -> Int}}
-  // expected-error@+4{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordReturnType' for the return type 'Int' of distributed instance method}}
-  // expected-note@+3{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordReturnType(_ type: Int.Type) throws}}
+  // expected-error@+6{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for type 'Int' in distributed instance method}}
+  // expected-note@+5{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws}}
+  // expected-error@+4{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for type 'Int' in distributed instance method}}
+  // expected-note@+3{{add this overload to 'MySystem.InvocationDecoder' (aka 'MyDecoder') (or to an extension of it):  mutating func decodeNextArgument(_ type: Int.Type) throws -> Int}}
   // expected-error@+2{{embedded distributed actor system result handler 'MySystem.ResultHandler' (aka 'MyResultHandler') is missing an overload of 'onReturn' for the return type 'Int' of distributed instance method}}
   // expected-note@+1{{add this overload to 'MySystem.ResultHandler' (aka 'MyResultHandler') (or to an extension of it):  func onReturn(_ value: Int) async throws}}
   distributed func square(_ x: Int) -> Int {

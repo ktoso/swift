@@ -44,7 +44,7 @@ final class CallBuffer {
 // ==== ----------------------------------------------------------------------
 // MARK: Encoder / Decoder / ResultHandler
 
-struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+struct MyEncoder: DistributedTargetInvocationEncoder {
   let buffer: CallBuffer
   init(buffer: CallBuffer) { self.buffer = buffer }
   mutating func doneRecording() throws {}
@@ -53,10 +53,9 @@ extension MyEncoder {
   mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws {
     buffer.argInt = argument.value
   }
-  mutating func recordReturnType(_ type: Int.Type) throws {}
 }
 
-struct MyDecoder: EmbeddedDistributedTargetInvocationDecoder {
+struct MyDecoder: DistributedTargetInvocationDecoder {
   let buffer: CallBuffer
   init(buffer: CallBuffer) { self.buffer = buffer }
 }
@@ -68,7 +67,7 @@ extension MyDecoder {
   }
 }
 
-struct MyResultHandler: EmbeddedDistributedTargetInvocationResultHandler {
+struct MyResultHandler: DistributedTargetInvocationResultHandler {
   let buffer: CallBuffer
   init(buffer: CallBuffer) { self.buffer = buffer }
   func onReturnVoid() async throws {}
@@ -89,7 +88,7 @@ struct MyActorID: Sendable, Hashable {
   let id: UInt64
 }
 
-final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
+final class MySystem: DistributedActorSystem, @unchecked Sendable {
   typealias ActorID = MyActorID
   typealias InvocationEncoder = MyEncoder
   typealias InvocationDecoder = MyDecoder

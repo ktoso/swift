@@ -14,18 +14,16 @@ public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
-public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
   public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
   public mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws {}
-  public mutating func recordReturnType(_ type: String.Type) throws {}
-  public mutating func recordReturnType(_ type: Int.Type) throws {}
 }
 
-public struct MyDecoder: EmbeddedDistributedTargetInvocationDecoder {
+public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
@@ -33,7 +31,7 @@ extension MyDecoder {
   public mutating func decodeNextArgument(_: Int.Type)    throws -> Int    { 0 }
 }
 
-public struct MyResultHandler: EmbeddedDistributedTargetInvocationResultHandler {
+public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public init() {}
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws {}
@@ -43,7 +41,7 @@ extension MyResultHandler {
   public func onReturn(_ value: Int)    async throws {}
 }
 
-public final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
+public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder

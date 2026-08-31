@@ -15,23 +15,22 @@ public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
-public struct MyEncoder: EmbeddedDistributedTargetInvocationEncoder {
+public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
   public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
-  public mutating func recordReturnType(_ type: String.Type) throws {}
 }
 
-public struct MyDecoder: EmbeddedDistributedTargetInvocationDecoder {
+public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
   public mutating func decodeNextArgument(_ type: String.Type) throws -> String { "" }
 }
 
-public struct MyResultHandler: EmbeddedDistributedTargetInvocationResultHandler {
+public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public init() {}
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws {}
@@ -40,7 +39,7 @@ extension MyResultHandler {
   public func onReturn(_ value: String) async throws {}
 }
 
-public final class MySystem: EmbeddedDistributedActorSystem, @unchecked Sendable {
+public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
@@ -88,6 +87,5 @@ distributed actor Greeter {
 
 // CHECK-LABEL: sil hidden{{.*}} @${{.*}}GreeterC5hello4nameS2S_tYaKFTE
 // CHECK: function_ref @${{.+}}MyEncoderV14recordArgumentyy11Distributed010RemoteCallK0VySSGKF
-// CHECK: function_ref @${{.+}}MyEncoderV16recordReturnTypeyySSmKF
 // CHECK: function_ref @${{.+}}MySystemC10remoteCall2on6target10invocation
 // CHECK: function_ref @${{.+}}MyDecoderV18decodeNextArgumentyS2SmKF

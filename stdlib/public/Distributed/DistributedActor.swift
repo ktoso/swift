@@ -196,24 +196,38 @@ import _Concurrency
 /// - SeeAlso: ``DistributedActorSystem``
 #if $Embedded
 
-// Under Embedded Swift, `DistributedActorSystem` cannot be conformed to
-// because it requires generic methods over a (typically non-class)
-// `SerializationRequirement`. We therefore loosen the `ActorSystem`
-// constraint to accept the alternate `EmbeddedDistributedActorSystem`
-// protocol family, and drop the `SerializationRequirement` associated
-// type (the embedded family doesn't have one).
+// Under Embedded Swift, `DistributedActorSystem` cannot express the generic
+// members constrained to a (typically non-class) `SerializationRequirement`,
+// so the protocol drops the `SerializationRequirement` associated type and
+// reshapes those members (see `DistributedActorSystem`). This `DistributedActor`
+// definition is identical to the non-embedded one below, except that it drops
+// the `SerializationRequirement` associated type and the corresponding `where`
+// clause requirement. The `ActorSystem: DistributedActorSystem` constraint is
+// the same in both modes, which is what makes a `distributed actor`
+// declaration source-portable across Embedded and non-Embedded Swift.
 @available(SwiftStdlib 5.7, *)
 public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
   where ID == ActorSystem.ActorID {
 
   /// The type of transport used to communicate with actors of this type.
-  associatedtype ActorSystem: EmbeddedDistributedActorSystem
+  associatedtype ActorSystem: DistributedActorSystem
+
+  // In Embedded Swift there is NO 'SerializationRequirement'.
+  // Serialization is enforced by every supported type having an encode/decode function
+  // implemented on a concrete system's encoder/decoder pair.
 
   nonisolated override var id: ID { get }
   nonisolated var actorSystem: ActorSystem { get }
 
   @available(SwiftStdlib 5.9, *)
   nonisolated var unownedExecutor: UnownedSerialExecutor { get }
+
+//   @available(SwiftStdlib 6.5, *)
+//   nonisolated public func $executeDistributedTarget(
+//     target: RemoteCallTarget,
+//     invocationDecoder: inout Self.ActorSystem.InvocationDecoder,
+//     resultHandler: Self.ActorSystem.ResultHandler
+//   ) async throws
 
   static func resolve(id: ID, using system: ActorSystem) throws -> Self
 }
@@ -341,7 +355,9 @@ extension CodingUserInfoKey {
   @available(SwiftStdlib 5.7, *)
   public static let actorSystemKey = CodingUserInfoKey(rawValue: "$distributed_actor_system")!
 }
+#endif // !$Embedded
 
+#if !$Embedded
 @available(SwiftStdlib 5.7, *)
 extension DistributedActor /*: implicitly Decodable */ where Self.ID: Decodable {
 
@@ -367,7 +383,9 @@ extension DistributedActor /*: implicitly Decodable */ where Self.ID: Decodable 
     self = try Self.resolve(id: id, using: system)
   }
 }
+#endif // !$Embedded
 
+#if !$Embedded
 @available(SwiftStdlib 5.7, *)
 extension DistributedActor /*: implicitly Encodable */ where Self.ID: Encodable {
 
