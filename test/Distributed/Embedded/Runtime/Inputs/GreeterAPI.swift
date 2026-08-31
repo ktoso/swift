@@ -22,4 +22,7 @@ import EmbeddedFakeActorSystem
 public protocol Greeter: DistributedActor where ActorSystem == EmbeddedFakeRoundtripActorSystem {
   distributed func hello(name: String) -> String
   distributed func farewell(name: String) -> String
+  // A void-returning target, so the client's call routes through the system's
+  // `remoteCallVoid` rather than `remoteCall`
+  distributed func note(_ message: String)
 }

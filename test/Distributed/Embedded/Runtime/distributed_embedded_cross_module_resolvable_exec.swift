@@ -67,6 +67,8 @@ import GreeterServer
       let greeter = try $Greeter.resolve(id: id, using: system)
       print("[swift] hello: \(try await greeter.hello(name: "World"))")
       print("[swift] farewell: \(try await greeter.farewell(name: "World"))")
+      // A void-returning distributed func routes through `remoteCallVoid`.
+      try await greeter.note("ping")
     } catch {
       print("[swift] threw")
     }
@@ -77,3 +79,5 @@ import GreeterServer
 // CHECK-NEXT: [swift] hello: Hello, World!
 // CHECK:      [swift] remoteCall reached
 // CHECK-NEXT: [swift] farewell: Goodbye, World!
+// CHECK:      [swift] remoteCallVoid reached
+// CHECK-NEXT: [swift] server noted: ping
