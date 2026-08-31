@@ -59,7 +59,6 @@ import GreeterServer
     let id = impl.id
 
 
-
     do {
       // The client only has `$Greeter`: resolve a proxy by id and call it.
       // Two distinct targets, so the receive-side dispatch if-chain is
@@ -67,6 +66,12 @@ import GreeterServer
       let greeter = try $Greeter.resolve(id: id, using: system)
       print("[swift] hello: \(try await greeter.hello(name: "World"))")
       print("[swift] farewell: \(try await greeter.farewell(name: "World"))")
+
+      // A distributed func over module-defined types: the request/response
+      // serialization lives in GreeterAPI, not the transport.
+      let response = try await greeter.check(ComplexRequest(id: 7))
+      print("[swift] check response id: \(response.id)")
+
       // A void-returning distributed func routes through `remoteCallVoid`.
       try await greeter.note("ping")
     } catch {
@@ -79,5 +84,8 @@ import GreeterServer
 // CHECK-NEXT: [swift] hello: Hello, World!
 // CHECK:      [swift] remoteCall reached
 // CHECK-NEXT: [swift] farewell: Goodbye, World!
+// CHECK:      [swift] remoteCall reached
+// CHECK-NEXT: [swift] server checked request id: 7
+// CHECK-NEXT: [swift] check response id: 8
 // CHECK:      [swift] remoteCallVoid reached
 // CHECK-NEXT: [swift] server noted: ping

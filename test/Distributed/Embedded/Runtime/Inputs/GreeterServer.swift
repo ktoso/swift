@@ -33,5 +33,10 @@ public distributed actor GreeterImpl: Greeter {
   public distributed func note(_ message: String) {
     print("[swift] server noted: \(message)")
   }
+
+  public distributed func check(_ uid: ComplexRequest) -> ComplexResponse {
+    print("[swift] server checked request id: \(uid.id)")
+    return ComplexResponse(id: uid.id + 1)
+  }
 }
 
