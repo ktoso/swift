@@ -47,14 +47,23 @@ import Distributed
 // single response field. A real transport would frame and length-prefix bytes;
 // a flat byte array keeps the test legible while still forcing an
 // encode -> transmit -> decode round-trip.
+//
+// The framing primitives (`appendField` / `takeField` / `writeResponse`) and
+// `WireError` are public, so a module that introduces its own argument or
+// return type can add the matching `recordArgument` / `decodeNextArgument` /
+// `onReturn` overloads in its own file - see `GreeterAPI` adding overloads for
+// `ComplexRequest` / `ComplexResponse`. This is the Embedded serialization
+// contract: there is no `SerializationRequirement`, just per-type overloads the
+// compiler finds by normal extension visibility.
 
 private let tagString = UInt8(ascii: "s")
 private let tagInt = UInt8(ascii: "i")
 private let sep = UInt8(ascii: "|")
 private let term = UInt8(ascii: ";")
 
-// Render an `Int` as its decimal ASCII bytes, without going through `String`
-private func asciiDigits(_ value: Int) -> [UInt8] {
+// Render an `Int` as its decimal ASCII bytes, without going through `String`.
+// Public so other modules can serialize integer fields of their own types
+public func asciiDigits(_ value: Int) -> [UInt8] {
   if value == 0 { return [UInt8(ascii: "0")] }
   var v = value
   let negative = v < 0
@@ -70,8 +79,9 @@ private func asciiDigits(_ value: Int) -> [UInt8] {
   return Array(digits.reversed())
 }
 
-// Parse decimal ASCII bytes back into an `Int`, without going through `String`
-private func parseInt(_ bytes: ArraySlice<UInt8>) -> Int? {
+// Parse decimal ASCII bytes back into an `Int`, without going through `String`.
+// Public so other modules can deserialize integer fields of their own types
+public func parseInt(_ bytes: ArraySlice<UInt8>) -> Int? {
   if bytes.isEmpty { return nil }
   var result = 0
   var negative = false
@@ -107,7 +117,7 @@ final class ResultBuffer {
 
 // Thrown by the decoder when the incoming wire does not match what the
 // monomorphized `decodeNextArgument` overload expects
-enum WireError: Error {
+public enum WireError: Error {
   case underflow
   case malformed
   case typeMismatch
@@ -130,7 +140,9 @@ extension EmbeddedFakeInvocationEncoder {
     appendField(tag: tagInt, payload: asciiDigits(argument.value))
   }
 
-  func appendField(tag: UInt8, payload: [UInt8]) {
+  // Append one "<tag>|<payload>;" field to the request wire. Public so other
+  // modules can serialize their own argument types (see GreeterAPI)
+  public func appendField(tag: UInt8, payload: [UInt8]) {
     buffer.argBytes.append(tag)
     buffer.argBytes.append(sep)
     buffer.argBytes.append(contentsOf: payload)
@@ -160,8 +172,9 @@ extension EmbeddedFakeInvocationDecoder {
 
   // Peel one "<tag>|<bytes>" field off the front of the incoming wire, leaving
   // the remainder for the next call. The trailing ";" is optional on the final
-  // field, so a lone response value decodes without a terminator
-  mutating func takeField() throws -> (tag: UInt8, payload: ArraySlice<UInt8>) {
+  // field, so a lone response value decodes without a terminator. Public so
+  // other modules can deserialize their own types (see GreeterAPI)
+  public mutating func takeField() throws -> (tag: UInt8, payload: ArraySlice<UInt8>) {
     let bytes = buffer.argBytes
     guard offset < bytes.count else { throw WireError.underflow }
     let tag = bytes[offset]
@@ -188,13 +201,20 @@ public struct EmbeddedFakeResultHandler: DistributedTargetInvocationResultHandle
   public func onThrow(error: any Error) async throws {
     fatalError("threw in handler")
   }
+
+  // Serialize the single response field. Symmetric with the encoder's
+  // `appendField`; public so other modules can add `onReturn` overloads for
+  // their own return types (see GreeterAPI)
+  public func writeResponse(tag: UInt8, payload: [UInt8]) {
+    buffer.returnBytes = [tag, sep] + payload
+  }
 }
 extension EmbeddedFakeResultHandler {
   public func onReturn(_ value: String) async throws {
-    buffer.returnBytes = [tagString, sep] + Array(value.utf8)
+    writeResponse(tag: tagString, payload: Array(value.utf8))
   }
   public func onReturn(_ value: Int) async throws {
-    buffer.returnBytes = [tagInt, sep] + asciiDigits(value)
+    writeResponse(tag: tagInt, payload: asciiDigits(value))
   }
 }
 
