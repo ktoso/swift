@@ -72,6 +72,62 @@ were already never emitted on the embedded path (they live only in the
 non-embedded `executeDistributedTarget`), so no change there. The embedded test
 encoders dropped their now-dead `recordReturnType` overloads accordingly.
 
+### Update (2026-09-01): converge on a SerializationRequirement protocol + `remoteCall -> Res`
+
+Two shapes that made the embedded system ugly and non-portable were removed:
+
+1. **Per-type ad-hoc serialization overloads are gone.** The concrete system now
+   binds `associatedtype SerializationRequirement` to its *own* protocol (Embedded
+   has no `Codable`), and adopters conform each argument / return type to that
+   protocol once. The encoder / decoder / handler each expose a **single generic
+   method** constrained by `SerializationRequirement`:
+   `recordArgument<Value: SerializationRequirement>`,
+   `decodeNextArgument<Argument: SerializationRequirement>() -> Argument`,
+   `onReturn<Success: SerializationRequirement>(_:)`. These are still resolved by
+   name (not formal protocol requirements), but they are generic and specialize
+   under WMO because every system/encoder/decoder/handler at a call site is
+   concrete. This is safe in Embedded because `GenericSignature::canBeEmittedInEmbeddedSwift`
+   allows the signatures and `WitnessTableBuilder::addMethod` nulls the
+   witness-table slot, so the requirement can exist but must always be specialized.
+
+2. **`remoteCall` returns `Res`, not the `InvocationDecoder`.** The "decoder
+   dance" the synthesized sender thunk used to do (bind the returned decoder, call
+   `decoder.decodeNextArgument(R.self)`) is deleted. Result decoding moves into the
+   concrete system's `remoteCall` body; the thunk just returns `remoteCall`'s
+   `Res`. `Res` is inferred from the thunk's return-position contextual type (there
+   is no `returning:` metatype argument under Embedded). For a `@Resolvable`
+   result the thunk coerces the call to the wire-level `$P` stub (which conforms to
+   `SerializationRequirement`) via `CoerceExpr::createImplicit`, so `Res` binds to
+   `$P`; the implicit existential erasure at the `return` turns the `$P` back into
+   the `any/some P` the thunk declares.
+
+Compiler changes: the embedded decoder dance was deleted from
+`deriveBodyDistributed_thunk` and replaced with the `$P` coercion
+(`lib/Sema/CodeSynthesisDistributedActor.cpp`); `getDistributedActorSerializationType`
+no longer short-circuits to `Any` under embedded (`lib/AST/DistributedDecl.cpp`),
+so it returns the system's real `SerializationRequirement` and the standard
+per-parameter (`distributed_actor_func_param_not_codable`) and result coverage
+checks run; `checkDistributedActorSystem` no longer early-returns under embedded
+so the "`SerializationRequirement` must be a protocol" check runs;
+`checkEmbeddedDistributedFunctionCoverage` keeps only the language-feature
+rejections (user generic funcs, `some P`, non-`@Resolvable` `any P`) and dropped
+the per-overload presence checks; the `distributed_embedded_missing_record_argument`
+/ `_decode_next_argument` / `_on_return` / `_missing_overload_note` diagnostics
+were deleted. The escape-hatch predicate `checkEmbeddedDistributedActorSystemRemoteCall`
+(`lib/AST/DistributedDecl.cpp`) accepts the reshaped `remoteCall<Act, Res>` /
+`remoteCallVoid<Act>` whose requirements are ordered
+`Act: DistributedActor, Act.ID == ActorID, Res: SerializationRequirement`.
+
+**File-location correction (supersedes the 2026-08-31 note above):** the embedded
+shape does **not** live inside `stdlib/public/Distributed/DistributedActorSystem.swift`.
+The `#if $Embedded` branches live in the separate
+`stdlib/public/Distributed/DistributedActorSystem+Embedded.swift` and
+`stdlib/public/Distributed/DistributedActor+Embedded.swift` files.
+`DistributedActor+Embedded.swift` re-adds `associatedtype SerializationRequirement`
+with the `where SerializationRequirement == ActorSystem.SerializationRequirement`
+clause (mirroring non-embedded), and `DistributedActorSystem+Embedded.swift` holds
+the reshaped `remoteCall<Act, Res> -> Res` / `remoteCallVoid`.
+
 ### Test results at `9d00efc1275`
 
 | Suite | Result |
@@ -425,9 +481,12 @@ force-push (or a fresh branch).
   `recordGenericSubstitution(T.self)`, which has no embedded wire shape.
   Diagnosed as `distributed_embedded_some_param_not_supported` (with a "use
   'any P' instead" fix-it) and `distributed_embedded_generic_func_not_supported`.
-- The coverage diagnostic scales linearly with API surface: every distinct type
-  in any distributed signature needs 3-4 hand-written overloads, with no macro
-  to generate them yet.
+- Argument / return coverage no longer scales with hand-written overloads: each
+  argument / return type conforms to the system's `SerializationRequirement`
+  protocol *once*, and the encoder / decoder / handler carry a single generic
+  serialization method each. A type that does not conform is diagnosed by the
+  standard `distributed_actor_func_param_not_codable` (and result-type variant),
+  naming the system's protocol.
 
 ---
 
@@ -459,14 +518,15 @@ Also expect 47 unsupported tests across `test/Distributed/` + `test/embedded/`
 The full design writeup lives in **`docs/Distributed.md`**, section
 `# Distributed in Embedded Swift`. It covers the four embedded constraints that
 rule out the standard runtime, the single `DistributedActorSystem` protocol
-family with its `#if $Embedded` branch, the sender and
-receiver paths, Phase 2 `any P` handling, what is gated where, measured code
-size and heap costs, and the open-work list. That doc is the source of truth;
-this file is only the session/logistics layer on top of it.
+family whose `#if $Embedded` branch lives in the separate `*+Embedded.swift`
+files, the sender and receiver paths, Phase 2 `any P` handling, what is gated
+where, measured code size and heap costs, and the open-work list. That doc is the
+source of truth; this file is only the session/logistics layer on top of it.
 
 Other key locations:
 
-- `stdlib/public/Distributed/DistributedActorSystem.swift` — the single protocol family; the `#if $Embedded` branch is the embedded shape
+- `stdlib/public/Distributed/DistributedActorSystem+Embedded.swift` — the `#if $Embedded` system shape (`remoteCall<Act, Res> -> Res`, `remoteCallVoid`, `associatedtype SerializationRequirement`)
+- `stdlib/public/Distributed/DistributedActor+Embedded.swift` — the `#if $Embedded` actor shape (re-adds `associatedtype SerializationRequirement` with the `where ... == ActorSystem.SerializationRequirement` clause)
 - `lib/Sema/CodeSynthesisDistributedActor.cpp` — thunk + receive-dispatch synthesis
 - `lib/Sema/TypeCheckDistributed.cpp` — coverage diagnostic, `checkDistributedActor`
 - `lib/IRGen/GenDistributed.cpp` — embedded remote-init, skipped accessor emission

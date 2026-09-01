@@ -1,25 +1,28 @@
-// RUN: %target-swift-frontend -emit-ir -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 %s | %FileCheck %s
+// RUN: %target-swift-frontend -typecheck -verify -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 %s
 
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 
-// Multiple distributed actors sharing one actor system compile cleanly
-// under Embedded, and each one's distributed thunks are independently
-// emitted.
+// Verify the embedded distributed type-check pass diagnoses argument and
+// return types that do not conform to the system's `SerializationRequirement`.
+// The system binds `SerializationRequirement` to `MySerializationRequirement`
+// but `String` is intentionally NOT conformed to it, so a `String` parameter
+// and a `String` return type are both rejected - the same conformance
+// diagnostics normal (non-embedded) Swift uses, now that the embedded shape
+// carries a real `SerializationRequirement` instead of ad-hoc per-type
+// overloads. (The parameter check bails on the first offending parameter, so
+// the parameter and result diagnostics are exercised by separate funcs.)
 
 import _Concurrency
 import Distributed
 
-// The system binds `SerializationRequirement` to its own protocol; every
-// argument / return type of a distributed func must conform to it, and the
-// encoder / decoder / handler serialize conforming values through a single
-// generic method rather than per-type overloads
-public protocol MySerializationRequirement {}
-extension String: MySerializationRequirement {}
-
-public struct MyActorID: Sendable, Hashable {
+public struct EmbeddedActorID: Sendable, Hashable {
   public let id: UInt64
 }
+
+// The system's serialization requirement. `String` is intentionally NOT
+// conformed to it below.
+public protocol MySerializationRequirement {}
 
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
@@ -35,7 +38,7 @@ public struct MyDecoder: DistributedTargetInvocationDecoder {
 }
 extension MyDecoder {
   public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
-    fatalError()
+    fatalError("stub")
   }
 }
 
@@ -49,7 +52,7 @@ extension MyResultHandler {
 }
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
-  public typealias ActorID = MyActorID
+  public typealias ActorID = EmbeddedActorID
   public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
@@ -60,7 +63,7 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
       where Act: DistributedActor, Act.ID == ActorID { return nil }
   public func assignID<Act>(_ actorType: Act.Type) -> ActorID
-      where Act: DistributedActor, Act.ID == ActorID { return MyActorID(id: 0) }
+      where Act: DistributedActor, Act.ID == ActorID { return ActorID(id: 0) }
   public func actorReady<Act>(_ actor: Act)
       where Act: DistributedActor, Act.ID == ActorID {}
   public func resignID(_ id: ActorID) {}
@@ -72,8 +75,7 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
   ) async throws -> Res
-      where Act: DistributedActor, Act.ID == ActorID,
-            Res: MySerializationRequirement { fatalError() }
+      where Act: DistributedActor, Act.ID == ActorID, Res: MySerializationRequirement { fatalError() }
 
   public func remoteCallVoid<Act>(
     on actor: Act,
@@ -86,28 +88,17 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 typealias DefaultDistributedActorSystem = MySystem
 
 distributed actor Greeter {
-  distributed func hello(name: String) -> String { "Hello, \(name)!" }
-}
+  // `String` does not conform, so the parameter is rejected. The parameter
+  // check bails on the first non-conforming parameter, so this func exercises
+  // only the parameter diagnostic.
+  // expected-error@+1{{parameter 'name' of type 'String' in distributed instance method does not conform to serialization requirement 'MySerializationRequirement'}}
+  distributed func hello(name: String) {
+  }
 
-distributed actor Farewell {
-  distributed func goodbye(name: String) -> String { "Bye, \(name)!" }
-}
-
-@main struct Main {
-  static func main() async {
-    let system = MySystem()
-    let g = Greeter(actorSystem: system)
-    let f = Farewell(actorSystem: system)
-    _ = try? await g.hello(name: "x")
-    _ = try? await f.goodbye(name: "y")
+  // A func with no parameters, so the parameter check passes and the result
+  // type is examined: `String` does not conform, so the result is rejected.
+  // expected-error@+1{{result type 'String' of distributed instance method 'greeting' does not conform to serialization requirement 'MySerializationRequirement'}}
+  distributed func greeting() -> String {
+    return "Hello!"
   }
 }
-
-// Both actors get their own thunk in IR.
-// CHECK-DAG: @"$e{{.+}}GreeterC5hello4nameS2S_tYaKFTE"
-// CHECK-DAG: @"$e{{.+}}FarewellC7goodbye4nameS2S_tYaKFTE"
-
-// And the remoteCall<Greeter, String> / remoteCall<Farewell, String>
-// specializations (the `_SS` before `Tg5` is the String `Res`).
-// CHECK-DAG: $e{{.+}}MySystemC10remoteCall{{.+}}GreeterC_SSTg5
-// CHECK-DAG: $e{{.+}}MySystemC10remoteCall{{.+}}FarewellC_SSTg5

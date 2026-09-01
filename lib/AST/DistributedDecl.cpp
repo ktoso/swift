@@ -324,15 +324,6 @@ Type swift::getDistributedActorSerializationType(
     DeclContext *actorOrExtension) {
   auto &ctx = actorOrExtension->getASTContext();
 
-  // Under Embedded Swift, `DistributedActorSystem` has no
-  // `SerializationRequirement` associated type. Returning `Any` here disables
-  // the standard "parameter conforms to SerializationRequirement" diagnostic
-  // (which is replaced under Embedded by a WMO-end check that verifies the
-  // user's encoder/decoder/handler have the right per-type overloads).
-  if (ctx.LangOpts.hasFeature(Feature::Embedded)) {
-    return ctx.TheAnyType;
-  }
-
   auto resultTy = getAssociatedTypeOfDistributedSystemOfActor(
       actorOrExtension,
       ctx.Id_SerializationRequirement);
@@ -573,12 +564,151 @@ bool swift::checkDistributedSerializationRequirementIsExactlyCodable(
 /********************* Ad-hoc protocol requirement checks *********************/
 /******************************************************************************/
 
+/// Recognizes the Embedded Swift shape of `DistributedActorSystem.remoteCall`.
+///
+/// Under Embedded Swift `remoteCall` is reshaped: it drops the `<Err>` generic
+/// parameter and the `throwing:` / `returning:` metatype parameters (errors
+/// travel as `any Error`, and the result `Res` is inferred from the call
+/// context and decoded inside the concrete `remoteCall` body). The result is
+/// still constrained to the system's `SerializationRequirement`, but that
+/// constraint is not expressible on the protocol requirement itself, so the
+/// witness carries it and normal witness matching would reject the extra
+/// requirement. Recognizing this shape lets the constraint solver synthesize
+/// that ad-hoc conformance (see CSSimplify) and lets IRGen null the witness
+/// slot, exactly as for the non-embedded shape
+static bool checkEmbeddedDistributedActorSystemRemoteCall(
+    const AbstractFunctionDecl *afd, bool isVoidReturn) {
+  auto &C = afd->getASTContext();
+  auto *DC = afd->getDeclContext();
+
+  // === Check the name
+  auto callId = isVoidReturn ? C.Id_remoteCallVoid : C.Id_remoteCall;
+  if (afd->getBaseName() != callId)
+    return false;
+
+  // === Must be declared in a 'DistributedActorSystem' conforming type
+  ProtocolDecl *systemProto = C.getDistributedActorSystemDecl();
+  if (!systemProto)
+    return false;
+
+  auto systemNominal = DC->getSelfNominalTypeDecl();
+  if (!systemNominal)
+    return false;
+  auto distSystemConformance = lookupConformance(
+      systemNominal->getDeclaredInterfaceType(), systemProto);
+  if (distSystemConformance.isInvalid())
+    return false;
+
+  auto *func = dyn_cast<FuncDecl>(afd);
+  if (!func)
+    return false;
+
+  // === Structural checks: throwing, async, non-mutating
+  if (!afd->hasThrows() || !afd->hasAsync() || func->isMutating())
+    return false;
+
+  // === Generic parameters: <Act> (void) or <Act, Res> (non-void); no <Err>
+  auto genericParams = afd->getGenericParams();
+  if (!genericParams)
+    return false;
+  unsigned expectedGenericParamNum = isVoidReturn ? 1 : 2;
+  if (genericParams->size() != expectedGenericParamNum)
+    return false;
+
+  // === The protocols the result type must serialize through
+  SmallPtrSet<ProtocolDecl *, 2> requirementProtos;
+  if (!getDistributedSerializationRequirements(systemNominal, systemProto,
+                                               requirementProtos))
+    return false;
+  size_t serializationRequirementsNum =
+      isVoidReturn ? 0 : requirementProtos.size();
+
+  // === Parameters: (on:target:invocation:) - no throwing: / returning:
+  auto params = afd->getParameters();
+  if (!params || params->size() != 3)
+    return false;
+  if (params->get(0)->getArgumentName() != C.Id_on)
+    return false;
+  if (params->get(1)->getArgumentName() != C.Id_target)
+    return false;
+  auto invocationParam = params->get(2);
+  if (invocationParam->getArgumentName() != C.Id_invocation ||
+      !invocationParam->isInOut())
+    return false;
+
+  // === Act: DistributedActor
+  GenericTypeParamDecl *ActParam = genericParams->getParams()[0];
+  auto ActConformance = lookupConformance(
+      afd->mapTypeIntoEnvironment(ActParam->getDeclaredInterfaceType()),
+      C.getProtocol(KnownProtocolKind::DistributedActor));
+  if (ActConformance.isInvalid())
+    return false;
+
+  GenericTypeParamDecl *ResParam = nullptr;
+  if (!isVoidReturn)
+    ResParam = genericParams->getParams().back();
+
+  // === Requirements: Act: DistributedActor,
+  //     [Res: SerializationRequirement...], Act.ID == Self.ActorID (last)
+  auto sig = afd->getGenericSignature();
+  SmallVector<Requirement, 2> reqs;
+  SmallVector<InverseRequirement, 2> inverseReqs;
+  sig->getRequirementsWithInverses(reqs, inverseReqs);
+  assert(inverseReqs.empty() && "Non-copyable generics not supported here!");
+
+  size_t expectedRequirementsNum = 2 + serializationRequirementsNum;
+  if (reqs.size() != expectedRequirementsNum)
+    return false;
+
+  // conforms_to: Act DistributedActor
+  auto actorReq = reqs[0];
+  if (actorReq.getKind() != RequirementKind::Conformance ||
+      !actorReq.getProtocolDecl()->isSpecificProtocol(
+          KnownProtocolKind::DistributedActor))
+    return false;
+
+  // Res is either Void or conforms to every SerializationRequirement protocol
+  if (isVoidReturn) {
+    if (!func->getResultInterfaceType()->isVoid())
+      return false;
+  } else if (ResParam) {
+    auto resultType =
+        func->mapTypeIntoEnvironment(func->getResultInterfaceType())
+            ->getMetatypeInstanceType();
+    auto resultParamType =
+        func->mapTypeIntoEnvironment(ResParam->getDeclaredInterfaceType());
+    if (!resultType->isEqual(resultParamType))
+      return false;
+    for (auto requirementProto : requirementProtos) {
+      auto conformance = lookupConformance(resultType, requirementProto);
+      if (conformance.isInvalid())
+        return false;
+    }
+  }
+
+  // same_type: Act.ID Self.ActorID (last)
+  auto actorIdReq = reqs.back();
+  if (actorIdReq.getKind() != RequirementKind::SameType)
+    return false;
+  auto expectedActorIdTy = getDistributedActorSystemActorIDType(systemNominal);
+  if (!actorIdReq.getSecondType()->isEqual(expectedActorIdTy))
+    return false;
+
+  return true;
+}
+
 bool AbstractFunctionDecl::isDistributedActorSystemRemoteCall(bool isVoidReturn) const {
   auto &C = getASTContext();
   auto *DC = getDeclContext();
 
   if (!DC->isTypeContext() || !hasGenericParamList())
     return false;
+
+  // Under Embedded Swift `remoteCall` is reshaped (no `<Err>` generic
+  // parameter, no `throwing:` / `returning:` metatype parameters); recognize
+  // that shape so downstream ad-hoc-witness machinery treats it uniformly
+  if (C.LangOpts.hasFeature(Feature::Embedded))
+    return checkEmbeddedDistributedActorSystemRemoteCall(this, isVoidReturn);
 
   // === Check the name
   auto callId = isVoidReturn ? C.Id_remoteCallVoid : C.Id_remoteCall;

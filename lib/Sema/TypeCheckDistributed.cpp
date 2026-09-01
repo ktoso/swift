@@ -716,14 +716,6 @@ bool swift::checkDistributedActorSystem(const NominalTypeDecl *system) {
   if (!swift::ensureDistributedModuleLoaded(nominal))
     return true;
 
-  // Under Embedded Swift, `DistributedActorSystem` has no
-  // `SerializationRequirement` associated type; the serialization-shaped
-  // requirements are replaced by per-type encoder/decoder/handler overloads,
-  // whose presence is verified by `checkEmbeddedDistributedFunctionCoverage`.
-  // There is therefore nothing to check here.
-  if (nominal->getASTContext().LangOpts.hasFeature(Feature::Embedded))
-    return false;
-
   // === AssociatedTypes
   // --- SerializationRequirement MUST be a protocol TODO(distributed): rdar://91663941
   // we may lift this in the future and allow classes but this requires more
@@ -797,42 +789,6 @@ static void emitResolvableProtocolMissingActorSystemFixit(
       .fixItInsert(fixItLoc, fixIt);
 }
 
-/// Look up a single-parameter method with the given name on \p type,
-/// matching `func name(_: paramTy)` (when `isMetatype` is false) or
-/// `func name(_: paramTy.Type)` (when `isMetatype` is true). Returns
-/// true if at least one matching candidate exists.
-static bool hasEmbeddedDistributedOverload(
-    DeclContext *useDC, Type type, Identifier methodName, Type paramTy,
-    bool isMetatype) {
-  if (!type || type->hasError())
-    return true; // can't check; don't add a confusing diagnostic on top
-
-  auto members = TypeChecker::lookupMember(useDC, type,
-                                           DeclNameRef(methodName));
-  for (auto &found : members) {
-    auto *fd = dyn_cast<FuncDecl>(found.getValueDecl());
-    if (!fd)
-      continue;
-    auto *params = fd->getParameters();
-    if (params->size() != 1)
-      continue;
-
-    // First parameter: the value (or the metatype).
-    auto *firstParam = params->get(0);
-    Type firstTy = firstParam->getInterfaceType();
-    if (auto inout = firstTy->getAs<InOutType>())
-      firstTy = inout->getObjectType();
-    Type expected = paramTy;
-    if (isMetatype)
-      expected = MetatypeType::get(paramTy);
-    if (!firstTy->isEqual(expected))
-      continue;
-
-    return true;
-  }
-  return false;
-}
-
 /// Classify `T` as `any P` / `some P` for the purpose of the embedded
 /// Phase 2 diagnostic. Returns a non-null kind string ("'any'" or
 /// "'some'") when the type is an existential or opaque/generic type
@@ -889,59 +845,20 @@ static StringRef classifyAnySomeForEmbedded(Type interfaceTy,
   return {};
 }
 
-/// Emits the "missing overload" note with a fix-it stub for an embedded
-/// distributed actor system overload that the user needs to add.
-///
-/// The note is always anchored at the distributed function so the source
-/// location matches what the user sees.  The fix-it inserts the stub at the
-/// right place: directly inside the target type's braces when it is in the
-/// same module, or as an extension block after the enclosing actor/extension
-/// declaration when it is in a different module.
-static void emitEmbeddedMissingOverloadNoteWithFixIt(
-    AbstractFunctionDecl *func, DeclContext *actorOrExt,
-    Type targetTy, StringRef methodSig) {
-  auto note = func->diagnose(diag::distributed_embedded_missing_overload_note,
-                             targetTy, methodSig);
-
-  auto *targetNominal = targetTy->getAnyNominal();
-  bool sameModule = targetNominal &&
-      targetNominal->getModuleContext() == func->getModuleContext();
-
-  llvm::SmallString<256> fixItText;
-  llvm::raw_svector_ostream fix(fixItText);
-
-  if (sameModule && targetNominal->getBraces().End.isValid()) {
-    fix << "\n  public " << methodSig << " {}";
-    note.fixItInsert(targetNominal->getBraces().End, fixItText);
-    return;
-  }
-
-  // Different module or no source location: suggest an extension after the
-  // enclosing actor/extension declaration.
-  fix << "\nextension ";
-  targetTy->print(fix);
-  fix << " {\n  public " << methodSig << " {}\n}";
-
-  SourceLoc insertLoc;
-  if (auto *D = actorOrExt->getAsDecl())
-    insertLoc = D->getEndLoc();
-
-  if (insertLoc.isValid())
-    note.fixItInsertAfter(insertLoc, fixItText);
-}
-
 /// For a `distributed func` whose enclosing actor is compiled under the
-/// Embedded feature, verify that the system's concrete
-/// encoder / decoder / handler types provide non-generic per-type
-/// overloads for every type used in the function's signature.
+/// Embedded feature, reject parameter/return shapes that embedded cannot
+/// lower onto the wire: user-written generic functions, `some P`, and
+/// `any P` where P is not `@Resolvable`.
 ///
-/// Emits diagnostics for missing overloads and returns true if any were
-/// missing.
+/// Whether each parameter/return type conforms to the system's
+/// `SerializationRequirement` is enforced separately by the standard
+/// `distributed_actor_func_param_not_codable` (parameters) and
+/// `checkDistributedTargetResultType` (result) checks, now that
+/// `getDistributedActorSerializationType` returns the real requirement under
+/// Embedded. This function only handles the language-shape restrictions.
+///
+/// Returns true if any shape was rejected.
 static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func) {
-  auto &ctx = func->getASTContext();
-
-  auto *actorOrExt = func->getDeclContext();
-
   // Embedded Phase 2: user-written generic distributed methods (e.g.
   // `distributed func foo<T>(...)`) require the thunk to emit
   // `recordGenericSubstitution(T.self)` calls, which the embedded
@@ -966,52 +883,19 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
     }
   }
 
-  Type systemTy = getConcreteReplacementForProtocolActorSystemType(func);
-  if (!systemTy || systemTy->hasError())
-    return false;
-
-  auto *systemNominal = systemTy->getAnyNominal();
-  if (!systemNominal)
-    return false;
-
-  // Look up the InvocationEncoder/Decoder/ResultHandler type witnesses on
-  // the user's concrete actor system.
-  auto *das = ctx.getDistributedActorSystemDecl();
-  if (!das)
-    return false;
-
-  auto sysConf = lookupConformance(
-      systemNominal->getDeclaredInterfaceType(), das);
-  if (sysConf.isInvalid())
-    return false;
-
-  Type encoderTy =
-      sysConf.getTypeWitnessByName(ctx.getIdentifier("InvocationEncoder"));
-  Type decoderTy =
-      sysConf.getTypeWitnessByName(ctx.getIdentifier("InvocationDecoder"));
-  Type handlerTy =
-      sysConf.getTypeWitnessByName(ctx.getIdentifier("ResultHandler"));
-
   bool anyMissing = false;
 
-  // For each (non-`@Resolvable`) parameter, require:
-  //   encoder.recordArgument(_: RemoteCallArgument<T>)
-  //   decoder.decodeNextArgument(_: T.Type) -> T
+  // Reject parameter shapes embedded can't lower:
+  //   - `some P` (with or without `@Resolvable`): generic specialization of
+  //     distributed methods is not supported; the thunk would need to record
+  //     generic substitutions on the wire, which needs runtime metadata.
+  //   - `any P` where P is not `@Resolvable`: the existential has no wire
+  //     shape; it would need the `$P` stub.
+  //   - `any P` where P is `@Resolvable`: accepted; the thunk substitutes `$P`.
   for (auto *param : *func->getParameters()) {
     Type paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
     Type printableParamTy = param->getInterfaceType();
 
-    // Embedded Phase 2:
-    //   - `any P` where P is `@Resolvable`: substitute `$P` for the
-    //     coverage check below; the synthesized distributed thunk
-    //     does the same substitution at the call site.
-    //   - `any P` where P is not `@Resolvable`: not supported. The
-    //     existential has no wire shape; would need `$P`.
-    //   - `some P` (any P, with or without `@Resolvable`): not
-    //     supported. Generic specialization of distributed methods is
-    //     not supported under embedded; the synthesized thunk would
-    //     need to record generic substitutions on the wire, which
-    //     requires runtime metadata that embedded doesn't have.
     if (auto kind = classifyAnySomeForEmbedded(printableParamTy, paramTy);
         !kind.empty()) {
       auto resolvable =
@@ -1020,9 +904,6 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
                        ? getDistributedResolvableProtocolStubDecl(resolvable.proto)
                        : nullptr;
 
-      // `some P` is rejected even if P has `@Resolvable`: the thunk
-      // can't substitute the opaque type at the wire level without
-      // generic substitution support that embedded doesn't have.
       if (kind == "'some'") {
         StringRef protoName = resolvable.proto
             ? resolvable.proto->getName().str()
@@ -1034,13 +915,7 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
         continue;
       }
 
-      // `any P` with `@Resolvable`: substitute `$P` for the coverage
-      // check. The thunk's existing `getDistributedResolvableProtocolStubType`
-      // substitution does the same at the call site.
-      if (stub) {
-        paramTy = stub->getDeclaredInterfaceType();
-        printableParamTy = paramTy;
-      } else {
+      if (!stub) {
         // `any P` without `@Resolvable`: not yet supported.
         func->diagnose(
             diag::distributed_embedded_any_some_param_not_supported,
@@ -1049,69 +924,16 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
         anyMissing = true;
         continue;
       }
-    }
-
-    // Build `RemoteCallArgument<T>` for the recordArgument lookup. The
-    // compiler-synthesized distributed thunk wraps each argument in this
-    // struct before calling recordArgument, so the user's per-type
-    // overload signature is `func recordArgument(_: RemoteCallArgument<T>)`.
-    Type recordArgumentParamTy;
-    if (auto *RCA = ctx.getRemoteCallArgumentDecl()) {
-      recordArgumentParamTy =
-          BoundGenericType::get(RCA, Type(), {paramTy});
-    }
-
-    if (encoderTy && recordArgumentParamTy &&
-        !hasEmbeddedDistributedOverload(
-            actorOrExt, encoderTy, ctx.Id_recordArgument, recordArgumentParamTy,
-            /*isMetatype=*/false)) {
-      func->diagnose(
-          diag::distributed_embedded_missing_record_argument, encoderTy,
-          printableParamTy, func);
-      llvm::SmallString<128> sigBuf;
-      llvm::raw_svector_ostream sig(sigBuf);
-      sig << "mutating func recordArgument(_ argument: RemoteCallArgument<"
-          << printableParamTy << ">) throws";
-      emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, encoderTy,
-                                              StringRef(sigBuf));
-      anyMissing = true;
-    }
-
-    if (decoderTy &&
-        !hasEmbeddedDistributedOverload(
-            actorOrExt, decoderTy, ctx.Id_decodeNextArgument, paramTy,
-            /*isMetatype=*/true)) {
-      func->diagnose(
-          diag::distributed_embedded_missing_decode_next_argument, decoderTy,
-          printableParamTy, func);
-      llvm::SmallString<128> sigBuf;
-      llvm::raw_svector_ostream sig(sigBuf);
-      sig << "mutating func decodeNextArgument(_ type: " << printableParamTy
-          << ".Type) throws -> " << printableParamTy;
-      emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, decoderTy,
-                                              StringRef(sigBuf));
-      anyMissing = true;
+      // `any P` with `@Resolvable`: accepted; the thunk substitutes `$P`.
     }
   }
 
-  // If the function returns a non-Void value, also require:
-  //   handler.onReturn(_: R) async throws
-  // The return type carries no wire metadata under Embedded, so no
-  // `recordReturnType` overload is required.
+  // Reject return shapes embedded can't lower, mirroring the parameter loop.
   if (auto *funcDecl = dyn_cast<FuncDecl>(func)) {
     Type returnInterfaceTy = funcDecl->getResultInterfaceType();
     if (!returnInterfaceTy->isVoid()) {
       Type returnTy = funcDecl->mapTypeIntoEnvironment(returnInterfaceTy);
-      Type printableReturnTy = returnInterfaceTy;
 
-      // Embedded Phase 2: same `@Resolvable`-aware handling as the
-      // parameter loop.
-      //   - `any P` where P is `@Resolvable`: substitute `$P` and
-      //     continue with the coverage check.
-      //   - `some P`: rejected outright (no generic substitution
-      //     support).
-      //   - `any P` without `@Resolvable`: rejected with the
-      //     not-yet-supported diagnostic.
       if (auto kind = classifyAnySomeForEmbedded(returnInterfaceTy, returnTy);
           !kind.empty()) {
         auto resolvable =
@@ -1130,35 +952,14 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
           return true;
         }
 
-        if (stub) {
-          returnTy = stub->getDeclaredInterfaceType();
-          printableReturnTy = returnTy;
-        } else {
+        if (!stub) {
           func->diagnose(
               diag::distributed_embedded_any_some_result_not_supported,
               kind, returnInterfaceTy, func);
           func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
           return true;
         }
-      }
-
-      // No `recordReturnType` coverage check under Embedded: the return type
-      // is not recorded on the wire, so the encoder needs no overload for it.
-
-      if (handlerTy &&
-          !hasEmbeddedDistributedOverload(
-              actorOrExt, handlerTy, ctx.Id_onReturn, returnTy,
-              /*isMetatype=*/false)) {
-        func->diagnose(
-            diag::distributed_embedded_missing_on_return, handlerTy,
-            printableReturnTy, func);
-        llvm::SmallString<128> sigBuf;
-        llvm::raw_svector_ostream sig(sigBuf);
-        sig << "func onReturn(_ value: " << printableReturnTy
-            << ") async throws";
-        emitEmbeddedMissingOverloadNoteWithFixIt(func, actorOrExt, handlerTy,
-                                                StringRef(sigBuf));
-        anyMissing = true;
+        // `any P` with `@Resolvable`: accepted; the thunk substitutes `$P`.
       }
     }
   }
@@ -1182,6 +983,16 @@ bool CheckDistributedFunctionRequest::evaluate(
     func->diagnose(diag::distributed_decl_needs_explicit_distributed_import,
                    func);
     return true;
+  }
+
+  // Embedded Swift: reject parameter/return language shapes embedded cannot
+  // lower (user-written generics, `some P`, non-`@Resolvable` `any P`) before
+  // the standard per-parameter conformance check below, so those shapes get a
+  // single targeted diagnostic rather than also tripping the generic
+  // "does not conform to serialization requirement" diagnostic.
+  if (C.LangOpts.hasFeature(Feature::Embedded)) {
+    if (checkEmbeddedDistributedFunctionCoverage(func))
+      return true;
   }
 
   Type serializationReqType =
@@ -1310,13 +1121,6 @@ bool CheckDistributedFunctionRequest::evaluate(
   if (checkDistributedTargetResultType(func, serializationReqType,
                                        /*diagnose=*/true)) {
     return true;
-  }
-
-  // Embedded Swift: verify the actor system's concrete encoder/decoder/result-handler
-  // types have the per-type overloads the synthesized thunk and accessor will reference.
-  if (C.LangOpts.hasFeature(Feature::Embedded)) {
-    if (checkEmbeddedDistributedFunctionCoverage(func))
-      return true;
   }
 
   return false;

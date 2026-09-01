@@ -17,26 +17,32 @@ import _Concurrency
 // DistributedActor.swift; only one shape is ever compiled per build.
 
 #if $Embedded
-// Under Embedded Swift, `DistributedActorSystem` cannot express the generic
-// members constrained to a (typically non-class) `SerializationRequirement`,
-// so the protocol drops the `SerializationRequirement` associated type and
-// reshapes those members (see `DistributedActorSystem`). This `DistributedActor`
-// definition is identical to the non-embedded one in DistributedActor.swift,
-// except that it drops the `SerializationRequirement` associated type and the
-// corresponding `where` clause requirement. The `ActorSystem:
-// DistributedActorSystem` constraint is the same in both modes, which is what
-// makes a `distributed actor` declaration source-portable across Embedded and
-// non-Embedded Swift.
+// Under Embedded Swift the `SerializationRequirement`-constrained members of the
+// distributed actor protocols are reshaped, but the `SerializationRequirement`
+// associated type itself is carried in the type system just like the
+// non-embedded shape (see `DistributedActorSystem`). The concrete actor system
+// binds it to its own protocol; the compiler enforces that every type appearing
+// in a `distributed func` signature conforms to it, and the encoder / decoder /
+// handler serialize those types through a single generic
+// `SerializationRequirement`-constrained method that is always specialized.
+//
+// This `DistributedActor` definition is identical to the non-embedded one in
+// DistributedActor.swift. The `ActorSystem: DistributedActorSystem` constraint
+// is the same in both modes, which is what makes a `distributed actor`
+// declaration source-portable across Embedded and non-Embedded Swift.
 @available(SwiftStdlib 5.7, *)
 public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
-  where ID == ActorSystem.ActorID {
+  where ID == ActorSystem.ActorID,
+        SerializationRequirement == ActorSystem.SerializationRequirement {
 
   /// The type of transport used to communicate with actors of this type.
   associatedtype ActorSystem: DistributedActorSystem
 
-  // In Embedded Swift there is NO 'SerializationRequirement'.
-  // Serialization is enforced by every supported type having an encode/decode function
-  // implemented on a concrete system's encoder/decoder pair.
+  /// The serialization requirement every argument and return type of a
+  /// `distributed func` on this actor must conform to. Same-typed to the actor
+  /// system's `SerializationRequirement`, so the actor system's concrete choice
+  /// (e.g. a user-defined byte-serialization protocol) flows through the actor.
+  associatedtype SerializationRequirement
 
   nonisolated override var id: ID { get }
   nonisolated var actorSystem: ActorSystem { get }

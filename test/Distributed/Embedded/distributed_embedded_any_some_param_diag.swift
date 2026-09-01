@@ -5,8 +5,9 @@
 
 // Phase 2 embedded `@Resolvable` support: `any P` parameters and returns
 // where `P` is annotated with `@Resolvable` get the wire-level `$P` stub
-// substitution at the synthesized distributed thunk's call site and the
-// per-type encoder/decoder overload check accepts `$P`. `some P` and
+// substitution at the synthesized distributed thunk's call site, and the
+// `$P` stub conforms to the system's `SerializationRequirement` so the
+// standard argument/return coverage check accepts it. `some P` and
 // generic distributed funcs remain rejected; `any P` without `@Resolvable`
 // remains rejected (no `$P` stub exists for non-resolvable protocols).
 
@@ -17,19 +18,27 @@ public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
+// The system's serialization requirement. `String` and the `@Resolvable` wire
+// stub `$RWorker` conform to it below
+public protocol MySerializationRequirement {}
+extension String: MySerializationRequirement {}
+
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
-  public mutating func decodeNextArgument(_: String.Type) throws -> String { "" }
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    fatalError()
+  }
 }
 
 public struct MyResultHandler: DistributedTargetInvocationResultHandler {
@@ -38,11 +47,12 @@ public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public func onThrow(error: any Error) async throws {}
 }
 extension MyResultHandler {
-  public func onReturn(_ value: String) async throws {}
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
+  public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
@@ -59,10 +69,11 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 
   public func makeInvocationEncoder() -> InvocationEncoder { .init() }
 
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act, target: RemoteCallTarget, invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID { fatalError() }
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID,
+            Res: MySerializationRequirement { fatalError() }
 
   public func remoteCallVoid<Act>(
     on actor: Act, target: RemoteCallTarget, invocation: inout InvocationEncoder
@@ -86,19 +97,9 @@ public protocol RWorker: DistributedActor where ActorSystem == MySystem {
   distributed func work(name: String) -> String
 }
 
-// `$RWorker` overloads on the user's invocation pieces, needed for the
-// per-type coverage check to pass for `any RWorker`.
-extension MyEncoder {
-  public mutating func recordArgument(_ argument: RemoteCallArgument<$RWorker>) throws {}
-}
-extension MyDecoder {
-  public mutating func decodeNextArgument(_: $RWorker.Type) throws -> $RWorker {
-    fatalError()
-  }
-}
-extension MyResultHandler {
-  public func onReturn(_ value: $RWorker) async throws {}
-}
+// Conform the `$RWorker` wire stub to the serialization requirement so the
+// standard coverage check accepts `any RWorker` parameters and returns.
+extension $RWorker: MySerializationRequirement {}
 
 distributed actor Hub {
   // `any P` where P is not `@Resolvable`: rejected, no `$P` stub exists

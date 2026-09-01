@@ -538,10 +538,10 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
   {
     DeclName remoteCallName;
     if (isEmbeddedSystem) {
-      // `func remoteCall<Act>(on:target:invocation:)` — no `throwing:`,
-      // no `returning:`. Errors travel as `any Error`. Return type is
-      // either `Void` (for `remoteCallVoid`) or the system's
-      // `InvocationDecoder` from which the caller decodes the result.
+      // `func remoteCall<Act, Res>(on:target:invocation:)` - no `throwing:`,
+      // no `returning:`. Errors travel as `any Error`. Return type is either
+      // `Void` (for `remoteCallVoid`) or `Res`, which the concrete system
+      // decodes off the wire inside its `remoteCall` body.
       if (isVoidReturn) {
         remoteCallName =
             DeclName(C, C.Id_remoteCallVoid,
@@ -603,9 +603,10 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     }
 
     // -- returning: Res.Type
-    // Skipped under Embedded - the embedded protocol's `remoteCall` does
-    // not take a `returning:` parameter; it returns the decoder, from
-    // which the thunk decodes the result.
+    // Skipped under Embedded - the embedded protocol's `remoteCall` does not
+    // take a `returning:` parameter; `Res` is inferred from the return-position
+    // contextual type instead (see the coercion below), and the concrete system
+    // decodes the response into `Res` inside its `remoteCall` body.
     if (!isVoidReturn && !isEmbeddedSystem) {
       // Result.self
       auto resultType =
@@ -631,56 +632,31 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     remoteCallExpr = AwaitExpr::createImplicit(C, sloc, remoteCallExpr);
     remoteCallExpr = TryExpr::createImplicit(C, sloc, remoteCallExpr);
 
+    // Under Embedded there is no `returning:` metatype argument, so the
+    // system's `remoteCall` infers `Res` from the return-position contextual
+    // type. For a `@Resolvable` result the wire-level type is the proxy stub
+    // `$P` (which conforms to the system's `SerializationRequirement`), not the
+    // `any/some P` the thunk returns. Coerce the call to `$P` so `Res` binds to
+    // `$P`; the implicit existential erasure at the `return` turns the `$P`
+    // back into `any/some P`.
     if (isEmbeddedSystem && !isVoidReturn) {
-      // Embedded mode: `remoteCall` returns the system's `InvocationDecoder`
-      // populated with the response. Decode the actual result via:
-      //   return try decoder.decodeNextArgument(R.self)
-      // The overload is resolved against the user's concrete decoder type;
-      // we don't synthesize a generic call site.
-      auto decoderVar = new (C) VarDecl(
-          /*isStatic=*/false, VarDecl::Introducer::Var, sloc,
-          C.getIdentifier("__decoder"), thunk);
-      decoderVar->setImplicit();
-      decoderVar->setSynthesized();
-      auto decoderPattern = NamedPattern::createImplicit(C, decoderVar);
-      auto decoderPB = PatternBindingDecl::createImplicit(
-          C, swift::StaticSpellingKind::None, decoderPattern,
-          /*expr=*/remoteCallExpr, thunk);
-      remoteBranchStmts.push_back(decoderPB);
-      remoteBranchStmts.push_back(decoderVar);
-
-      // decoder.decodeNextArgument(R.self)
       auto resultType =
-          func->mapTypeIntoEnvironment(func->getResultInterfaceType());
-      // --- `@Resolvable protocol` result: substitute `$P` for `any/some P`
-      // so the decoder's per-type overload is looked up on `$P`, the same
-      // wire-level shape the sender used
-      Type decodedReturnType = resultType;
-      if (Type stubTy = getDistributedResolvableProtocolStubType(resultType))
-        decodedReturnType = func->mapTypeIntoEnvironment(stubTy);
-      auto *metaTypeRef = TypeExpr::createImplicit(decodedReturnType, C);
-      auto *resultTypeExpr =
-          new (C) DotSelfExpr(metaTypeRef, sloc, sloc, decodedReturnType);
-
-      DeclName decodeNextArgName(C, C.Id_decodeNextArgument,
-                                 /*labels=*/{Identifier()});
-      auto decodeArgsList = ArgumentList::forImplicitCallTo(
-          DeclNameRef(decodeNextArgName), {resultTypeExpr}, C);
-      auto decoderRef = new (C) DeclRefExpr(ConcreteDeclRef(decoderVar), dloc,
-                                            implicit, AccessSemantics::Ordinary);
-      Expr *decodeCall = CallExpr::createImplicit(
-          C,
-          UnresolvedDotExpr::createImplicit(C, decoderRef, decodeNextArgName),
-          decodeArgsList);
-      decodeCall = TryExpr::createImplicit(C, sloc, decodeCall);
-
-      auto returnDecoded = ReturnStmt::createImplicit(C, sloc, decodeCall);
-      remoteBranchStmts.push_back(returnDecoded);
-    } else {
-      auto returnRemoteCall =
-          ReturnStmt::createImplicit(C, sloc, remoteCallExpr);
-      remoteBranchStmts.push_back(returnRemoteCall);
+          thunk->mapTypeIntoEnvironment(func->getResultInterfaceType());
+      if (Type stubTy = getDistributedResolvableProtocolStubType(resultType)) {
+        auto substResultTy = thunk->mapTypeIntoEnvironment(stubTy);
+        remoteCallExpr =
+            CoerceExpr::createImplicit(C, remoteCallExpr, substResultTy);
+      }
     }
+
+    // Both modes return the remote call's result directly. Under Embedded the
+    // embedded `remoteCall` has no `returning:` metatype parameter, so `Res` is
+    // inferred from this return-position contextual type (the thunk's result
+    // type); the concrete system decodes the response into `Res` inside its
+    // `remoteCall` body.
+    auto returnRemoteCall =
+        ReturnStmt::createImplicit(C, sloc, remoteCallExpr);
+    remoteBranchStmts.push_back(returnRemoteCall);
   }
 
   // ---------------------------------------------------------------------------
@@ -1152,10 +1128,10 @@ addDistributedActorCodableConformance(
 //
 // The body is an if/else chain that string-compares `target.identifier`
 // against each distributed function's mangled distributed-thunk name.
-// For each match it decodes the arguments via the user's per-type
-// `decodeNextArgument(_:)` overloads, calls the local distributed
-// function, and hands the result (or `Void`) to the result handler's
-// per-type `onReturn(_:)` / `onReturnVoid()` overload. Errors thrown by
+// For each match it decodes the arguments via the decoder's single generic
+// `decodeNextArgument<Argument>()` member, calls the local distributed
+// function, and hands the result (or `Void`) to the result handler's generic
+// `onReturn(_:)` / non-generic `onReturnVoid()` member. Errors thrown by
 // the user-declared body are forwarded to `resultHandler.onThrow(error:)`
 // and not rethrown. When no match is found, an
 // `EmbeddedDistributedTargetNotFound` is thrown.
@@ -1173,8 +1149,8 @@ struct EmbeddedDispatchContext {
 /// Build the body of a single dispatch branch for `distFunc`:
 ///
 ///   if target.identifier.utf8.elementsEqual("$e_..._TE".utf8) {
-///     let p1 = try invocationDecoder.decodeNextArgument(T1.self)
-///     let p2 = try invocationDecoder.decodeNextArgument(T2.self)
+///     let p1: T1 = try invocationDecoder.decodeNextArgument()
+///     let p2: T2 = try invocationDecoder.decodeNextArgument()
 ///     do {
 ///       let __result = try await self.distFunc(p1, p2)
 ///       try await resultHandler.onReturn(__result)
@@ -1275,14 +1251,22 @@ static IfStmt *buildEmbeddedDispatchBranch(
     paramVar->setSynthesized();
     paramVar->setInterfaceType(paramTy);
 
-    Pattern *paramPattern = NamedPattern::createImplicit(C, paramVar, paramTy);
+    // Wrap the named pattern in a `TypedPattern` so `let _argN: TN` carries an
+    // explicit type: that type flows as the contextual type of the initializer,
+    // which is what lets the generic `decodeNextArgument()` (no metatype
+    // argument) infer `Argument == TN`
+    Pattern *paramPattern = TypedPattern::createImplicit(
+        C, NamedPattern::createImplicit(C, paramVar, paramTy), paramTy);
 
-    // invocationDecoder.decodeNextArgument(TN.self)
-    auto *metaRef = TypeExpr::createImplicit(paramTy, C);
-    auto *metaDotSelf = new (C) DotSelfExpr(metaRef, sloc, sloc, paramTy);
-
-    auto decodeArgs = ArgumentList::createImplicit(
-        C, { Argument(sloc, Identifier(), metaDotSelf) });
+    // invocationDecoder.decodeNextArgument()
+    //
+    // The decoder exposes a single generic
+    // `decodeNextArgument<Argument: SerializationRequirement>() -> Argument`;
+    // `Argument` is inferred from the contextual type of the enclosing
+    // `let _argN: TN` binding, so no metatype argument is passed. (The
+    // non-embedded shape decodes through the runtime instead; this is the
+    // embedded source-synthesized equivalent.)
+    auto decodeArgs = ArgumentList::createImplicit(C, {});
     Expr *decodeCall = CallExpr::createImplicit(
         C,
         UnresolvedDotExpr::createImplicit(

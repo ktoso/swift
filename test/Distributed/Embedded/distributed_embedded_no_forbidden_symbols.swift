@@ -16,13 +16,17 @@ public struct EmbeddedActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
+public protocol MySerializationRequirement {}
+extension String: MySerializationRequirement {}
+
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 
 extension MyEncoder {
-  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct MyDecoder: DistributedTargetInvocationDecoder {
@@ -30,8 +34,8 @@ public struct MyDecoder: DistributedTargetInvocationDecoder {
 }
 
 extension MyDecoder {
-  public mutating func decodeNextArgument(_ type: String.Type) throws -> String {
-    return "stub"
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    fatalError("stub")
   }
 }
 
@@ -42,11 +46,12 @@ public struct MyResultHandler: DistributedTargetInvocationResultHandler {
 }
 
 extension MyResultHandler {
-  public func onReturn(_ value: String) async throws {}
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = EmbeddedActorID
+  public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
@@ -63,12 +68,12 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 
   public func makeInvocationEncoder() -> InvocationEncoder { .init() }
 
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act,
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID { fatalError() }
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID, Res: MySerializationRequirement { fatalError() }
 
   public func remoteCallVoid<Act>(
     on actor: Act,
