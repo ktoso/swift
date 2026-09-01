@@ -459,6 +459,16 @@ These constraints rule out the standard `DistributedActorSystem` protocol shape,
 
 Under Embedded, distributed actors use the **same `DistributedActorSystem` protocol family**, defined with an `#if $Embedded` branch that keeps `SerializationRequirement` but binds it to a concrete protocol the *system* supplies (Embedded has no `Codable`), and that reshapes `remoteCall` to return the result `Res` directly (no `<Err>` generic, no `throwing:` / `returning:` metatype parameters). The record/decode/onReturn members stay generic over `SerializationRequirement` - the same single generic ad-hoc methods as non-embedded - and every call site is specialized under WMO because embedded systems are always concrete. There is no separate embedded protocol: the single protocol name compiles to two shapes depending on the `Embedded` feature. This is what makes a `distributed actor` and its actor-system conformance clause source-portable across the two modes; only the serialization layer (the encoder/decoder/handler members and the `remoteCall` signatures) is mode-specific. Most of the rest of the distributed actor machinery (the `distributed actor` keyword, `distributed func` synthesis, `is-remote` check, `Greeter.resolve(id:using:)`) is reused as-is, with small compiler branches where the embedded shape differs.
 
+## Enabling embedded distributed
+
+Embedded distributed support is a work in progress and is gated behind the experimental feature `EmbeddedDistributed`, which is **not available in production compilers**. To use distributed actors under Embedded Swift, pass both flags:
+
+```
+-enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed
+```
+
+Declaring a `distributed actor` or a concrete `DistributedActorSystem` conformance under `-enable-experimental-feature Embedded` without also enabling `EmbeddedDistributed` is diagnosed with `error: distributed actors in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'`. The feature gates only user-facing code; the embedded `Distributed` module itself is selected by the `Embedded` feature (`#if $Embedded`) and does not require `EmbeddedDistributed` to build.
+
 ## The protocol family
 
 The embedded shape lives in **separate files**: `stdlib/public/Distributed/DistributedActorSystem+Embedded.swift` and `stdlib/public/Distributed/DistributedActor+Embedded.swift`. Each is the `#if $Embedded` shape of a protocol whose non-embedded shape stays in the base `stdlib/public/Distributed/DistributedActorSystem.swift` / `DistributedActor.swift`. Only one shape is ever compiled per build. The embedded shape matches the non-embedded one everywhere except the serialization-shaped members. Under `#if $Embedded`, `DistributedActorSystem` is:

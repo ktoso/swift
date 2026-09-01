@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -typecheck -verify -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 -plugin-path %swift-plugin-dir %s
+// RUN: %target-swift-frontend -typecheck -verify -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -target %target-cpu-apple-macos14 -plugin-path %swift-plugin-dir %s
 
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
