@@ -3,9 +3,14 @@
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 
-// The overload-coverage diagnostic isn't String-specific: it fires for
-// any type used in a distributed func signature that doesn't have a
-// matching per-type overload on the encoder/decoder/handler.
+// The serialization-requirement conformance diagnostic is per-type: a
+// distributed func whose argument/return types all conform compiles, while one
+// that uses a non-conforming type is rejected. Here `String` conforms to the
+// system's `MySerializationRequirement` but `Int` does not, so `hello`
+// compiles, `square`'s `Int` parameter is diagnosed, and a separate func's
+// `Int` result is diagnosed. (The parameter check bails on the first offending
+// parameter, so a func with both a bad parameter and a bad result would only
+// report the parameter, hence the separate funcs.)
 
 import _Concurrency
 import Distributed
@@ -14,20 +19,26 @@ public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
+// `String` conforms; `Int` intentionally does not.
+public protocol MySerializationRequirement {}
+extension String: MySerializationRequirement {}
+
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  // String overloads only - intentionally NO Int overloads
-  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
-  public mutating func decodeNextArgument(_: String.Type) throws -> String { "" }
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    fatalError("stub")
+  }
 }
 
 public struct MyResultHandler: DistributedTargetInvocationResultHandler {
@@ -36,11 +47,12 @@ public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public func onThrow(error: any Error) async throws {}
 }
 extension MyResultHandler {
-  public func onReturn(_ value: String) async throws {}
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
+  public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
@@ -57,12 +69,12 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 
   public func makeInvocationEncoder() -> InvocationEncoder { .init() }
 
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act,
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID { fatalError() }
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID, Res: MySerializationRequirement { fatalError() }
 
   public func remoteCallVoid<Act>(
     on actor: Act,
@@ -75,22 +87,23 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 typealias DefaultDistributedActorSystem = MySystem
 
 distributed actor Greeter {
-  // String-only func compiles fine.
+  // String conforms, so this func compiles fine.
   distributed func hello(name: String) -> String {
     return "Hello, \(name)!"
   }
 
-  // Int-using func triggers the missing-overload diagnostic on
-  // encoder.recordArgument(_:RemoteCallArgument<Int>), decoder.decodeNextArgument(_:Int.Type),
-  // and handler.onReturn(_:Int).
-  // The parameter label is `_` (since `square(_ x: Int)`).
-  // expected-error@+6{{embedded distributed actor system encoder 'MySystem.InvocationEncoder' (aka 'MyEncoder') is missing an overload of 'recordArgument' for type 'Int' in distributed instance method}}
-  // expected-note@+5{{add this overload to 'MySystem.InvocationEncoder' (aka 'MyEncoder') (or to an extension of it):  mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws}}
-  // expected-error@+4{{embedded distributed actor system decoder 'MySystem.InvocationDecoder' (aka 'MyDecoder') is missing an overload of 'decodeNextArgument' for type 'Int' in distributed instance method}}
-  // expected-note@+3{{add this overload to 'MySystem.InvocationDecoder' (aka 'MyDecoder') (or to an extension of it):  mutating func decodeNextArgument(_ type: Int.Type) throws -> Int}}
-  // expected-error@+2{{embedded distributed actor system result handler 'MySystem.ResultHandler' (aka 'MyResultHandler') is missing an overload of 'onReturn' for the return type 'Int' of distributed instance method}}
-  // expected-note@+1{{add this overload to 'MySystem.ResultHandler' (aka 'MyResultHandler') (or to an extension of it):  func onReturn(_ value: Int) async throws}}
+  // Int does not conform, so the parameter is rejected. The argument label is
+  // `_`, so the parameter renders as '_'. The parameter check bails here, so
+  // the result type is not examined by this func.
+  // expected-error@+1{{parameter '_' of type 'Int' in distributed instance method does not conform to serialization requirement 'MySerializationRequirement'}}
   distributed func square(_ x: Int) -> Int {
     return x * x
+  }
+
+  // The String parameter conforms, so the parameter check passes and the
+  // result type is examined: Int does not conform, so the result is rejected.
+  // expected-error@+1{{result type 'Int' of distributed instance method 'length' does not conform to serialization requirement 'MySerializationRequirement'}}
+  distributed func length(of s: String) -> Int {
+    return s.count
   }
 }

@@ -30,20 +30,33 @@ public struct B_ID: Sendable, Hashable {
   public init(id: UInt64) { self.id = id }
 }
 
+// This benchmark measures dispatch cost, not serialization: argument and
+// result values are never really encoded. The system binds
+// `SerializationRequirement` to this marker protocol; its single factory lets
+// the generic serialization members vend a stub of the requested type
+public protocol MySerializationRequirement {
+  static func stub() -> Self
+}
+extension Int: MySerializationRequirement {
+  public static func stub() -> Int { 0 }
+}
+
 public struct B_E: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
 extension B_E {
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct B_D: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension B_D {
-  // The sender thunk's post-`remoteCall` step calls this to decode
-  // the result (Int) before returning. Return a stub value
-  public mutating func decodeNextArgument(_ type: Int.Type) throws -> Int { 0 }
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    return Argument.stub()
+  }
 }
 
 public struct B_H: DistributedTargetInvocationResultHandler {
@@ -52,7 +65,7 @@ public struct B_H: DistributedTargetInvocationResultHandler {
   public func onThrow(error: any Error) async throws { fatalError() }
 }
 extension B_H {
-  public func onReturn(_ value: Int) async throws {}
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 public final class TargetBox: @unchecked Sendable {
@@ -66,6 +79,7 @@ public final class TargetBox: @unchecked Sendable {
 
 public final class B_Sys: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = B_ID
+  public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = B_E
   public typealias InvocationDecoder = B_D
   public typealias ResultHandler = B_H
@@ -82,13 +96,16 @@ public final class B_Sys: DistributedActorSystem, @unchecked Sendable {
   public func resignID(_ id: ActorID) {}
   public func makeInvocationEncoder() -> B_E { .init() }
 
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act, target: RemoteCallTarget, invocation: inout B_E
-  ) async throws -> B_D where Act: DistributedActor, Act.ID == ActorID {
-    // Stash the target identifier the sender thunk produced and return
-    // an empty decoder; the caller will discard the (unused) result
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID,
+            Res: MySerializationRequirement {
+    // Stash the target identifier the sender thunk produced; the benchmark
+    // discards the result and replays the identifier straight into
+    // `_executeDistributedTarget`, so just return a stub `Res`
     box.captured = target.identifier
-    return B_D()
+    return Res.stub()
   }
   public func remoteCallVoid<Act>(
     on actor: Act, target: RemoteCallTarget, invocation: inout B_E

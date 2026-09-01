@@ -10,10 +10,15 @@
 // and identity/lifecycle methods, typecheck BOTH with
 // `-enable-experimental-feature Embedded` and without it.
 //
-// The only per-mode layer is the encoder/decoder/handler shapes and the
-// `remoteCall` family signatures: under Embedded they use concrete
-// per-type overloads and drop the `SerializationRequirement`; without
-// Embedded they use the generic-over-`SerializationRequirement` forms.
+// The only per-mode layer is the `remoteCall` family signature and the
+// `SerializationRequirement` binding. The encoder / decoder / handler now use
+// the SAME generic-over-`SerializationRequirement` methods in both modes; what
+// stays mode-specific is: (a) the `remoteCall` family - under Embedded it drops
+// the `<Err>` generic parameter and the `throwing:` / `returning:` metatype
+// parameters, (b) the requirement itself - Embedded has no `Codable`, so it
+// binds `SerializationRequirement` to a plain marker protocol instead, and
+// (c) the extra encoder / decoder members (`recordGenericSubstitution`,
+// `recordReturnType`, `decodeReturnType`, ...) that only non-embedded needs.
 // That split is expected - it is the serialization layer, which stays
 // mode-specific by design.
 
@@ -33,6 +38,13 @@ public struct MyActorID: Sendable, Hashable {
 // mode-specific serialization layer that the encoder/decoder/handler live in
 #if !$Embedded
 extension MyActorID: Codable {}
+#else
+// Embedded has no `Codable`, so the system binds `SerializationRequirement` to
+// this plain marker protocol instead. Only the argument / return types the
+// distributed funcs actually move need to conform - the actor `ID` does not,
+// since actor references are not serialized here
+public protocol MySerializationRequirement {}
+extension String: MySerializationRequirement {}
 #endif
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
@@ -40,7 +52,9 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
-#if !$Embedded
+#if $Embedded
+  public typealias SerializationRequirement = MySerializationRequirement
+#else
   public typealias SerializationRequirement = Codable
 #endif
 
@@ -64,12 +78,13 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   // MARK: Mode-specific remoteCall family
 
 #if $Embedded
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act,
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID {
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID,
+            Res: SerializationRequirement {
     fatalError("not implemented")
   }
   public func remoteCallVoid<Act>(
@@ -120,19 +135,22 @@ distributed actor Greeter {
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
-  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
-  public mutating func decodeNextArgument(_ type: String.Type) throws -> String { "stub" }
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    fatalError("stub")
+  }
 }
 
 public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public init() {}
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws {}
-  public func onReturn(_ value: String) async throws {}
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 #else

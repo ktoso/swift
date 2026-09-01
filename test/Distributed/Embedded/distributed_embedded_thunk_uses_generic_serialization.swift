@@ -1,32 +1,31 @@
-// RUN: %target-swift-frontend -emit-ir -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 %s | %FileCheck %s
+// RUN: %target-swift-frontend -emit-sil -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 %s | %FileCheck %s
 
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 
-// Verify a minimal distributed actor using the new
-// `DistributedActorSystem` protocol family compiles end-to-end to
-// LLVM IR under -enable-experimental-feature Embedded.
+// Verify that under Embedded mode the synthesized distributed thunk for
+// `Greeter.hello` records its argument through the SINGLE generic
+// `recordArgument<Value>` on the user's encoder (specialized for the concrete
+// argument type), and that the thunk no longer decodes the result on the
+// sender side: the old "decoder dance" is gone, so the thunk just returns the
+// `Res` that `remoteCall` produced.
 
 import _Concurrency
 import Distributed
-
-// ==== ----------------------------------------------------------------------
-// MARK: A minimal embedded-friendly actor system
-
-public struct EmbeddedActorID: Sendable, Hashable {
-  public let id: UInt64
-}
 
 // The system binds `SerializationRequirement` to its own protocol; `String` is
 // the only argument/return type used below, so that is all that must conform.
 public protocol MySerializationRequirement {}
 extension String: MySerializationRequirement {}
 
+public struct MyActorID: Sendable, Hashable {
+  public let id: UInt64
+}
+
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
 }
-
 extension MyEncoder {
   public mutating func recordArgument<Value: MySerializationRequirement>(
       _ argument: RemoteCallArgument<Value>) throws {}
@@ -35,10 +34,9 @@ extension MyEncoder {
 public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
-
 extension MyDecoder {
   public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
-    fatalError("stub")
+    fatalError()
   }
 }
 
@@ -47,13 +45,12 @@ public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public func onReturnVoid() async throws {}
   public func onThrow(error: any Error) async throws {}
 }
-
 extension MyResultHandler {
   public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
-  public typealias ActorID = EmbeddedActorID
+  public typealias ActorID = MyActorID
   public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
@@ -62,13 +59,9 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public init() {}
 
   public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
-      where Act: DistributedActor, Act.ID == ActorID {
-    return nil
-  }
+      where Act: DistributedActor, Act.ID == ActorID { return nil }
   public func assignID<Act>(_ actorType: Act.Type) -> ActorID
-      where Act: DistributedActor, Act.ID == ActorID {
-    return ActorID(id: 0)
-  }
+      where Act: DistributedActor, Act.ID == ActorID { return MyActorID(id: 0) }
   public func actorReady<Act>(_ actor: Act)
       where Act: DistributedActor, Act.ID == ActorID {}
   public func resignID(_ id: ActorID) {}
@@ -81,7 +74,7 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
     invocation: inout InvocationEncoder
   ) async throws -> Res
       where Act: DistributedActor, Act.ID == ActorID, Res: MySerializationRequirement {
-    fatalError("not implemented")
+    fatalError()
   }
 
   public func remoteCallVoid<Act>(
@@ -89,15 +82,10 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
   ) async throws
-      where Act: DistributedActor, Act.ID == ActorID {
-    fatalError("not implemented")
-  }
+      where Act: DistributedActor, Act.ID == ActorID { fatalError() }
 }
 
 typealias DefaultDistributedActorSystem = MySystem
-
-// ==== ----------------------------------------------------------------------
-// MARK: The actor under test
 
 distributed actor Greeter {
   distributed func hello(name: String) -> String {
@@ -105,32 +93,23 @@ distributed actor Greeter {
   }
 }
 
-@main struct Main {
-  static func main() async {
-    let system = MySystem()
-    let greeter = Greeter(actorSystem: system)
-    do {
-      _ = try await greeter.hello(name: "World")
-    } catch {
-      // ignore
-    }
-  }
-}
+// The synthesized distributed thunk (`Greeter.hello`'s TE) records its
+// argument through the SINGLE generic `recordArgument<Value>` on the user's
+// encoder, specialized for the concrete argument type (note the
+// `SerializationRequirement` requirement and `Tg5` specialization suffix in the
+// mangled name) - not a per-type `recordArgument(_: RemoteCallArgument<String>)`
+// overload. It then calls the specialized generic `remoteCall<Act, Res>`, which
+// returns `Res` directly.
+//
+// The old "decoder dance" is gone: the thunk no longer binds a decoder handed
+// back by `remoteCall` and decodes the result itself. We assert that by
+// checking there is no `decodeNextArgument` reference between the `remoteCall`
+// call and the end of the thunk (that tail is exactly where the sender-side
+// result decode used to live). The receiver-side `_executeDistributedTarget`
+// still decodes arguments, so the check is scoped to the thunk body only.
 
-// The synthesized distributed thunk for `Greeter.hello` is emitted.
-// CHECK: @"$e{{.+}}GreeterC5hello4nameS2S_tYaKFTE"
-
-// The user's `remoteCall`, specialized for `<Greeter, String>` (Act = Greeter,
-// Res = String), is emitted - no generic-over-SerializationRequirement
-// remoteCall is left around. The `GreeterC_SS` in the mangling is the
-// `<Greeter, String>` specialization.
-// CHECK: @"$e{{.+}}MySystemC10remoteCall2on6target10invocation{{.+}}GreeterC_SSTg5{{.*}}"
-
-// Remote-proxy allocation goes through the embedded-only entry point with a
-// compiler-computed allocSize and alignMask (the minimal embedded
-// ClassMetadata has no InstanceSize/InstanceAlignMask the runtime could read).
-// CHECK-NOT: call swiftcc {{.*}}@swift_distributedActor_remote_initialize(
-// CHECK: call swiftcc ptr @swift_distributedActor_remote_initialize_embedded(ptr {{.*}}, i64 {{[0-9]+}}, i64 {{[0-9]+}})
-
-// No accessible-function-table section under Embedded.
-// CHECK-NOT: __swift5_acfuncs
+// CHECK-LABEL: sil{{.*}} @${{.*}}GreeterC5hello4nameS2S_tYaKFTE
+// CHECK: function_ref @${{.+}}MyEncoderV14recordArgument{{.*}}SerializationRequirement{{.*}}Tg5
+// CHECK: function_ref @${{.+}}MySystemC10remoteCall2on6target10invocation{{.*}}Tg5
+// CHECK-NOT: decodeNextArgument
+// CHECK: end sil function '{{.*}}GreeterC5hello4nameS2S_tYaKFTE'

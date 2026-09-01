@@ -10,6 +10,14 @@
 import _Concurrency
 import Distributed
 
+// The system binds `SerializationRequirement` to its own protocol; every
+// argument / return type of a distributed func must conform to it, and the
+// encoder / decoder / handler serialize conforming values through a single
+// generic method rather than per-type overloads
+public protocol MySerializationRequirement {}
+extension String: MySerializationRequirement {}
+extension Int: MySerializationRequirement {}
+
 public struct MyActorID: Sendable, Hashable {
   public let id: UInt64
 }
@@ -19,16 +27,17 @@ public struct MyEncoder: DistributedTargetInvocationEncoder {
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {}
-  public mutating func recordArgument(_ argument: RemoteCallArgument<Int>) throws {}
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct MyDecoder: DistributedTargetInvocationDecoder {
   public init() {}
 }
 extension MyDecoder {
-  public mutating func decodeNextArgument(_: String.Type) throws -> String { "" }
-  public mutating func decodeNextArgument(_: Int.Type)    throws -> Int    { 0 }
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    fatalError()
+  }
 }
 
 public struct MyResultHandler: DistributedTargetInvocationResultHandler {
@@ -37,12 +46,12 @@ public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   public func onThrow(error: any Error) async throws {}
 }
 extension MyResultHandler {
-  public func onReturn(_ value: String) async throws {}
-  public func onReturn(_ value: Int)    async throws {}
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
+  public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
@@ -59,12 +68,13 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 
   public func makeInvocationEncoder() -> InvocationEncoder { .init() }
 
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act,
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID { fatalError() }
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID,
+            Res: MySerializationRequirement { fatalError() }
 
   public func remoteCallVoid<Act>(
     on actor: Act,
@@ -110,12 +120,13 @@ distributed actor Greeter {
 // `_executeDistributedTarget` is synthesized on the actor.
 // CHECK-LABEL: sil{{.*}} @${{.+}}GreeterC25_executeDistributedTarget6target17invocationDecoder13resultHandler
 
-// The synthesized body references the user's per-type decode/onReturn
-// overloads (not generic dispatch).
-// CHECK-DAG: function_ref @${{.+}}MyDecoderV18decodeNextArgumentyS2SmKF
-// CHECK-DAG: function_ref @${{.+}}MyDecoderV18decodeNextArgumentyS2imKF
-// CHECK-DAG: function_ref @${{.+}}MyResultHandlerV8onReturnyySSYaKF
-// CHECK-DAG: function_ref @${{.+}}MyResultHandlerV8onReturnyySiYaKF
+// The synthesized body references the single generic decode / onReturn
+// members, specialized for each distributed func's concrete types (`SS_Tg5`
+// for String, `Si_Tg5` for Int) - not per-type overloads.
+// CHECK-DAG: function_ref @${{.+}}MyDecoderV18decodeNextArgument{{.+}}SerializationRequirement{{.+}}SS_Tg5
+// CHECK-DAG: function_ref @${{.+}}MyDecoderV18decodeNextArgument{{.+}}SerializationRequirement{{.+}}Si_Tg5
+// CHECK-DAG: function_ref @${{.+}}MyResultHandlerV8onReturn{{.+}}SerializationRequirement{{.+}}SS_Tg5
+// CHECK-DAG: function_ref @${{.+}}MyResultHandlerV8onReturn{{.+}}SerializationRequirement{{.+}}Si_Tg5
 // CHECK-DAG: function_ref @${{.+}}MyResultHandlerV12onReturnVoidyyYaKF
 
 // And references each distributed func's distributed thunk (TE), which

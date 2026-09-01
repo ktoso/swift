@@ -29,17 +29,48 @@ import Distributed
 // ==== ----------------------------------------------------------------------
 // MARK: A tiny in-memory transport (single-process)
 
-final class CallBuffer {
+public final class CallBuffer {
   var argString: String?
   var argWorker: $RWorker?
-  var returnString: String?
-  var returnWorker: $RWorker?
 
-  init() {}
+  public init() {}
 }
 
 // ==== ----------------------------------------------------------------------
-// MARK: Encoder / Decoder / ResultHandler with $RWorker overloads
+// MARK: The system's serialization requirement
+//
+// The concrete system binds `SerializationRequirement` to its own protocol and
+// conforming types serialize through a single generic member on the encoder /
+// decoder / handler rather than per-type overloads. Because this fake moves
+// values in-process it does not pack them into bytes: each conforming type
+// stashes itself into the matching typed slot of the shared `CallBuffer` and
+// reads it back. The `$RWorker` witness is `nonisolated` so it can satisfy the
+// plain-protocol requirement from the encoder's nonisolated context - it only
+// moves the actor reference, never touching isolated state.
+
+public protocol MySerializationRequirement {
+  func store(into buffer: CallBuffer)
+  static func load(from buffer: CallBuffer) -> Self
+}
+extension String: MySerializationRequirement {
+  public func store(into buffer: CallBuffer) { buffer.argString = self }
+  public static func load(from buffer: CallBuffer) -> String {
+    guard let v = buffer.argString else { fatalError("missing String") }
+    buffer.argString = nil
+    return v
+  }
+}
+extension $RWorker: MySerializationRequirement {
+  public nonisolated func store(into buffer: CallBuffer) { buffer.argWorker = self }
+  public static func load(from buffer: CallBuffer) -> $RWorker {
+    guard let v = buffer.argWorker else { fatalError("missing $RWorker") }
+    buffer.argWorker = nil
+    return v
+  }
+}
+
+// ==== ----------------------------------------------------------------------
+// MARK: Encoder / Decoder / ResultHandler with a single generic member
 
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   let buffer: CallBuffer
@@ -48,11 +79,9 @@ public struct MyEncoder: DistributedTargetInvocationEncoder {
   public mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  public mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {
-    buffer.argString = argument.value
-  }
-  public mutating func recordArgument(_ argument: RemoteCallArgument<$RWorker>) throws {
-    buffer.argWorker = argument.value
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {
+    argument.value.store(into: buffer)
   }
 }
 
@@ -61,15 +90,8 @@ public struct MyDecoder: DistributedTargetInvocationDecoder {
   init(buffer: CallBuffer) { self.buffer = buffer }
 }
 extension MyDecoder {
-  public mutating func decodeNextArgument(_ type: String.Type) throws -> String {
-    guard let v = buffer.argString else { fatalError("missing arg") }
-    buffer.argString = nil
-    return v
-  }
-  public mutating func decodeNextArgument(_ type: $RWorker.Type) throws -> $RWorker {
-    guard let v = buffer.argWorker else { fatalError("missing arg") }
-    buffer.argWorker = nil
-    return v
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    return Argument.load(from: buffer)
   }
 }
 
@@ -83,11 +105,8 @@ public struct MyResultHandler: DistributedTargetInvocationResultHandler {
   }
 }
 extension MyResultHandler {
-  public func onReturn(_ value: String) async throws {
-    buffer.returnString = value
-  }
-  public func onReturn(_ value: $RWorker) async throws {
-    buffer.returnWorker = value
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {
+    value.store(into: buffer)
   }
 }
 
@@ -101,6 +120,7 @@ public struct MyActorID: Sendable, Hashable {
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
+  public typealias SerializationRequirement = MySerializationRequirement
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
@@ -144,12 +164,13 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
     .init(buffer: buffer)
   }
 
-  public func remoteCall<Act>(
+  public func remoteCall<Act, Res>(
     on actor: Act,
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID {
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID,
+            Res: MySerializationRequirement {
     print("[swift] remoteCall reached")
     var decoder = MyDecoder(buffer: buffer)
     let handler = MyResultHandler(buffer: buffer)
@@ -177,12 +198,12 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
       fatalError("unknown actor id")
     }
 
-    // Wire the response back into a fresh decoder
-    buffer.argString = buffer.returnString
-    buffer.argWorker = buffer.returnWorker
-    buffer.returnString = nil
-    buffer.returnWorker = nil
-    return MyDecoder(buffer: buffer)
+    // `_executeDistributedTarget` ran the target and its result handler
+    // stored the return value into the shared buffer via `onReturn`. Decode
+    // it back out as `Res` and return it - the sender thunk no longer does
+    // any decoding of its own. Because calls are strictly nested (LIFO) and
+    // each decode clears its slot, the shared arg/return slots never collide
+    return Res.load(from: buffer)
   }
 
   public func remoteCallVoid<Act>(

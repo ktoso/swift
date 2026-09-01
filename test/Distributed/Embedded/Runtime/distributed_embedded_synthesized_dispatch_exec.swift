@@ -28,6 +28,23 @@ import _Concurrency
 import Distributed
 
 // ==== ----------------------------------------------------------------------
+// MARK: The system's serialization requirement
+//
+// The concrete system binds `SerializationRequirement` to its own protocol and
+// conforming types serialize through a single generic member on the encoder /
+// decoder / handler rather than per-type overloads. This test only moves
+// `String`, so that is all that conforms.
+
+protocol MySerializationRequirement {
+  func encoded() -> String
+  static func decode(_ s: String) -> Self
+}
+extension String: MySerializationRequirement {
+  func encoded() -> String { self }
+  static func decode(_ s: String) -> String { s }
+}
+
+// ==== ----------------------------------------------------------------------
 // MARK: A tiny in-memory transport
 
 final class CallBuffer {
@@ -45,8 +62,9 @@ struct MyEncoder: DistributedTargetInvocationEncoder {
   mutating func doneRecording() throws {}
 }
 extension MyEncoder {
-  mutating func recordArgument(_ argument: RemoteCallArgument<String>) throws {
-    buffer.argString = argument.value
+  mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {
+    buffer.argString = argument.value.encoded()
   }
 }
 
@@ -55,10 +73,10 @@ struct MyDecoder: DistributedTargetInvocationDecoder {
   init(buffer: CallBuffer) { self.buffer = buffer }
 }
 extension MyDecoder {
-  mutating func decodeNextArgument(_ type: String.Type) throws -> String {
+  mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
     guard let v = buffer.argString else { fatalError("missing arg") }
     buffer.argString = nil
-    return v
+    return Argument.decode(v)
   }
 }
 
@@ -71,8 +89,8 @@ struct MyResultHandler: DistributedTargetInvocationResultHandler {
   }
 }
 extension MyResultHandler {
-  func onReturn(_ value: String) async throws {
-    buffer.returnString = value
+  func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {
+    buffer.returnString = value.encoded()
   }
 }
 
@@ -85,6 +103,7 @@ struct MyActorID: Sendable, Hashable {
 
 final class MySystem: DistributedActorSystem, @unchecked Sendable {
   typealias ActorID = MyActorID
+  typealias SerializationRequirement = MySerializationRequirement
   typealias InvocationEncoder = MyEncoder
   typealias InvocationDecoder = MyDecoder
   typealias ResultHandler = MyResultHandler
@@ -114,12 +133,12 @@ final class MySystem: DistributedActorSystem, @unchecked Sendable {
     .init(buffer: buffer)
   }
 
-  func remoteCall<Act>(
+  func remoteCall<Act, Res>(
     on actor: Act,
     target: RemoteCallTarget,
     invocation: inout InvocationEncoder
-  ) async throws -> InvocationDecoder
-      where Act: DistributedActor, Act.ID == ActorID {
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID, Res: MySerializationRequirement {
     print("[swift] remoteCall reached")
     guard let greeter = self.greeter else {
       fatalError("no local greeter registered")
@@ -131,11 +150,14 @@ final class MySystem: DistributedActorSystem, @unchecked Sendable {
         target: target,
         invocationDecoder: &decoder,
         resultHandler: handler)
-    // The handler put the result into the shared buffer; expose it via
-    // a fresh decoder for the sender-side thunk to decode.
-    buffer.argString = buffer.returnString
+    // The handler stashed the serialized result; decode it into `Res` here.
+    // Moving this decode into the system is what lets the synthesized thunk
+    // just return remoteCall's result directly.
+    guard let raw = buffer.returnString else {
+      fatalError("no result recorded")
+    }
     buffer.returnString = nil
-    return MyDecoder(buffer: buffer)
+    return Res.decode(raw)
   }
 
   func remoteCallVoid<Act>(

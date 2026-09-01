@@ -44,47 +44,37 @@ public struct ComplexResponse: Sendable {
 // ==== ---------------------------------------------------------------------------
 // As long as we also provide serialization for it:
 //
-// The transport (EmbeddedFakeActorSystem) does not know these types. Under
-// Embedded Swift there is no `SerializationRequirement`; instead this module
-// supplies the concrete `recordArgument` / `decodeNextArgument` / `onReturn`
-// overloads for its own types, built on the transport's public framing
-// primitives (`appendField` / `takeField` / `writeResponse`) and its integer
-// codec (`asciiDigits` / `parseInt`). The compiler finds these overloads by
-// ordinary extension visibility when it synthesizes the `$Greeter.check` /
-// `GreeterImpl.check` thunks.
+// The transport (EmbeddedFakeActorSystem) does not know these types. It binds
+// its `SerializationRequirement` to `EmbeddedSerializationRequirement`, so this
+// module only has to conform its own types to that protocol once - no per-type
+// `recordArgument` / `decodeNextArgument` / `onReturn` overloads. The encoder /
+// decoder / handler serialize any conforming value through their single generic
+// members, and the compiler enforces the conformance when it synthesizes the
+// `$Greeter.check` / `GreeterImpl.check` thunks.
 //
-// Each type has a single `Int` field, serialized as the field payload under a
-// module-owned tag byte.
+// Each type has a single `Int` field, serialized as its decimal ASCII bytes via
+// the transport's public integer codec (`asciiDigits` / `parseInt`) and byte
+// helper (`drain`). The length framing around each field is applied by the
+// encoder, not here.
 
-private let tagComplexRequest = UInt8(ascii: "Q")
-private let tagComplexResponse = UInt8(ascii: "P")
-
-extension EmbeddedFakeInvocationEncoder {
-  public mutating func recordArgument(_ argument: RemoteCallArgument<ComplexRequest>) throws {
-    appendField(tag: tagComplexRequest, payload: asciiDigits(argument.value.id))
+extension ComplexRequest: EmbeddedSerializationRequirement {
+  public var serializedByteCount: Int { asciiDigits(id).count }
+  public func encode(into output: inout OutputSpan<UInt8>) {
+    for byte in asciiDigits(id) { output.append(byte) }
   }
-}
-
-extension EmbeddedFakeInvocationDecoder {
-  // encode the request
-  public mutating func decodeNextArgument(_ type: ComplexRequest.Type) throws -> ComplexRequest {
-    let (tag, payload) = try takeField()
-    guard tag == tagComplexRequest else { throw WireError.typeMismatch }
-    guard let id = parseInt(payload) else { throw WireError.badValue }
+  public static func decode(from input: inout Span<UInt8>) throws -> ComplexRequest {
+    guard let id = parseInt(drain(&input)[...]) else { throw WireError.badValue }
     return ComplexRequest(id: id)
   }
-
-  // we use this to decode a response
-  public mutating func decodeNextArgument(_ type: ComplexResponse.Type) throws -> ComplexResponse {
-    let (tag, payload) = try takeField()
-    guard tag == tagComplexResponse else { throw WireError.typeMismatch }
-    guard let id = parseInt(payload) else { throw WireError.badValue }
-    return ComplexResponse(id: id)
-  }
 }
 
-extension EmbeddedFakeResultHandler {
-  public func onReturn(_ value: ComplexResponse) async throws {
-    writeResponse(tag: tagComplexResponse, payload: asciiDigits(value.id))
+extension ComplexResponse: EmbeddedSerializationRequirement {
+  public var serializedByteCount: Int { asciiDigits(id).count }
+  public func encode(into output: inout OutputSpan<UInt8>) {
+    for byte in asciiDigits(id) { output.append(byte) }
+  }
+  public static func decode(from input: inout Span<UInt8>) throws -> ComplexResponse {
+    guard let id = parseInt(drain(&input)[...]) else { throw WireError.badValue }
+    return ComplexResponse(id: id)
   }
 }

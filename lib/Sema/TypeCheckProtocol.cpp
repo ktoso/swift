@@ -6057,14 +6057,18 @@ void ConformanceChecker::resolveValueWitnesses() {
   // the type system gains the required abilities, we should strive to move
   // them to plain-old protocol requirements.
   //
-  // Under Embedded Swift these are not ad-hoc: the embedded shape of
-  // `DistributedActorSystem` declares `remoteCall`/`remoteCallVoid` as ordinary
-  // (non-generic-over-`SerializationRequirement`) requirements verified by
-  // normal witness matching, and the encoder/decoder/handler expose only
-  // ordinary requirements. Their per-type record/decode/onReturn overloads are
-  // intentionally not requirements and are checked separately by
-  // `checkEmbeddedDistributedFunctionCoverage`. Running the non-embedded ad-hoc
-  // checker here would wrongly reject those embedded shapes.
+  // Under Embedded Swift `remoteCall`/`remoteCallVoid` are still ad-hoc, but
+  // reshaped: they drop the `<Err>` generic parameter and the `throwing:` /
+  // `returning:` metatype parameters, and `Res` is inferred from the call
+  // context and decoded inside the concrete `remoteCall` body. The
+  // record/decode/onReturn members are single generic methods constrained by
+  // the system's `SerializationRequirement` rather than per-type overloads.
+  // That ad-hoc conformance is synthesized by the constraint solver (see
+  // CSSimplify) and argument/result coverage is enforced by the standard
+  // per-parameter / result serialization-requirement conformance checks. The
+  // non-embedded ad-hoc checker below expects the `throwing:` / `returning:` /
+  // `recordReturnType` shape, so running it here would wrongly reject the
+  // embedded shapes
   if (!Context.LangOpts.hasFeature(Feature::Embedded) &&
       (Proto->isSpecificProtocol(KnownProtocolKind::DistributedActorSystem) ||
        Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder) ||
