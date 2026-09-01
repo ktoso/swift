@@ -1,16 +1,16 @@
 // RUN: %empty-directory(%t)
 
 // Build the reusable fake actor system module.
-// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -parse-as-library -wmo %S/Inputs/EmbeddedFakeActorSystem.swift -module-name EmbeddedFakeActorSystem -emit-module -emit-module-path %t/EmbeddedFakeActorSystem.swiftmodule -c -o %t/EmbeddedFakeActorSystem.o
+// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo %S/Inputs/EmbeddedFakeActorSystem.swift -module-name EmbeddedFakeActorSystem -emit-module -emit-module-path %t/EmbeddedFakeActorSystem.swiftmodule -c -o %t/EmbeddedFakeActorSystem.o
 
 // Build the `@Resolvable` API module (this compile needs the macro plugin).
-// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -parse-as-library -wmo -plugin-path %swift-plugin-dir -I %t %S/Inputs/GreeterAPI.swift -module-name GreeterAPI -emit-module -emit-module-path %t/GreeterAPI.swiftmodule -c -o %t/GreeterAPI.o
+// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -plugin-path %swift-plugin-dir -I %t %S/Inputs/GreeterAPI.swift -module-name GreeterAPI -emit-module -emit-module-path %t/GreeterAPI.swiftmodule -c -o %t/GreeterAPI.o
 
 // Build the server module (the only module naming the concrete `GreeterImpl`).
-// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -parse-as-library -wmo -I %t %S/Inputs/GreeterServer.swift -module-name GreeterServer -emit-module -emit-module-path %t/GreeterServer.swiftmodule -c -o %t/GreeterServer.o
+// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -I %t %S/Inputs/GreeterServer.swift -module-name GreeterServer -emit-module -emit-module-path %t/GreeterServer.swiftmodule -c -o %t/GreeterServer.o
 
 // Build the client / main module.
-// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -parse-as-library -wmo -I %t %s -module-name main -c -o %t/main.o
+// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -I %t %s -module-name main -c -o %t/main.o
 
 // Link everything and run. The fake system's wire format is a raw `[UInt8]`
 // treated as ASCII, so no `String` grapheme / normalization operations are

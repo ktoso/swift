@@ -1,17 +1,14 @@
-// RUN: %target-swift-frontend -typecheck -verify -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -target %target-cpu-apple-macos14 %s
+// RUN: %target-swift-frontend -typecheck -verify -enable-experimental-feature Embedded -parse-as-library -wmo -target %target-cpu-apple-macos14 %s
 
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 
-// Verify the embedded distributed type-check pass diagnoses argument and
-// return types that do not conform to the system's `SerializationRequirement`.
-// The system binds `SerializationRequirement` to `MySerializationRequirement`
-// but `String` is intentionally NOT conformed to it, so a `String` parameter
-// and a `String` return type are both rejected - the same conformance
-// diagnostics normal (non-embedded) Swift uses, now that the embedded shape
-// carries a real `SerializationRequirement` instead of ad-hoc per-type
-// overloads. (The parameter check bails on the first offending parameter, so
-// the parameter and result diagnostics are exercised by separate funcs.)
+// Distributed actors in Embedded Swift are gated behind the experimental
+// feature `EmbeddedDistributed`, which is not available in production
+// compilers. This test enables `Embedded` but NOT `EmbeddedDistributed`, so
+// both a concrete actor system conformance and a distributed actor declaration
+// must be rejected with a clear "requires the feature" diagnostic. The
+// companion tests all enable both features and exercise the working shape.
 
 import _Concurrency
 import Distributed
@@ -20,8 +17,6 @@ public struct EmbeddedActorID: Sendable, Hashable {
   public let id: UInt64
 }
 
-// The system's serialization requirement. `String` is intentionally NOT
-// conformed to it below.
 public protocol MySerializationRequirement {}
 
 public struct MyEncoder: DistributedTargetInvocationEncoder {
@@ -51,6 +46,7 @@ extension MyResultHandler {
   public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
+// expected-error@+1{{distributed actors in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'}}
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = EmbeddedActorID
   public typealias SerializationRequirement = MySerializationRequirement
@@ -87,18 +83,7 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 
 typealias DefaultDistributedActorSystem = MySystem
 
+// expected-error@+1{{distributed actors in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'}}
 distributed actor Greeter {
-  // `String` does not conform, so the parameter is rejected. The parameter
-  // check bails on the first non-conforming parameter, so this func exercises
-  // only the parameter diagnostic.
-  // expected-error@+1{{parameter 'name' of type 'String' in distributed instance method does not conform to serialization requirement 'MySerializationRequirement'}}
-  distributed func hello(name: String) {
-  }
-
-  // A func with no parameters, so the parameter check passes and the result
-  // type is examined: `String` does not conform, so the result is rejected.
-  // expected-error@+1{{result type 'String' of distributed instance method 'greeting' does not conform to serialization requirement 'MySerializationRequirement'}}
-  distributed func greeting() -> String {
-    return "Hello!"
-  }
+  distributed func hello() {}
 }

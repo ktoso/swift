@@ -6271,6 +6271,10 @@ ERROR(distributed_embedded_generic_actor_system_not_supported,none,
       "distributed actor cannot be generic over its actor system in Embedded "
       "Swift; specify a concrete 'ActorSystem'",
       ())
+ERROR(distributed_embedded_requires_feature,none,
+      "distributed actors in Embedded Swift require "
+      "'-enable-experimental-feature EmbeddedDistributed'",
+      ())
 ERROR(distributed_actor_func_param_resolvable_actor_system_mismatch,none,
       "parameter %0 of type %1 in %kindonly2 must match the enclosing actor's "
       "ActorSystem (%5)",
