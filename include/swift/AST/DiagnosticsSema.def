@@ -6271,6 +6271,10 @@ ERROR(distributed_embedded_generic_actor_system_not_supported,none,
       "distributed actor cannot be generic over its actor system in Embedded "
       "Swift; specify a concrete 'ActorSystem'",
       ())
+ERROR(distributed_embedded_distributed_var_not_supported,none,
+      "'distributed' computed property %0 is not supported in Embedded Swift; "
+      "use a 'distributed func' instead",
+      (DeclName))
 ERROR(distributed_embedded_requires_feature,none,
       "distributed actors in Embedded Swift require "
       "'-enable-experimental-feature EmbeddedDistributed'",

@@ -1247,6 +1247,18 @@ void TypeChecker::checkDistributedActor(SourceFile *SF, NominalTypeDecl *nominal
       if (!var->isDistributed())
         continue;
 
+      // Embedded Swift does not support 'distributed var' (computed distributed
+      // properties): the synthesized receive-side dispatch table only walks
+      // 'distributed func' members, so a remote property read would have no
+      // matching dispatch branch and would fail at runtime. Diagnose the
+      // declaration rather than allowing that silent runtime failure, and skip
+      // synthesizing a thunk for it.
+      if (C.LangOpts.hasFeature(Feature::Embedded)) {
+        var->diagnose(diag::distributed_embedded_distributed_var_not_supported,
+                      var->getName());
+        continue;
+      }
+
       if (auto thunk = var->getDistributedThunk())
         SF->addDelayedFunction(thunk);
 
