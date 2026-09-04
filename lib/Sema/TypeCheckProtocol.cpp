@@ -6056,10 +6056,24 @@ void ConformanceChecker::resolveValueWitnesses() {
   // These protocol requirements are not expressible in Swift today, but as
   // the type system gains the required abilities, we should strive to move
   // them to plain-old protocol requirements.
-  if (Proto->isSpecificProtocol(KnownProtocolKind::DistributedActorSystem) ||
-      Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder) ||
-      Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationDecoder) ||
-      Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationResultHandler)) {
+  //
+  // Under Embedded Swift `remoteCall`/`remoteCallVoid` are still ad-hoc, but
+  // reshaped: they drop the `<Err>` generic parameter and the `throwing:` /
+  // `returning:` metatype parameters, and `Res` is inferred from the call
+  // context and decoded inside the concrete `remoteCall` body. The
+  // record/decode/onReturn members are single generic methods constrained by
+  // the system's `SerializationRequirement` rather than per-type overloads.
+  // That ad-hoc conformance is synthesized by the constraint solver (see
+  // CSSimplify) and argument/result coverage is enforced by the standard
+  // per-parameter / result serialization-requirement conformance checks. The
+  // non-embedded ad-hoc checker below expects the `throwing:` / `returning:` /
+  // `recordReturnType` shape, so running it here would wrongly reject the
+  // embedded shapes
+  if (!Context.LangOpts.hasFeature(Feature::Embedded) &&
+      (Proto->isSpecificProtocol(KnownProtocolKind::DistributedActorSystem) ||
+       Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationEncoder) ||
+       Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationDecoder) ||
+       Proto->isSpecificProtocol(KnownProtocolKind::DistributedTargetInvocationResultHandler))) {
     checkDistributedActorSystemAdHocProtocolRequirements(
         Context, Proto, Conformance, Adoptee, /*diagnose=*/true);
   }

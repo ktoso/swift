@@ -290,6 +290,19 @@ deriveBodyDistributed_invokeHandlerOnReturn(AbstractFunctionDecl *afd,
   const SourceLoc sloc = SourceLoc();
   const DeclNameLoc dloc = DeclNameLoc();
 
+  // In Embedded Swift mode, the body of this function would synthesize a
+  // nested generic helper (`doInvokeOnReturn<R: SerializationRequirement>`)
+  // and an `_openExistential` call. Both would create generic functions
+  // whose parameters cannot be class-bound, which Embedded IRGen rejects.
+  // The only caller of `invokeHandlerOnReturn` is the Swift wrapper
+  // `executeDistributedTarget`, which itself is unused in Embedded mode (it
+  // depends on runtime demangling that is unavailable in Embedded). So
+  // under Embedded we emit an empty body: the function is dead code.
+  if (C.LangOpts.hasFeature(Feature::Embedded)) {
+    auto emptyBody = BraceStmt::create(C, sloc, {}, sloc, implicit);
+    return {emptyBody, /*isTypeChecked=*/false};
+  }
+
   NominalTypeDecl *nominal = dyn_cast<NominalTypeDecl>(DC);
   assert(nominal);
 
@@ -745,6 +758,32 @@ static ValueDecl *deriveDistributedActor_unownedExecutor(DerivedConformance &der
 }
 
 /******************************************************************************/
+/*********** EXECUTE-DISTRIBUTED-TARGET FUNCTION (EMBEDDED ONLY) **************/
+/******************************************************************************/
+
+/// Derive the witness for the Embedded-only
+/// `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+/// requirement. Builds the body via the shared helper in
+/// `CodeSynthesisDistributedActor.cpp` and adds it to the conformance context,
+/// exactly like every other derived witness (`resolve`, `unownedExecutor`).
+///
+/// Deriving it as a real protocol witness (rather than the old hand-synthesized
+/// member) is what makes it visible cross-file: the actor system's `remoteCall`
+/// can be in a different file and still resolve the call through the conformance.
+static FuncDecl *
+deriveDistributedActor_executeDistributedTarget(DerivedConformance &derived) {
+  auto *classDecl = dyn_cast<ClassDecl>(derived.Nominal);
+  assert(classDecl && classDecl->isDistributedActor());
+
+  auto *fn = createEmbeddedDistributedReceiveDispatch(classDecl);
+  if (!fn)
+    return nullptr;
+
+  derived.addMembersToConformanceContext({fn});
+  return fn;
+}
+
+/******************************************************************************/
 /**************************** ENTRY POINTS ************************************/
 /******************************************************************************/
 
@@ -766,6 +805,13 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
     // if we are invoked here we know for sure it is for the "right" function
     if (func->getName().getBaseName() == Context.Id_resolve) {
       return deriveDistributedActor_resolve(*this);
+    }
+
+    // `_executeDistributedTarget` is an Embedded-only requirement; the
+    // derivable check in `getDerivableRequirement` already gated on the
+    // Embedded feature before we get here
+    if (func->getName().getBaseName() == Context.Id_executeDistributedTarget) {
+      return deriveDistributedActor_executeDistributedTarget(*this);
     }
   }
 

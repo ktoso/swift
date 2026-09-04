@@ -678,6 +678,11 @@ EXPERIMENTAL_FEATURE(LibkernOwnershipConventions, true)
 /// Emit `resignRemoteID` calls in remote distributed actor deinits.
 EXPERIMENTAL_FEATURE(DistributedActorResignRemoteID, false)
 
+/// Enable distributed actors in Embedded Swift (work in progress). Gates the
+/// monomorphized embedded shape of `DistributedActorSystem` and the receiver
+/// side dispatch synthesis; not available in production compilers.
+EXPERIMENTAL_FEATURE(EmbeddedDistributed, false)
+
 #undef EXPERIMENTAL_FEATURE_EXCLUDED_FROM_MODULE_INTERFACE
 #undef EXPERIMENTAL_FEATURE
 #undef UPCOMING_FEATURE

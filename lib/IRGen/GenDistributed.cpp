@@ -50,11 +50,39 @@ using namespace irgen;
 
 llvm::Value *irgen::emitDistributedActorInitializeRemote(
     IRGenFunction &IGF, SILType selfType, llvm::Value *actorMetatype, Explosion &out) {
-  auto fn = IGF.IGM.getDistributedActorInitializeRemoteFunctionPointer();
   actorMetatype =
       IGF.Builder.CreateBitCast(actorMetatype, IGF.IGM.TypeMetadataPtrTy);
 
-  auto call = IGF.Builder.CreateCall(fn, {actorMetatype});
+  llvm::CallInst *call;
+  if (IGF.IGM.Context.LangOpts.hasFeature(Feature::Embedded)) {
+    // In Embedded Swift the runtime cannot derive the remote-proxy trim size
+    // or alignment mask from class metadata: the minimal embedded
+    // ClassMetadata layout has no TargetClassDescriptor, no field-offset
+    // vector, no InstanceSize, and no InstanceAlignMask. Compute both at
+    // IRGen and pass them to an embedded-only entry point.
+    auto &classTI = IGF.IGM.getTypeInfo(selfType).as<ClassTypeInfo>();
+    auto &classLayout = classTI.getClassLayout(IGF.IGM, selfType,
+                                               /*forBackwardDeployment=*/false);
+
+    // Distributed actor field layout is:
+    //   [0] id, [1] actorSystem, [2] DefaultActorStorage, [3+] user props
+    // Mirror swift_distributedActor_remote_initialize's non-embedded path,
+    // which trims to fieldOffsets[3] when 4+ fields exist
+    Size trimSize = classLayout.getSize();
+    auto elements = classLayout.getElements();
+    if (elements.size() > 3 && elements[3].hasByteOffset())
+      trimSize = elements[3].getByteOffset();
+
+    llvm::Value *allocSize = IGF.IGM.getSize(trimSize);
+    llvm::Value *alignMask = IGF.IGM.getSize(classLayout.getAlignMask());
+
+    auto fn =
+        IGF.IGM.getDistributedActorInitializeRemoteEmbeddedFunctionPointer();
+    call = IGF.Builder.CreateCall(fn, {actorMetatype, allocSize, alignMask});
+  } else {
+    auto fn = IGF.IGM.getDistributedActorInitializeRemoteFunctionPointer();
+    call = IGF.Builder.CreateCall(fn, {actorMetatype});
+  }
   call->setCallingConv(IGF.IGM.SwiftCC);
   call->setDoesNotThrow();
 
@@ -427,6 +455,21 @@ IRGenModule::getAddrOfDistributedTargetAccessor(LinkEntity accessor,
 }
 
 void IRGenModule::emitDistributedTargetAccessor(ThunkOrRequirement target) {
+  // Under Embedded Swift, distributed dispatch does not go through the
+  // standard receiver-side accessor (which would call into the user's
+  // generic `decodeNextArgument<Arg>()` via a dispatch thunk). Embedded
+  // actor systems dispatch via the compiler-synthesized per-actor
+  // `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
+  // method instead (see `createEmbeddedDistributedReceiveDispatch`
+  // in lib/Sema/CodeSynthesisDistributedActor.cpp, derived as a
+  // `DistributedActor` protocol witness). Skip emitting the
+  // standard accessor; emitting it would pull in references to the
+  // standard dispatch thunk of
+  // `DistributedTargetInvocationDecoder.decodeNextArgument`, which the
+  // embedded Distributed module deliberately does not provide.
+  if (Context.LangOpts.hasFeature(Feature::Embedded))
+    return;
+
   LinkEntity accessorRef = getAccessorLinking(target);
   auto *f = getAddrOfDistributedTargetAccessor(accessorRef,
                                                ForDefinition);

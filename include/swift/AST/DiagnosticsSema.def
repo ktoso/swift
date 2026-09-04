@@ -6257,6 +6257,55 @@ ERROR(distributed_actor_func_param_not_codable,none,
       "parameter %0 of type %1 in %kindonly2 does not conform to "
       "serialization requirement '%3'",
       (Identifier, Type, const AbstractFunctionDecl *, StringRef))
+
+// Embedded Swift: `any P` / `some P` parameters or returns in distributed
+// funcs are not yet supported. The full @Resolvable machinery that
+// substitutes a wire-friendly `$P` stub at the call site has not yet been
+// ported to embedded mode. Phase 2 territory.
+ERROR(distributed_embedded_any_some_param_not_supported,none,
+      "parameter %0 of %1 type %2 in %kindonly3 is not yet supported in "
+      "Embedded Swift; only concrete types may appear in 'distributed func' "
+      "signatures",
+      (Identifier, StringRef, Type, const AbstractFunctionDecl *))
+ERROR(distributed_embedded_any_some_result_not_supported,none,
+      "%0 return type %1 of %kindonly2 is not yet supported in Embedded "
+      "Swift; only concrete types may appear in 'distributed func' "
+      "signatures",
+      (StringRef, Type, const AbstractFunctionDecl *))
+NOTE(distributed_embedded_any_some_not_supported_note,none,
+     "Embedded Swift does not yet emit the wire-level proxy ($P stub) "
+     "for '@Resolvable' protocols. Use a concrete type that conforms "
+     "to a compile-time-known serialization protocol instead.",
+     ())
+ERROR(distributed_embedded_some_param_not_supported,none,
+      "parameter %0 of 'some' type %1 in %kindonly2 is not supported "
+      "in Embedded Swift; use 'any %3' instead",
+      (Identifier, Type, const AbstractFunctionDecl *, StringRef))
+ERROR(distributed_embedded_some_result_not_supported,none,
+      "'some' return type %0 of %kindonly1 is not supported in Embedded "
+      "Swift; use 'any %2' instead",
+      (Type, const AbstractFunctionDecl *, StringRef))
+ERROR(distributed_embedded_generic_func_not_supported,none,
+      "generic 'distributed func' is not supported in Embedded Swift; "
+      "use concrete parameter and return types in %kindonly0",
+      (const AbstractFunctionDecl *))
+ERROR(distributed_embedded_generic_actor_system_not_supported,none,
+      "distributed actor cannot be generic over its actor system in Embedded "
+      "Swift; specify a concrete 'ActorSystem'",
+      ())
+ERROR(distributed_embedded_distributed_var_not_supported,none,
+      "'distributed' computed property %0 is not supported in Embedded Swift; "
+      "use a 'distributed func' instead",
+      (DeclName))
+ERROR(distributed_embedded_requires_feature,none,
+      "distributed actors in Embedded Swift require "
+      "'-enable-experimental-feature EmbeddedDistributed'",
+      ())
+ERROR(distributed_embedded_non_default_actor_not_supported,none,
+      "distributed actor %0 with a custom executor is not supported in "
+      "Embedded Swift; remove the 'unownedExecutor' property to use the "
+      "default actor executor",
+      (DeclName))
 ERROR(distributed_actor_func_param_resolvable_actor_system_mismatch,none,
       "parameter %0 of type %1 in %kindonly2 must match the enclosing actor's "
       "ActorSystem (%5)",

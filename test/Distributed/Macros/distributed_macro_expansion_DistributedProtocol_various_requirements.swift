@@ -24,11 +24,15 @@ protocol Greeter: DistributedActor where ActorSystem == FakeActorSystem {
 
 // CHECK: extension Greeter where Self: Distributed._DistributedActorStub {
 // CHECK:   distributed func greet(name: String) -> String {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK: }
 
@@ -44,11 +48,15 @@ protocol Greeter2: DistributedActor where ActorSystem: DistributedActorSystem<an
 
 // CHECK: extension Greeter2 where Self: Distributed._DistributedActorStub {
 // CHECK:   distributed func greet(name: String) -> String {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK: }
 
@@ -69,11 +77,15 @@ protocol Greeter3: DistributedActor where ActorSystem: DistributedActorSystem<an
 
 // CHECK: extension Greeter3 where Self: Distributed._DistributedActorStub {
 // CHECK:   distributed func greet(name: String) -> String {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK: }
 
@@ -89,11 +101,15 @@ public protocol Greeter4: DistributedActor where ActorSystem == FakeActorSystem 
 
 // CHECK: extension Greeter4 where Self: Distributed._DistributedActorStub {
 // CHECK:   public distributed func greet(name: String) -> String {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK: }
 
@@ -112,32 +128,48 @@ public protocol GreeterMore: DistributedActor where ActorSystem == FakeActorSyst
 
 // CHECK: extension GreeterMore where Self: Distributed._DistributedActorStub {
 // CHECK:   public distributed var  name : String {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK:   public distributed func greet(name: String) -> String {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK:   public distributed func another(string: String, int: Int) async throws -> Double {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK:   public distributed func generic<T: Codable>(value: T, int: Int) async throws -> T {
-// CHECK:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
-// CHECK:       Distributed._distributedStubFatalError()
-// CHECK:     } else {
-// CHECK:       fatalError()
-// CHECK:     }
+// CHECK:     #if $Embedded
+// CHECK-NEXT:     fatalError()
+// CHECK-NEXT:     #else
+// CHECK-NEXT:     if #available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *) {
+// CHECK-NEXT:       Distributed._distributedStubFatalError()
+// CHECK-NEXT:     } else {
+// CHECK-NEXT:       fatalError()
+// CHECK-NEXT:     }
+// CHECK-NEXT:     #endif
 // CHECK:   }
 // CHECK: }
 

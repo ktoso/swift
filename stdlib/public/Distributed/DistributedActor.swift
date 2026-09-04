@@ -194,11 +194,13 @@ import _Concurrency
 /// actor system for the decoding initializer when decoding a distributed actor.
 ///
 /// - SeeAlso: ``DistributedActorSystem``
+#if !$Embedded
+
 @available(SwiftStdlib 5.7, *)
 public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
   where ID == ActorSystem.ActorID,
         SerializationRequirement == ActorSystem.SerializationRequirement {
-  
+
   /// The type of transport used to communicate with actors of this type.
   associatedtype ActorSystem: DistributedActorSystem
 
@@ -279,6 +281,8 @@ public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
 
 }
 
+#endif // !$Embedded
+
 // ==== Hashable conformance ---------------------------------------------------
 
 @available(SwiftStdlib 5.7, *)
@@ -301,6 +305,7 @@ extension DistributedActor {
 
 // ==== Codable conformance ----------------------------------------------------
 
+#if !$Embedded
 extension CodingUserInfoKey {
 
   /// Key which is required to be set on a `Decoder`'s `userInfo` while attempting
@@ -312,7 +317,9 @@ extension CodingUserInfoKey {
   @available(SwiftStdlib 5.7, *)
   public static let actorSystemKey = CodingUserInfoKey(rawValue: "$distributed_actor_system")!
 }
+#endif // !$Embedded
 
+#if !$Embedded
 @available(SwiftStdlib 5.7, *)
 extension DistributedActor /*: implicitly Decodable */ where Self.ID: Decodable {
 
@@ -338,7 +345,9 @@ extension DistributedActor /*: implicitly Decodable */ where Self.ID: Decodable 
     self = try Self.resolve(id: id, using: system)
   }
 }
+#endif // !$Embedded
 
+#if !$Embedded
 @available(SwiftStdlib 5.7, *)
 extension DistributedActor /*: implicitly Encodable */ where Self.ID: Encodable {
 
@@ -348,6 +357,7 @@ extension DistributedActor /*: implicitly Encodable */ where Self.ID: Encodable 
     try container.encode(self.id)
   }
 }
+#endif // !$Embedded
 
 // ==== Local actor special handling -------------------------------------------
 

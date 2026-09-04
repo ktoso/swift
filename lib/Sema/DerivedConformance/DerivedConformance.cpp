@@ -26,6 +26,7 @@
 #include "swift/AST/SynthesizedDeclBuilder.h"
 #include "swift/AST/Types.h"
 #include "swift/Basic/Assertions.h"
+#include "swift/Basic/Feature.h"
 #include "swift/Basic/QuotedString.h"
 #include "swift/ClangImporter/ClangModule.h"
 #include "llvm/ADT/STLExtras.h"
@@ -404,6 +405,24 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
       if (argumentNames.size() == 2 &&
           argumentNames[0] == ctx.Id_id &&
           argumentNames[1] == ctx.Id_using) {
+        return getRequirement(KnownProtocolKind::DistributedActor);
+      }
+    }
+
+    // DistributedActor._executeDistributedTarget(target:invocationDecoder:resultHandler:)
+    // This requirement only exists in the Embedded protocol shape, so we only
+    // recognize it as derivable under Embedded Swift. Gating here (rather than
+    // asserting) is deliberate: `getDerivableRequirement` matches on the
+    // requirement's name alone, so a user-defined protocol with a method of
+    // this name in a non-embedded build would otherwise reach this arm
+    if (ctx.LangOpts.hasFeature(Feature::Embedded) &&
+        name.isCompoundName() &&
+        name.getBaseName() == ctx.Id_executeDistributedTarget) {
+      auto argumentNames = name.getArgumentNames();
+      if (argumentNames.size() == 3 &&
+          argumentNames[0] == ctx.getIdentifier("target") &&
+          argumentNames[1] == ctx.getIdentifier("invocationDecoder") &&
+          argumentNames[2] == ctx.getIdentifier("resultHandler")) {
         return getRequirement(KnownProtocolKind::DistributedActor);
       }
     }

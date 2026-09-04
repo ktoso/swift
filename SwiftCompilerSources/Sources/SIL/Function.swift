@@ -186,6 +186,18 @@ final public class Function : CustomStringConvertible, HasShortDescription, Hash
 
   public var isGeneric: Bool { bridged.isGeneric() }
 
+  /// True if this function is the SIL implementation of a witness to one of
+  /// the distributed protocol's ad-hoc `SerializationRequirement` requirements
+  /// (e.g. `DistributedActorSystem.remoteCall`,
+  /// `DistributedTargetInvocationEncoder.recordArgument`, etc.). Such
+  /// functions have generic parameters constrained to a (typically non-class)
+  /// `SerializationRequirement` and cannot be specialized at the SIL level via
+  /// the usual rules, so the embedded SIL diagnostics need to relax their
+  /// "generic must be class-bound" check for them.
+  public var isDistributedAdHocSerializationRequirementWitness: Bool {
+    bridged.isDistributedAdHocSerializationRequirementWitness()
+  }
+
   public var linkage: Linkage { bridged.getLinkage().linkage }
 
   /// True, if the linkage of the function indicates that it is visible outside the current
