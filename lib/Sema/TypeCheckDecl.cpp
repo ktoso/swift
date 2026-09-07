@@ -881,6 +881,11 @@ IsFinalRequest::evaluate(Evaluator &evaluator, ValueDecl *decl) const {
       // never overridden and inferring `final` changes nothing semantically.
       // The synthesized distributed thunk is already marked `final`; this makes
       // the user-declared target match, keeping it out of the actor's vtable.
+      //
+      // Gating on `Embedded` (rather than `EmbeddedDistributed`, which the rest
+      // of embedded-distributed support keys off) is sufficient here: a
+      // `distributed actor` can only be declared when `EmbeddedDistributed` is
+      // also enabled, so `cls->isDistributedActor()` already implies it.
       if (cls->isDistributedActor() && FD->getGenericParams() &&
           decl->getASTContext().LangOpts.hasFeature(Feature::Embedded))
         return true;
