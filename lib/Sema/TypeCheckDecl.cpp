@@ -871,8 +871,22 @@ IsFinalRequest::evaluate(Evaluator &evaluator, ValueDecl *decl) const {
     }
 
     case DeclKind::Func: {
+      auto *FD = cast<FuncDecl>(decl);
+
+      // A generic method of a distributed actor is implicitly final under
+      // Embedded Swift. A `some @Resolvable P` parameter makes a `distributed
+      // func` generic, and embedded forbids non-final generic methods on
+      // classes (they can't be devirtualized out of a vtable). A distributed
+      // actor cannot be subclassed (see `actor_inheritance`), so the method is
+      // never overridden and inferring `final` changes nothing semantically.
+      // The synthesized distributed thunk is already marked `final`; this makes
+      // the user-declared target match, keeping it out of the actor's vtable.
+      if (cls->isDistributedActor() && FD->getGenericParams() &&
+          decl->getASTContext().LangOpts.hasFeature(Feature::Embedded))
+        return true;
+
       // Methods declared 'static' are final.
-      auto staticSpelling = cast<FuncDecl>(decl)->getStaticSpelling();
+      auto staticSpelling = FD->getStaticSpelling();
       if (inferFinalAndDiagnoseIfNeeded(decl, cls, explicitFinalAttr,
                                         staticSpelling))
         return true;

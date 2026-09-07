@@ -1,0 +1,266 @@
+// RUN: %empty-directory(%t)
+// RUN: %target-swift-frontend -target %target-cpu-apple-macos14 -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -plugin-path %swift-plugin-dir %s -c -o %t/a.o
+// RUN: %target-embedded-link %t/a.o %target-embedded-posix-shim -o %t/a.out -L%swift_obj_root/lib/swift/embedded/%module-target-triple %target-clang-resource-dir-opt -lswift_Concurrency -lswiftDistributed %target-swift-default-executor-opt %target-embedded-concurrency-threading-shim -dead_strip
+// RUN: %target-run %t/a.out | %FileCheck %s
+
+// REQUIRES: executable_test
+// REQUIRES: optimized_stdlib
+// REQUIRES: OS=macosx || OS=wasip1
+// REQUIRES: swift_feature_Embedded
+
+// Companion to distributed_embedded_resolvable_any_roundtrip_exec.swift, but the
+// Hub takes a `some RWorker` (opaque) parameter instead of `any RWorker`. This
+// pins the `some @Resolvable P` parameter support: embedded accepts the same
+// shape non-embedded does. `some P` needs no generic substitution because it is
+// always monomorphized to the wire-level `$P` stub - identical treatment to
+// `any P`. The sender thunk substitutes `$RWorker`; the receive-side dispatch
+// decodes a `$RWorker` proxy and binds it to the opaque `some RWorker`
+// parameter of the user body. The inner `worker.work(...)` then routes back
+// through `remoteCall` to the local `WorkerImpl`.
+
+import _Concurrency
+import Distributed
+
+// ==== ----------------------------------------------------------------------
+// MARK: A tiny in-memory transport (single-process)
+
+public final class CallBuffer {
+  var argString: String?
+  var argWorker: $RWorker?
+
+  public init() {}
+}
+
+// ==== ----------------------------------------------------------------------
+// MARK: The system's serialization requirement
+//
+// The concrete system binds `SerializationRequirement` to its own protocol and
+// conforming types serialize through a single generic member on the encoder /
+// decoder / handler rather than per-type overloads. Because this fake moves
+// values in-process it does not pack them into bytes: each conforming type
+// stashes itself into the matching typed slot of the shared `CallBuffer` and
+// reads it back. The `$RWorker` witness is `nonisolated` so it can satisfy the
+// plain-protocol requirement from the encoder's nonisolated context - it only
+// moves the actor reference, never touching isolated state.
+
+public protocol MySerializationRequirement {
+  func store(into buffer: CallBuffer)
+  static func load(from buffer: CallBuffer) -> Self
+}
+extension String: MySerializationRequirement {
+  public func store(into buffer: CallBuffer) { buffer.argString = self }
+  public static func load(from buffer: CallBuffer) -> String {
+    guard let v = buffer.argString else { fatalError("missing String") }
+    buffer.argString = nil
+    return v
+  }
+}
+extension $RWorker: MySerializationRequirement {
+  public nonisolated func store(into buffer: CallBuffer) { buffer.argWorker = self }
+  public static func load(from buffer: CallBuffer) -> $RWorker {
+    guard let v = buffer.argWorker else { fatalError("missing $RWorker") }
+    buffer.argWorker = nil
+    return v
+  }
+}
+
+// ==== ----------------------------------------------------------------------
+// MARK: Encoder / Decoder / ResultHandler with a single generic member
+
+public struct MyEncoder: DistributedTargetInvocationEncoder {
+  let buffer: CallBuffer
+  init(buffer: CallBuffer) { self.buffer = buffer }
+
+  public mutating func doneRecording() throws {}
+}
+extension MyEncoder {
+  public mutating func recordArgument<Value: MySerializationRequirement>(
+      _ argument: RemoteCallArgument<Value>) throws {
+    argument.value.store(into: buffer)
+  }
+}
+
+public struct MyDecoder: DistributedTargetInvocationDecoder {
+  let buffer: CallBuffer
+  init(buffer: CallBuffer) { self.buffer = buffer }
+}
+extension MyDecoder {
+  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
+    return Argument.load(from: buffer)
+  }
+}
+
+public struct MyResultHandler: DistributedTargetInvocationResultHandler {
+  let buffer: CallBuffer
+  init(buffer: CallBuffer) { self.buffer = buffer }
+
+  public func onReturnVoid() async throws {}
+  public func onThrow(error: any Error) async throws {
+    fatalError("threw in handler")
+  }
+}
+extension MyResultHandler {
+  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {
+    value.store(into: buffer)
+  }
+}
+
+// ==== ----------------------------------------------------------------------
+// MARK: The actor system
+
+public struct MyActorID: Sendable, Hashable {
+  public let id: UInt64
+  public init(id: UInt64) { self.id = id }
+}
+
+public final class MySystem: DistributedActorSystem, @unchecked Sendable {
+  public typealias ActorID = MyActorID
+  public typealias SerializationRequirement = MySerializationRequirement
+  public typealias InvocationEncoder = MyEncoder
+  public typealias InvocationDecoder = MyDecoder
+  public typealias ResultHandler = MyResultHandler
+
+  // The system keeps the local instances around. Routing through
+  // `remoteCall` finds the registered local actor by id and dispatches
+  // to it via `_executeDistributedTarget`
+  var hub: Hub?
+  var worker: WorkerImpl?
+  var hubAssigned = false
+  let buffer = CallBuffer()
+
+  public init() {}
+
+  public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
+      where Act: DistributedActor, Act.ID == ActorID {
+    return nil
+  }
+  public func assignID<Act>(_ actorType: Act.Type) -> ActorID
+      where Act: DistributedActor, Act.ID == ActorID {
+    // Embedded has no `_swift_dynamicCastMetatype`, so don't case on
+    // the metatype here; the test sets up the Hub first (id=42), then
+    // the WorkerImpl (id=7)
+    if hubAssigned == false {
+      hubAssigned = true
+      return MyActorID(id: 42)
+    }
+    return MyActorID(id: 7)
+  }
+  public func actorReady<Act>(_ actor: Act)
+      where Act: DistributedActor, Act.ID == ActorID {
+    if actor.id.id == 42 {
+      self.hub = (actor as! AnyObject) as? Hub
+    } else if actor.id.id == 7 {
+      self.worker = (actor as! AnyObject) as? WorkerImpl
+    }
+  }
+  public func resignID(_ id: ActorID) {}
+
+  public func makeInvocationEncoder() -> InvocationEncoder {
+    .init(buffer: buffer)
+  }
+
+  public func remoteCall<Act, Res>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder
+  ) async throws -> Res
+      where Act: DistributedActor, Act.ID == ActorID,
+            Res: MySerializationRequirement {
+    print("[swift] remoteCall reached")
+    var decoder = MyDecoder(buffer: buffer)
+    let handler = MyResultHandler(buffer: buffer)
+
+    // Route by the receiver actor's ID (not its Swift type): when
+    // dispatching through `some RWorker` -> `$RWorker` proxy, this
+    // is the proxy, but the registered local instance for id=7 is the
+    // concrete `WorkerImpl`. The synthesized `_executeDistributedTarget`
+    // matches either the concrete `WorkerImpl.<method>` target identifier
+    // or the `$RWorker.<method>` (`@Resolvable` proxy thunk) identifier,
+    // routing to `self.<method>` either way
+    if actor.id.id == 42 {
+      guard let h = self.hub else { fatalError("no local Hub") }
+      try await h._executeDistributedTarget(
+          target: target,
+          invocationDecoder: &decoder,
+          resultHandler: handler)
+    } else if actor.id.id == 7 {
+      guard let w = self.worker else { fatalError("no local Worker") }
+      try await w._executeDistributedTarget(
+          target: target,
+          invocationDecoder: &decoder,
+          resultHandler: handler)
+    } else {
+      fatalError("unknown actor id")
+    }
+
+    // `_executeDistributedTarget` ran the target and its result handler
+    // stored the return value into the shared buffer via `onReturn`. Decode
+    // it back out as `Res` and return it - the sender thunk no longer does
+    // any decoding of its own. Because calls are strictly nested (LIFO) and
+    // each decode clears its slot, the shared arg/return slots never collide
+    return Res.load(from: buffer)
+  }
+
+  public func remoteCallVoid<Act>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder
+  ) async throws
+      where Act: DistributedActor, Act.ID == ActorID {
+    fatalError("not implemented in this test")
+  }
+}
+
+typealias DefaultDistributedActorSystem = MySystem
+
+// ==== ----------------------------------------------------------------------
+// MARK: The @Resolvable protocol and a concrete implementation
+
+@Resolvable
+public protocol RWorker: DistributedActor where ActorSystem == MySystem {
+  distributed func work(name: String) -> String
+}
+
+public distributed actor WorkerImpl: RWorker {
+  public distributed func work(name: String) -> String {
+    return "worked: \(name)"
+  }
+}
+
+// ==== ----------------------------------------------------------------------
+// MARK: A Hub that takes `some RWorker` (opaque)
+
+public distributed actor Hub {
+  // `some RWorker` parameter: treated exactly like `any RWorker` in embedded -
+  // the thunk substitutes `$RWorker` over the wire, and the receive side
+  // decodes a `$RWorker` proxy that binds the opaque parameter. No generic
+  // substitution is recorded (the embedded encoder has none), because the type
+  // is always monomorphized to `$RWorker`. The inner `worker.work(name:)` call
+  // dispatches through the `$RWorker` proxy's distributed thunk back through
+  // `remoteCall`, where the actor id routes to the local `WorkerImpl`.
+  public distributed func dispatch(to worker: some RWorker) async throws -> String {
+    return try await worker.work(name: "world")
+  }
+}
+
+@main struct Main {
+  static func main() async {
+    let system = MySystem()
+    // Order matters: assignID hands out id=42 first (Hub), then id=7 (Worker)
+    _ = Hub(actorSystem: system)
+    _ = WorkerImpl(actorSystem: system)
+
+    do {
+      let remoteHub = try Hub.resolve(id: MyActorID(id: 42), using: system)
+      let remoteWorker = try $RWorker.resolve(id: MyActorID(id: 7), using: system)
+      let s = try await remoteHub.dispatch(to: remoteWorker)
+      print("[swift] dispatch result: \(s)")
+    } catch {
+      print("[swift] threw")
+    }
+  }
+}
+
+// CHECK:      [swift] remoteCall reached
+// CHECK-NEXT: [swift] remoteCall reached
+// CHECK-NEXT: [swift] dispatch result: worked: world

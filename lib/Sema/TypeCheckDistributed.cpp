@@ -722,7 +722,7 @@ bool swift::checkDistributedActorSystem(const NominalTypeDecl *system) {
     return true;
   }
 
-  // Embedded distributed support is gated behind an experimental feature that
+  // Embedded Distributed support is gated behind an experimental feature that
   // is not available in production compilers. Reject concrete actor systems
   // under Embedded Swift unless the feature is enabled.
   auto &C = nominal->getASTContext();
@@ -901,13 +901,14 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
 
   bool anyMissing = false;
 
-  // Reject parameter shapes embedded can't lower:
-  //   - `some P` (with or without `@Resolvable`): generic specialization of
-  //     distributed methods is not supported; the thunk would need to record
-  //     generic substitutions on the wire, which needs runtime metadata.
-  //   - `any P` where P is not `@Resolvable`: the existential has no wire
-  //     shape; it would need the `$P` stub.
-  //   - `any P` where P is `@Resolvable`: accepted; the thunk substitutes `$P`.
+  // Reject parameter shapes embedded can't lower. Embedded accepts exactly the
+  // shapes non-embedded accepts:
+  //   - `any P` / `some P` where P is `@Resolvable`: accepted; the thunk
+  //     substitutes the wire-level `$P` stub. `some P` needs no generic
+  //     substitution because it is always monomorphized to `$P` (the embedded
+  //     encoder has no `recordGenericSubstitution`, which is fine).
+  //   - `any P` / `some P` where P is not `@Resolvable`: rejected; there is no
+  //     `$P` wire stub, so the existential/opaque type has no wire shape.
   for (auto *param : *func->getParameters()) {
     Type paramTy = func->mapTypeIntoEnvironment(param->getInterfaceType());
     Type printableParamTy = param->getInterfaceType();
@@ -920,31 +921,26 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
                        ? getDistributedResolvableProtocolStubDecl(resolvable.proto)
                        : nullptr;
 
-      if (kind == "'some'") {
-        StringRef protoName = resolvable.proto
-            ? resolvable.proto->getName().str()
-            : "<#Resolvable Protocol#>";
-        func->diagnose(
-            diag::distributed_embedded_some_param_not_supported,
-            param->getArgumentName(), printableParamTy, func, protoName);
-        anyMissing = true;
-        continue;
-      }
-
       if (!stub) {
-        // `any P` without `@Resolvable`: not yet supported.
+        // `any P` / `some P` where P is not `@Resolvable`: no `$P` wire stub
+        // exists for the parameter to travel as.
         func->diagnose(
             diag::distributed_embedded_any_some_param_not_supported,
-            param->getArgumentName(), kind, printableParamTy, func);
-        func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
+            param->getArgumentName(), printableParamTy, func);
         anyMissing = true;
         continue;
       }
-      // `any P` with `@Resolvable`: accepted; the thunk substitutes `$P`.
+      // `any P` / `some P` with `@Resolvable`: accepted; the thunk substitutes `$P`.
     }
   }
 
   // Reject return shapes embedded can't lower, mirroring the parameter loop.
+  // The one asymmetry vs. parameters: a `some P` *return* is never supported
+  // (even for `@Resolvable` P), because the synthesized thunk's local branch
+  // returns the real underlying type while the remote branch returns `$P`,
+  // which the opaque return type's single-underlying-type rule cannot unify.
+  // This matches non-embedded, where the same shape fails to compile. `any P`
+  // returns (for `@Resolvable` P) are supported, so steer users there.
   if (auto *funcDecl = dyn_cast<FuncDecl>(func)) {
     Type returnInterfaceTy = funcDecl->getResultInterfaceType();
     if (!returnInterfaceTy->isVoid()) {
@@ -959,20 +955,26 @@ static bool checkEmbeddedDistributedFunctionCoverage(AbstractFunctionDecl *func)
                          : nullptr;
 
         if (kind == "'some'") {
-          StringRef protoName = resolvable.proto
-              ? resolvable.proto->getName().str()
-              : "<#Resolvable Protocol#>";
-          func->diagnose(
-              diag::distributed_embedded_some_result_not_supported,
-              returnInterfaceTy, func, protoName);
+          // `some P` returns are unsupported. For `@Resolvable` P, `any P`
+          // returns work, so suggest that; otherwise fall to the unified
+          // not-supported message.
+          if (auto *proto = resolvable.proto) {
+            func->diagnose(
+                diag::distributed_embedded_some_result_not_supported,
+                returnInterfaceTy, func, proto->getName().str());
+          } else {
+            func->diagnose(
+                diag::distributed_embedded_any_some_result_not_supported,
+                returnInterfaceTy, func);
+          }
           return true;
         }
 
         if (!stub) {
+          // `any P` where P is not `@Resolvable`.
           func->diagnose(
               diag::distributed_embedded_any_some_result_not_supported,
-              kind, returnInterfaceTy, func);
-          func->diagnose(diag::distributed_embedded_any_some_not_supported_note);
+              returnInterfaceTy, func);
           return true;
         }
         // `any P` with `@Resolvable`: accepted; the thunk substitutes `$P`.

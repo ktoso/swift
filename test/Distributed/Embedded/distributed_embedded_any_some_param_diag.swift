@@ -3,13 +3,13 @@
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 
-// Phase 2 embedded `@Resolvable` support: `any P` parameters and returns
-// where `P` is annotated with `@Resolvable` get the wire-level `$P` stub
-// substitution at the synthesized distributed thunk's call site, and the
-// `$P` stub conforms to the system's `SerializationRequirement` so the
-// standard argument/return coverage check accepts it. `some P` and
-// generic distributed funcs remain rejected; `any P` without `@Resolvable`
-// remains rejected (no `$P` stub exists for non-resolvable protocols).
+// Embedded `@Resolvable` support mirrors the shapes non-embedded accepts:
+// `any P` / `some P` parameters and `any P` returns where `P` is `@Resolvable`
+// get the wire-level `$P` stub substitution at the synthesized thunk's call
+// site (the `$P` stub conforms to the system's `SerializationRequirement`, so
+// the standard coverage check accepts them). Rejected: `some P` *returns* (even
+// for `@Resolvable` P, matching non-embedded), `any`/`some` of a
+// non-`@Resolvable` protocol (no `$P` stub), and user-written generic funcs.
 
 import _Concurrency
 import Distributed
@@ -103,22 +103,34 @@ extension $RWorker: MySerializationRequirement {}
 
 distributed actor Hub {
   // `any P` where P is not `@Resolvable`: rejected, no `$P` stub exists
-  // expected-error@+2{{parameter 'to' of 'any' type 'any Worker' in distributed instance method is not yet supported in Embedded Swift}}
-  // expected-note@+1{{Embedded Swift does not yet emit the wire-level proxy ($P stub) for '@Resolvable' protocols. Use a concrete type that conforms to a compile-time-known serialization protocol instead.}}
+  // expected-error@+1{{parameter 'to' of type 'any Worker' in distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' of an '@Resolvable' protocol, may appear in 'distributed func' signatures}}
   distributed func sendAny(to worker: any Worker) -> String {
     return "sent"
   }
 
-  // `some P` parameter: rejected even if P has `@Resolvable`, generic
-  // specialization isn't supported under embedded
-  // expected-error@+1{{parameter 'to' of 'some' type 'some RWorker' in distributed instance method is not supported in Embedded Swift; use 'any RWorker' instead}}
+  // `some P` parameter where P is `@Resolvable`: accepted, thunk substitutes
+  // `$P` (same wire shape as `any RWorker`, no generic substitution needed)
   distributed func sendSome(to worker: some RWorker) -> String {
     return "sent"
   }
 
+  // `some P` parameter where P is NOT `@Resolvable`: rejected, no `$P` stub
+  // expected-error@+1{{parameter 'to' of type 'some Worker' in distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' of an '@Resolvable' protocol, may appear in 'distributed func' signatures}}
+  distributed func sendSomeNonResolvable(to worker: some Worker) -> String {
+    return "sent"
+  }
+
+  // `some P` *return* where P is `@Resolvable`: rejected. The thunk's local
+  // branch returns the real underlying type while the remote branch returns
+  // `$P`, which the opaque return type can't unify (this also fails to compile
+  // in non-embedded). `any P` returns work, so steer there.
+  // expected-error@+1{{'some' return type 'some RWorker' of distributed instance method is not supported in Embedded Swift; use 'any RWorker' instead}}
+  distributed func replySome() -> some RWorker {
+    return try! $RWorker.resolve(id: self.id, using: self.actorSystem)
+  }
+
   // `any P` result type without `@Resolvable`: rejected
-  // expected-error@+2{{'any' return type 'any Worker' of distributed instance method is not yet supported in Embedded Swift}}
-  // expected-note@+1{{Embedded Swift does not yet emit the wire-level proxy ($P stub) for '@Resolvable' protocols. Use a concrete type that conforms to a compile-time-known serialization protocol instead.}}
+  // expected-error@+1{{return type 'any Worker' of distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' of an '@Resolvable' protocol, may appear in 'distributed func' signatures}}
   distributed func pickWorker() -> any Worker {
     fatalError()
   }

@@ -194,8 +194,11 @@ import _Concurrency
 /// actor system for the decoding initializer when decoding a distributed actor.
 ///
 /// - SeeAlso: ``DistributedActorSystem``
-#if !$Embedded
-
+// This protocol is shared between regular and Embedded Swift. The declaration is
+// identical in both modes except for the `_executeDistributedTarget` requirement,
+// which only exists under Embedded (split with `#if $Embedded` below). This is
+// what makes a `distributed actor` declaration source-portable across the two
+// modes.
 @available(SwiftStdlib 5.7, *)
 public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
   where ID == ActorSystem.ActorID,
@@ -279,9 +282,21 @@ public protocol DistributedActor: AnyObject, Sendable, Identifiable, Hashable
   /// - Parameter system: `system` which should be used to resolve the `identity`, and be associated with the returned actor
   static func resolve(id: ID, using system: ActorSystem) throws -> Self
 
+  // ### Embedded Swift
+  // Receiver-side dispatch entrypoint, synthesized per distributed actor. Under
+  // Embedded there is no runtime accessible-function table or demangler, so this
+  // compiler-synthesized witness routes an incoming `RemoteCallTarget` to the
+  // matching local `distributed func`. Not present in non-embedded, where the
+  // runtime performs this dispatch.
+  #if $Embedded
+  @available(SwiftStdlib 6.5, *)
+  nonisolated(nonsending) func _executeDistributedTarget(
+    target: RemoteCallTarget,
+    invocationDecoder: inout Self.ActorSystem.InvocationDecoder,
+    resultHandler: Self.ActorSystem.ResultHandler
+  ) async throws
+  #endif // $Embedded
 }
-
-#endif // !$Embedded
 
 // ==== Hashable conformance ---------------------------------------------------
 
