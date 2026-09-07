@@ -290,18 +290,17 @@ deriveBodyDistributed_invokeHandlerOnReturn(AbstractFunctionDecl *afd,
   const SourceLoc sloc = SourceLoc();
   const DeclNameLoc dloc = DeclNameLoc();
 
-  // In Embedded Swift mode, the body of this function would synthesize a
-  // nested generic helper (`doInvokeOnReturn<R: SerializationRequirement>`)
-  // and an `_openExistential` call. Both would create generic functions
-  // whose parameters cannot be class-bound, which Embedded IRGen rejects.
-  // The only caller of `invokeHandlerOnReturn` is the Swift wrapper
-  // `executeDistributedTarget`, which itself is unused in Embedded mode (it
-  // depends on runtime demangling that is unavailable in Embedded). So
-  // under Embedded we emit an empty body: the function is dead code.
-  if (C.LangOpts.hasFeature(Feature::Embedded)) {
-    auto emptyBody = BraceStmt::create(C, sloc, {}, sloc, implicit);
-    return {emptyBody, /*isTypeChecked=*/false};
-  }
+  // `invokeHandlerOnReturn` is a `#if !$Embedded` requirement (see
+  // `DistributedActorSystem.swift`); its only caller, `executeDistributedTarget`,
+  // is likewise `#if !$Embedded`. Under Embedded the requirement does not exist,
+  // so derivation is never requested for it and this synthesizer never runs.
+  // Assert that invariant rather than synthesizing a silently-empty witness: if
+  // the stdlib gate ever drifts from this synthesis, fail loudly here instead of
+  // emitting a do-nothing function (its body would need a nested generic helper
+  // and an `_openExistential`, neither of which Embedded IRGen can lower).
+  ASSERT(!C.LangOpts.hasFeature(Feature::Embedded) &&
+         "invokeHandlerOnReturn is unavailable in Embedded Swift; "
+         "its derivation must never run");
 
   NominalTypeDecl *nominal = dyn_cast<NominalTypeDecl>(DC);
   assert(nominal);
