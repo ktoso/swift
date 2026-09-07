@@ -461,7 +461,7 @@ The embedded `remoteCall` returns the result `Res` directly (no `<Err>` generic,
 
 Actual `distributed actor` and resolvable protocol implementations are able to be shared between embedded
 and not embedded builds without much effort, because the runtime differences are handled at the actor system layer.
-Only the `SerializationRequirement` might potentially be difference between platforms, if a system was using `Codable`
+Only the `SerializationRequirement` might potentially be different between platforms, if a system was using `Codable`
 on non-Embedded, because `Codable` is not supported on embedded platforms.
 
 Since Codable is merely the "how" and not the specific details of the serialization, 
@@ -810,8 +810,8 @@ embedded Swift needs. This mirrors exactly the shapes non-embedded accepts.
 
 A `some P` parameter needs no `recordGenericSubstitution`: it is always
 monomorphized to the wire-level `$P` stub, so it is treated identically to
-`any P`. The implicit generic parameter it introduces is left unused after
-the `$P` rewrite (harmless), and the embedded encoder has no
+`any P`. The implicit generic parameter it introduces is bound to `$P` at
+the monomorphized call site, and the embedded encoder has no
 `recordGenericSubstitution` requirement to satisfy.
 
 What is **not** supported, and why:
@@ -822,7 +822,7 @@ What is **not** supported, and why:
   type, so the two branches cannot be unified. This shape also fails to
   compile in non-embedded (`cannot convert return expression of type '$P'
   to return type 'some P'`). Diagnosed as
-  `distributed_embedded_some_result_not_supported` with fix-it
+  `distributed_embedded_some_result_not_supported`, whose message suggests
   "use 'any P' instead" (an `any P` return *is* supported).
 - **`any P` / `some P` where `P` is not `@Resolvable`.** No `$P` stub type
   exists for the thunk to use as the wire shape. Diagnosed as
