@@ -65,13 +65,16 @@ void diagnoseDistributedFunctionInNonDistributedActorProtocol(
 void addCodableFixIt(const NominalTypeDecl *nominal, InFlightDiagnostic &diag);
 
 /// Create the `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
-/// instance method for the given distributed actor, dispatching by mangled
-/// target name to each of the actor's distributed functions. Returns the
-/// synthesized FuncDecl (with a body synthesizer attached), or null when the
-/// actor is not an embedded distributed actor or its actor system type is
-/// unavailable. The returned decl is not added to the actor; the derived
-/// conformance machinery publishes it as the witness for the
-/// `DistributedActor._executeDistributedTarget` requirement.
+/// instance method for the given distributed actor.
+///
+/// This function replaces the dynamic execution mechanism of Accessible Functions
+/// that non-Embedded Distributed Swift uses, by emitting a large switch over the
+/// identifier, decode in-place and apply the target function directly from the
+/// generated _executeDistributedTarget body.
+///
+/// This is sufficient in Embedded Swift since we do not support cross module
+/// distributed actor extensions, so the list of supported methods is
+/// determined at compile time.
 FuncDecl *createEmbeddedDistributedReceiveDispatch(ClassDecl *actor);
 
 }

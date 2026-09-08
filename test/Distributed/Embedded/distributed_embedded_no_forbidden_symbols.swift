@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -emit-ir -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -target %target-cpu-apple-macos14 %s | %FileCheck %s
+// RUN: %target-swift-frontend -emit-ir -enable-experimental-feature Embedded -enable-experimental-feature EmbeddedDistributed -parse-as-library -wmo -target %target-cpu-apple-macos14 %s %S/Runtime/Inputs/EmbeddedFakeActorSystem.swift | %FileCheck %s
 
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
@@ -12,78 +12,7 @@
 import _Concurrency
 import Distributed
 
-public struct EmbeddedActorID: Sendable, Hashable {
-  public let id: UInt64
-}
-
-public protocol MySerializationRequirement {}
-extension String: MySerializationRequirement {}
-
-public struct MyEncoder: DistributedTargetInvocationEncoder {
-  public init() {}
-  public mutating func doneRecording() throws {}
-}
-
-extension MyEncoder {
-  public mutating func recordArgument<Value: MySerializationRequirement>(
-      _ argument: RemoteCallArgument<Value>) throws {}
-}
-
-public struct MyDecoder: DistributedTargetInvocationDecoder {
-  public init() {}
-}
-
-extension MyDecoder {
-  public mutating func decodeNextArgument<Argument: MySerializationRequirement>() throws -> Argument {
-    fatalError("stub")
-  }
-}
-
-public struct MyResultHandler: DistributedTargetInvocationResultHandler {
-  public init() {}
-  public func onReturnVoid() async throws {}
-  public func onThrow(error: any Error) async throws {}
-}
-
-extension MyResultHandler {
-  public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
-}
-
-public final class MySystem: DistributedActorSystem, @unchecked Sendable {
-  public typealias ActorID = EmbeddedActorID
-  public typealias SerializationRequirement = MySerializationRequirement
-  public typealias InvocationEncoder = MyEncoder
-  public typealias InvocationDecoder = MyDecoder
-  public typealias ResultHandler = MyResultHandler
-
-  public init() {}
-
-  public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
-      where Act: DistributedActor, Act.ID == ActorID { return nil }
-  public func assignID<Act>(_ actorType: Act.Type) -> ActorID
-      where Act: DistributedActor, Act.ID == ActorID { return ActorID(id: 0) }
-  public func actorReady<Act>(_ actor: Act)
-      where Act: DistributedActor, Act.ID == ActorID {}
-  public func resignID(_ id: ActorID) {}
-
-  public func makeInvocationEncoder() -> InvocationEncoder { .init() }
-
-  public func remoteCall<Act, Res>(
-    on actor: Act,
-    target: RemoteCallTarget,
-    invocation: inout InvocationEncoder
-  ) async throws -> Res
-      where Act: DistributedActor, Act.ID == ActorID, Res: MySerializationRequirement { fatalError() }
-
-  public func remoteCallVoid<Act>(
-    on actor: Act,
-    target: RemoteCallTarget,
-    invocation: inout InvocationEncoder
-  ) async throws
-      where Act: DistributedActor, Act.ID == ActorID { fatalError() }
-}
-
-typealias DefaultDistributedActorSystem = MySystem
+typealias DefaultDistributedActorSystem = EmbeddedFakeRoundtripActorSystem
 
 distributed actor Greeter {
   distributed func hello(name: String) -> String { "hi \(name)" }
@@ -91,7 +20,7 @@ distributed actor Greeter {
 
 @main struct Main {
   static func main() async {
-    let system = MySystem()
+    let system = EmbeddedFakeRoundtripActorSystem()
     let greeter = Greeter(actorSystem: system)
     _ = try? await greeter.hello(name: "World")
   }

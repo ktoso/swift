@@ -10,11 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The shared API contract, in its own module. `@Resolvable` generates the
-// `$Greeter` proxy actor here; both the server (which conforms `GreeterImpl` to
-// `Greeter`) and the client (which resolves and calls `$Greeter`) import this
-// module. Neither the protocol nor `$Greeter` names a concrete implementation.
-
 import Distributed
 import EmbeddedFakeActorSystem
 
@@ -57,7 +52,7 @@ public struct ComplexResponse: Sendable {
 // helper (`drain`). The length framing around each field is applied by the
 // encoder, not here.
 
-extension ComplexRequest: EmbeddedSerializationRequirement {
+extension ComplexRequest: EmbeddedFakeRoundtripActorSystem.SerializationRequirement {
   public var serializedByteCount: Int { asciiDigits(id).count }
   public func encode(into output: inout OutputSpan<UInt8>) {
     for byte in asciiDigits(id) { output.append(byte) }

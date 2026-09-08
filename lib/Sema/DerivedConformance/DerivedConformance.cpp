@@ -410,11 +410,7 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
     }
 
     // DistributedActor._executeDistributedTarget(target:invocationDecoder:resultHandler:)
-    // This requirement only exists in the Embedded protocol shape, so we only
-    // recognize it as derivable under Embedded Swift. Gating here (rather than
-    // asserting) is deliberate: `getDerivableRequirement` matches on the
-    // requirement's name alone, so a user-defined protocol with a method of
-    // this name in a non-embedded build would otherwise reach this arm
+    // This requirement only exists on 'DistributedActor' in Embedded builds.
     if (ctx.LangOpts.hasFeature(Feature::Embedded) &&
         name.isCompoundName() &&
         name.getBaseName() == ctx.Id_executeDistributedTarget) {

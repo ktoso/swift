@@ -36,22 +36,29 @@ public struct MyActorID: Sendable, Hashable {
 // non-embedded mode - under Embedded a distributed actor gets no `Codable`
 // conformance, so its `ID` needs none either. This is the same
 // mode-specific serialization layer that the encoder/decoder/handler live in
+// NOTE: this must be `#if !$Embedded`, not `@_unavailableInEmbedded` - marking a
+// Codable-conformance extension unavailable-in-embedded also defeats the Codable
+// synthesis in non-embedded mode (MyActorID, and the distributed actor whose id
+// it is, then fail to conform). The attribute works for plain decls, not for
+// synthesized-conformance extensions.
 #if !$Embedded
 extension MyActorID: Codable {}
-#else
-// Embedded has no `Codable`, so the system binds `SerializationRequirement` to
-// this plain marker protocol instead. Only the argument / return types the
-// distributed funcs actually move need to conform - the actor `ID` does not,
-// since actor references are not serialized here
+#endif
+
+// Embedded has no `Codable`, so under Embedded the system binds
+// `SerializationRequirement` to this plain marker protocol instead. It is
+// declared unconditionally (harmless and unused in non-embedded, where the
+// system binds `SerializationRequirement` to `Codable`) - no `#if` needed since
+// a marker protocol carries no mode-specific machinery.
 public protocol MySerializationRequirement {}
 extension String: MySerializationRequirement {}
-#endif
 
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = MyActorID
   public typealias InvocationEncoder = MyEncoder
   public typealias InvocationDecoder = MyDecoder
   public typealias ResultHandler = MyResultHandler
+
 #if $Embedded
   public typealias SerializationRequirement = MySerializationRequirement
 #else
@@ -135,8 +142,7 @@ distributed actor Greeter {
 public struct MyEncoder: DistributedTargetInvocationEncoder {
   public init() {}
   public mutating func doneRecording() throws {}
-  public mutating func recordArgument<Value: MySerializationRequirement>(
-      _ argument: RemoteCallArgument<Value>) throws {}
+  public mutating func recordArgument<Value: MySerializationRequirement>(_ argument: RemoteCallArgument<Value>) throws {}
 }
 
 public struct MyDecoder: DistributedTargetInvocationDecoder {

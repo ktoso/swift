@@ -1141,7 +1141,10 @@ namespace {
 /// Context attached to the body synthesizer, carrying the list of
 /// distributed funcs we need to dispatch to.
 struct EmbeddedDispatchContext {
-  llvm::SmallVector<AbstractFunctionDecl *, 4> distributedFuncs;
+  // Backed by the ASTContext bump allocator (see the allocation site), so this
+  // must stay trivially destructible: use an ArrayRef, not a SmallVector whose
+  // spilled heap buffer would never be freed.
+  ArrayRef<AbstractFunctionDecl *> distributedFuncs;
 };
 
 } // end anonymous namespace
@@ -1162,7 +1165,8 @@ struct EmbeddedDispatchContext {
 static IfStmt *buildEmbeddedDispatchBranch(
     ASTContext &C, AbstractFunctionDecl *thunk,
     VarDecl *targetVar, VarDecl *invocationDecoderVar,
-    VarDecl *resultHandlerVar, AbstractFunctionDecl *distFunc) {
+    VarDecl *resultHandlerVar, AbstractFunctionDecl *distFunc,
+    StringRef mangledThunkName) {
   const auto implicit = true;
   const SourceLoc sloc = SourceLoc();
   const DeclNameLoc dloc = DeclNameLoc();
@@ -1178,16 +1182,9 @@ static IfStmt *buildEmbeddedDispatchBranch(
   // full Unicode NFC normalization, which isn't available under the
   // embedded stdlib (the `__swift_stdlib_*` normalization helpers are
   // not linked in). A byte-equal compare is correct here because the
-  // mangled name is plain ASCII.
-  llvm::SmallString<128> targetNameBuf;
-  {
-    Mangle::ASTMangler mangler(C);
-    auto *funcDecl = cast<FuncDecl>(distFunc);
-    auto *thunkFunc = funcDecl->getDistributedThunk();
-    if (!thunkFunc)
-      return nullptr;
-    targetNameBuf = mangler.mangleDistributedThunk(thunkFunc);
-  }
+  // mangled name is plain ASCII. The mangled name is precomputed once by the
+  // caller (see `deriveBodyEmbeddedDistributedReceiveDispatch`) and passed in
+  // as `mangledThunkName`.
 
   // target.identifier
   Expr *targetIdentifier =
@@ -1202,7 +1199,7 @@ static IfStmt *buildEmbeddedDispatchBranch(
 
   // "<mangled>" string literal.
   Expr *mangledLiteral =
-      new (C) StringLiteralExpr(C.AllocateCopy(StringRef(targetNameBuf)),
+      new (C) StringLiteralExpr(C.AllocateCopy(mangledThunkName),
                                 SourceRange(), implicit);
 
   // "<mangled>".utf8
@@ -1451,16 +1448,26 @@ deriveBodyEmbeddedDistributedReceiveDispatch(AbstractFunctionDecl *thunk,
   // the identifier's length doesn't match any of the known methods,
   // and prunes most candidates in real codebases where method-name
   // lengths vary
-  llvm::MapVector<unsigned, SmallVector<AbstractFunctionDecl *, 4>> byLength;
+  // Mangle each distributed thunk's name exactly once (a single reused
+  // mangler), and group the funcs by that name's byte length. The dispatch
+  // switches over `target.identifier.utf8.count` first, then linearly scans
+  // the funcs in the matching length bucket. Carrying the mangled name in the
+  // bucket avoids re-mangling it when building each branch below.
+  struct DispatchTarget {
+    AbstractFunctionDecl *distFunc;
+    std::string mangledThunkName;
+  };
+  llvm::MapVector<unsigned, SmallVector<DispatchTarget, 4>> byLength;
   {
+    Mangle::ASTMangler mangler(C);
     for (auto *distFunc : ctx->distributedFuncs) {
       auto *funcDecl = cast<FuncDecl>(distFunc);
       auto *thunkFunc = funcDecl->getDistributedThunk();
       if (!thunkFunc)
         continue;
-      Mangle::ASTMangler mangler(C);
       auto mangled = mangler.mangleDistributedThunk(thunkFunc);
-      byLength[(unsigned)mangled.size()].push_back(distFunc);
+      unsigned length = (unsigned)mangled.size();
+      byLength[length].push_back({distFunc, std::move(mangled)});
     }
   }
 
@@ -1486,10 +1493,10 @@ deriveBodyEmbeddedDistributedReceiveDispatch(AbstractFunctionDecl *thunk,
     auto &funcs = kv.second;
 
     SmallVector<ASTNode, 4> caseStmts;
-    for (auto *distFunc : funcs) {
+    for (auto &target : funcs) {
       if (auto *ifStmt = buildEmbeddedDispatchBranch(
               C, thunk, targetParam, invocationDecoderParam,
-              resultHandlerParam, distFunc)) {
+              resultHandlerParam, target.distFunc, target.mangledThunkName)) {
         caseStmts.push_back(ifStmt);
       }
     }
@@ -1668,11 +1675,11 @@ FuncDecl *swift::createEmbeddedDistributedReceiveDispatch(ClassDecl *actor) {
   funcDecl->addAttribute(
       NonisolatedAttr::createImplicit(C, NonIsolatedModifier::NonSending));
 
-  // Body synthesizer: emit the if-chain over each distributed func.
+  // Body synthesizer: emit the if-chain over each distributed func. The func
+  // list is copied into the ASTContext bump allocator (stable for the life of
+  // the context, no destructor needed) and held as an ArrayRef.
   auto *bodyCtx = C.Allocate<EmbeddedDispatchContext>();
-  new (bodyCtx) EmbeddedDispatchContext{
-    llvm::SmallVector<AbstractFunctionDecl *, 4>(distributedFuncs.begin(),
-                                                 distributedFuncs.end())};
+  new (bodyCtx) EmbeddedDispatchContext{C.AllocateCopy(distributedFuncs)};
   funcDecl->setBodySynthesizer(
       deriveBodyEmbeddedDistributedReceiveDispatch, bodyCtx);
 

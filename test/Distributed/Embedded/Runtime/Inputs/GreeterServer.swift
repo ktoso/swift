@@ -10,13 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// SERVER side, in its own module: the only place that names the concrete
-// `GreeterImpl`. It conforms to the imported `@Resolvable` protocol `Greeter`,
-// so its compiler-synthesized `_executeDistributedTarget` - derived through the
-// normal `DistributedActor` conformance machinery, cross-module - recognizes the
-// `$Greeter.<method>` proxy target identifiers the client sends and dispatches
-// them to `self.<method>`.
-
 import Distributed
 import EmbeddedFakeActorSystem
 import GreeterAPI

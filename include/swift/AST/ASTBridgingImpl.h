@@ -301,9 +301,7 @@ bool BridgedDeclObj::AbstractFunction_isOverridden() const {
   return getAs<swift::AbstractFunctionDecl>()->isOverridden();
 }
 
-bool BridgedDeclObj::
-    AbstractFunction_isDistributedWitnessWithAdHocSerializationRequirement()
-        const {
+bool BridgedDeclObj::AbstractFunction_isDistributedWitnessWithAdHocSerializationRequirement() const {
   return getAs<swift::AbstractFunctionDecl>()
       ->isDistributedWitnessWithAdHocSerializationRequirement();
 }
