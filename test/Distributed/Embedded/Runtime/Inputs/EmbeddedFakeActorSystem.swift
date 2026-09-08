@@ -331,9 +331,12 @@ public final class EmbeddedFakeRoundtripActorSystem: DistributedActorSystem, @un
   // signature - naming the concrete type matches the substituted requirement
   public func actorReady<Act>(_ actor: Act)
       where Act: DistributedActor, Act.ActorSystem == EmbeddedFakeRoundtripActorSystem {
-    active[actor.id] = { target, decoder, handler in
-      try await actor._executeDistributedTarget(
-          target: target, invocationDecoder: &decoder, resultHandler: handler)
+    active[actor.id] = { [self] target, decoder, handler in
+      // Same entry point the non-embedded system uses; the `@_transparent`
+      // embedded forwarder is inlined into this generic closure and lowers to the
+      // actor's synthesized `_executeDistributedTarget` witness
+      try await self.executeDistributedTarget(
+          on: actor, target: target, invocationDecoder: &decoder, handler: handler)
     }
   }
   public func resignID(_ id: ActorID) {}

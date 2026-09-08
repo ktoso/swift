@@ -515,7 +515,6 @@ extension DistributedActorSystem {
 // ==== ----------------------------------------------------------------------------------------------------------------
 // MARK: Execute Distributed Methods
 
-#if !$Embedded
 @available(SwiftStdlib 5.7, *)
 extension DistributedActorSystem {
 
@@ -548,8 +547,29 @@ extension DistributedActorSystem {
   ///           Throws ``ExecuteDistributedTargetMissingAccessorError`` if the `target`
   ///           does not resolve to a valid distributed function accessor, i.e. the
   ///           call identifier is incorrect, corrupted, or simply not present in this process.
+#if $Embedded
+  // Embedded Swift: Since there are no accessible-function records emitted in embedded,
+  // we forward the call to the synthesized `_executeDistributedTarget` on the target actor.
+  // `@_transparent` so the trivial forward is mandatory-inlined into the caller: that lets
+  // this be called even from a still-generic context (e.g. a system's `actorReady<Act>`
+  // witness closure), where a non-inlined reference to this generic function would have no
+  // valid monomorphic Embedded signature.
+  @_transparent
+  @available(SwiftStdlib 6.5, *)
+  public func executeDistributedTarget<Act>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocationDecoder: inout InvocationDecoder,
+    handler: Self.ResultHandler
+  ) async throws where Act: DistributedActor,
+                       Act.ActorSystem == Self { // slightly stricter requirement in Embedded
+    try await actor._executeDistributedTarget(
+      target: target,
+      invocationDecoder: &invocationDecoder,
+      resultHandler: handler)
+  }
+#else
   @available(SwiftStdlib 5.7, *)
-  @_unavailableInEmbedded
   public func executeDistributedTarget<Act>(
     on actor: Act,
     target: RemoteCallTarget,
@@ -756,8 +776,8 @@ extension DistributedActorSystem {
       try await handler.onThrow(error: error)
     }
   }
+#endif // $Embedded
 }
-#endif // !$Embedded
 
 #if !$Embedded
 @export(implementation)

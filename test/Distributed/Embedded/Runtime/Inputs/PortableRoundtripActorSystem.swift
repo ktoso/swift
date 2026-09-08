@@ -23,7 +23,9 @@
 // the modes, and those live behind `#if $Embedded`:
 //
 //   - Embedded has no `Codable`, so `SerializationRequirement` binds to a tiny
-//     byte protocol whose conformers render to raw UTF-8 bytes, `remoteCall`
+//     byte protocol whose conformers render to bytes through a naive hand-rolled
+//     JSON writer (see `JSONWriter` / `JSONReader` below) that is byte-compatible
+//     with the Codable/JSON side, `remoteCall`
 //     drops the `<Err>` generic and the `throwing:`/`returning:` metatype
 //     parameters, and the receiver runs on the concrete local actor's
 //     monomorphized `_executeDistributedTarget` (kept as a per-id closure,
@@ -114,8 +116,8 @@ public struct PortableActorID: Sendable, Hashable {
 // MARK: Embedded per-value serialization
 
 // Embedded can't use `Codable`; the system binds `SerializationRequirement` to
-// this byte protocol and conforming types render straight to UTF-8 bytes. This
-// system only moves `String`, so that is all that conforms.
+// this byte protocol and conforming types render to bytes through the naive JSON
+// writer below. This system only moves `String`, so that is all that conforms.
 public protocol PortableSerializationRequirement {
   func toWireBytes() -> [UInt8]
   // Decode takes the actor system so that distributed-actor references can be
@@ -125,11 +127,132 @@ public protocol PortableSerializationRequirement {
   static func fromWireBytes(_ bytes: [UInt8],
                             system: PortableRoundtripActorSystem) throws -> Self
 }
+
+// ==== ----------------------------------------------------------------------
+// MARK: A naive JSON writer / reader
+//
+// The whole point of the embedded serialization layer is that it needs nothing
+// from Foundation: a few dozen lines of `[UInt8]` appends produce JSON that is
+// byte-for-byte what `JSONEncoder` emits for the shapes we use. A future
+// macro-based "Codable v2" would slot in right here. Everything stays raw
+// `[UInt8]` (no `String` grapheme / normalization work) so the embedded link
+// does not pull in the Unicode data tables.
+
+// Build a flat JSON object one field at a time: `appendField("value", string: x)`
+// emits `"value":"x"` (quoted, minimally escaped); `appendField("n", number: 7)`
+// emits `"n":7`. No space after the colon and keys in insertion order - exactly
+// how `JSONEncoder` renders, so the bytes are interchangeable with the Codable
+// side.
+struct JSONWriter {
+  private var bytes: [UInt8] = [UInt8(ascii: "{")]
+  private var first = true
+
+  private mutating func writeKey(_ key: StaticString) {
+    if !first { bytes.append(UInt8(ascii: ",")) }
+    first = false
+    bytes.append(UInt8(ascii: "\""))
+    var p = key.utf8Start
+    let end = p + key.utf8CodeUnitCount
+    while p < end { bytes.append(p.pointee); p += 1 }
+    bytes.append(UInt8(ascii: "\""))
+    bytes.append(UInt8(ascii: ":"))
+  }
+
+  mutating func appendField(_ key: StaticString, string value: String) {
+    writeKey(key)
+    bytes.append(UInt8(ascii: "\""))
+    for b in value.utf8 {
+      // Minimal JSON string escaping: backslash and double-quote
+      if b == UInt8(ascii: "\"") || b == UInt8(ascii: "\\") {
+        bytes.append(UInt8(ascii: "\\"))
+      }
+      bytes.append(b)
+    }
+    bytes.append(UInt8(ascii: "\""))
+  }
+
+  mutating func appendField(_ key: StaticString, number value: Int) {
+    writeKey(key)
+    bytes.append(contentsOf: asciiDigits(value))
+  }
+
+  mutating func finish() -> [UInt8] {
+    bytes.append(UInt8(ascii: "}"))
+    return bytes
+  }
+}
+
+// Read a single field back out of a flat JSON object. Just enough to undo what
+// `JSONWriter` wrote - a naive `"<key>":` scan followed by a quoted-string or
+// decimal-number read. Not a general JSON parser
+struct JSONReader {
+  let bytes: [UInt8]
+  init(_ bytes: [UInt8]) { self.bytes = bytes }
+
+  // Byte offset just past `"<key>":`, or nil if the key is absent
+  private func valueStart(after key: StaticString) -> Int? {
+    var needle: [UInt8] = [UInt8(ascii: "\"")]
+    var p = key.utf8Start
+    let end = p + key.utf8CodeUnitCount
+    while p < end { needle.append(p.pointee); p += 1 }
+    needle.append(UInt8(ascii: "\""))
+    needle.append(UInt8(ascii: ":"))
+    if bytes.count < needle.count { return nil }
+    var i = 0
+    while i <= bytes.count - needle.count {
+      var j = 0
+      while j < needle.count, bytes[i + j] == needle[j] { j += 1 }
+      if j == needle.count { return i + needle.count }
+      i += 1
+    }
+    return nil
+  }
+
+  func string(field key: StaticString) -> String? {
+    guard var i = valueStart(after: key), i < bytes.count,
+          bytes[i] == UInt8(ascii: "\"") else { return nil }
+    i += 1
+    var out: [UInt8] = []
+    while i < bytes.count {
+      let b = bytes[i]
+      if b == UInt8(ascii: "\\") {
+        i += 1
+        if i < bytes.count { out.append(bytes[i]) } // unescape: take next byte literally
+      } else if b == UInt8(ascii: "\"") {
+        return String(decoding: out, as: UTF8.self)
+      } else {
+        out.append(b)
+      }
+      i += 1
+    }
+    return nil
+  }
+
+  func number(field key: StaticString) -> Int? {
+    guard let i = valueStart(after: key) else { return nil }
+    var j = i
+    while j < bytes.count {
+      let b = bytes[j]
+      if (b >= UInt8(ascii: "0") && b <= UInt8(ascii: "9")) || b == UInt8(ascii: "-") {
+        j += 1
+      } else {
+        break
+      }
+    }
+    return parseInt(bytes[i..<j])
+  }
+}
+
 extension String: PortableSerializationRequirement {
-  public func toWireBytes() -> [UInt8] { Array(utf8) }
+  public func toWireBytes() -> [UInt8] {
+    var w = JSONWriter()
+    w.appendField("value", string: self)
+    return w.finish() // {"value":"..."} - identical to the Codable Box<String> JSON
+  }
   public static func fromWireBytes(_ bytes: [UInt8],
                                    system: PortableRoundtripActorSystem) -> String {
-    String(decoding: bytes, as: UTF8.self)
+    let r = JSONReader(bytes)
+    return r.string(field: "value") ?? ""
   }
 }
 
@@ -177,7 +300,11 @@ extension PortableResultHandler {
 
 public final class PortableRoundtripActorSystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = PortableActorID
+  #if $Embedded
   public typealias SerializationRequirement = PortableSerializationRequirement
+  #else
+  public typealias SerializationRequirement = Codable
+  #endif
   public typealias InvocationEncoder = PortableEncoder
   public typealias InvocationDecoder = PortableDecoder
   public typealias ResultHandler = PortableResultHandler
@@ -203,9 +330,12 @@ public final class PortableRoundtripActorSystem: DistributedActorSystem, @unchec
   }
   public func actorReady<Act>(_ actor: Act)
       where Act: DistributedActor, Act.ActorSystem == PortableRoundtripActorSystem {
-    active[actor.id] = { target, decoder, handler in
-      try await actor._executeDistributedTarget(
-          target: target, invocationDecoder: &decoder, resultHandler: handler)
+    active[actor.id] = { [self] target, decoder, handler in
+      // Same entry point the non-embedded system uses; under Embedded the
+      // `@_transparent` forwarder is inlined into this generic closure, so it
+      // lowers to the actor's `_executeDistributedTarget` witness call
+      try await self.executeDistributedTarget(
+          on: actor, target: target, invocationDecoder: &decoder, handler: handler)
     }
   }
   public func resignID(_ id: ActorID) {}
@@ -304,6 +434,20 @@ public final class PortableRoundtripActorSystem: DistributedActorSystem, @unchec
   var activeActors: [ActorID: any DistributedActor] = [:]
   var nextID: UInt64 = 1
 
+  // How this system behaves when a call is made on a remote reference. Cross-
+  // process tests need one side to serialize a request and stop, so a separately
+  // built receiver - e.g. an Embedded server - can pick it up. `.inProcess` (the
+  // default) keeps the ordinary in-process loopback used by the roundtrip tests
+  public enum CrossProcessSimulatedMode {
+    // Dispatch the call locally, in-process (default)
+    case inProcess
+    // Sender: write the outgoing request wire (target identifier + serialized
+    // arguments) to `messageWritePath` and `exit(0)` - the response is produced
+    // later by a separately built receiver reading that file
+    case writeAndExit(messageWritePath: String)
+  }
+  public var crossProcessSimulatedMode: CrossProcessSimulatedMode = .inProcess
+
   public init() {}
 
   public func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act?
@@ -327,6 +471,19 @@ public final class PortableRoundtripActorSystem: DistributedActorSystem, @unchec
     throwing errorType: Err.Type, returning returnType: Res.Type
   ) async throws -> Res
       where Act: DistributedActor, Act.ID == ActorID, Err: Error, Res: SerializationRequirement {
+    // Sender mode: serialize the request out to a file and stop. The response
+    // will be produced by a separately built receiver in a later step, so this
+    // one-shot send never returns a `Res`
+    if case .writeAndExit(let path) = crossProcessSimulatedMode {
+      var wire: [UInt8] = []
+      appendField(Array(target.identifier.utf8), to: &wire)  // field 0: mangled target id
+      wire.append(contentsOf: invocation.buffer.argBytes)    // fields 1...n: the arguments
+      // Write atomically so a reader in the next step never sees a partial file
+      try Data(wire).write(to: URL(fileURLWithPath: path), options: .atomic)
+      print("[swift] client sent request: " +
+            String(decoding: invocation.buffer.argBytes, as: UTF8.self))
+      exit(0)
+    }
     print("[swift] remoteCall reached")
     guard let anyActor = activeActors[actor.id] else { fatalError("no local actor hosted") }
     // ==================== NETWORK: request bytes -> callee ====================
