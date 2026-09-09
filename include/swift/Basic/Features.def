@@ -682,9 +682,7 @@ EXPERIMENTAL_FEATURE(DistributedActorResignRemoteID, false)
 /// Enable @_target, a per-function target-features/CPU override.
 EXPERIMENTAL_FEATURE(TargetAttribute, true)
 
-/// Enable distributed actors in Embedded Swift (work in progress). Gates the
-/// monomorphized embedded shape of `DistributedActorSystem` and the receiver
-/// side dispatch synthesis; not available in production compilers.
+/// Enable distributed actors in Embedded Swift.
 EXPERIMENTAL_FEATURE(EmbeddedDistributed, false)
 
 #undef EXPERIMENTAL_FEATURE_EXCLUDED_FROM_MODULE_INTERFACE

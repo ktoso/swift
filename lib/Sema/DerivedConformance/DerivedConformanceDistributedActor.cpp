@@ -290,17 +290,9 @@ deriveBodyDistributed_invokeHandlerOnReturn(AbstractFunctionDecl *afd,
   const SourceLoc sloc = SourceLoc();
   const DeclNameLoc dloc = DeclNameLoc();
 
-  // `invokeHandlerOnReturn` is a `#if !$Embedded` requirement (see
-  // `DistributedActorSystem.swift`); its only caller, `executeDistributedTarget`,
-  // is likewise `#if !$Embedded`. Under Embedded the requirement does not exist,
-  // so derivation is never requested for it and this synthesizer never runs.
-  // Assert that invariant rather than synthesizing a silently-empty witness: if
-  // the stdlib gate ever drifts from this synthesis, fail loudly here instead of
-  // emitting a do-nothing function (its body would need a nested generic helper
-  // and an `_openExistential`, neither of which Embedded IRGen can lower).
+  // `invokeHandlerOnReturn` requirement is not present in Embedded Swift.
   ASSERT(!C.LangOpts.hasFeature(Feature::Embedded) &&
-         "invokeHandlerOnReturn is unavailable in Embedded Swift; "
-         "its derivation must never run");
+         "invokeHandlerOnReturn is unavailable in Embedded Swift; ");
 
   NominalTypeDecl *nominal = dyn_cast<NominalTypeDecl>(DC);
   assert(nominal);
@@ -762,13 +754,7 @@ static ValueDecl *deriveDistributedActor_unownedExecutor(DerivedConformance &der
 
 /// Derive the witness for the Embedded-only
 /// `_executeDistributedTarget(target:invocationDecoder:resultHandler:)`
-/// requirement. Builds the body via the shared helper in
-/// `CodeSynthesisDistributedActor.cpp` and adds it to the conformance context,
-/// exactly like every other derived witness (`resolve`, `unownedExecutor`).
-///
-/// Deriving it as a real protocol witness (rather than the old hand-synthesized
-/// member) is what makes it visible cross-file: the actor system's `remoteCall`
-/// can be in a different file and still resolve the call through the conformance.
+/// requirement.
 static FuncDecl *
 deriveDistributedActor_executeDistributedTarget(DerivedConformance &derived) {
   auto *classDecl = dyn_cast<ClassDecl>(derived.Nominal);
@@ -800,15 +786,10 @@ ValueDecl *DerivedConformance::deriveDistributedActor(ValueDecl *requirement) {
   }
 
   if (auto func = dyn_cast<FuncDecl>(requirement)) {
-    // just a simple name check is enough here,
-    // if we are invoked here we know for sure it is for the "right" function
     if (func->getName().getBaseName() == Context.Id_resolve) {
       return deriveDistributedActor_resolve(*this);
     }
 
-    // `_executeDistributedTarget` is an Embedded-only requirement; the
-    // derivable check in `getDerivableRequirement` already gated on the
-    // Embedded feature before we get here
     if (func->getName().getBaseName() == Context.Id_executeDistributedTarget) {
       return deriveDistributedActor_executeDistributedTarget(*this);
     }

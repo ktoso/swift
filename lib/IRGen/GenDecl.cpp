@@ -4893,10 +4893,8 @@ void IRGenModule::emitAccessibleFunctions() {
   if (AccessibleFunctions.empty())
     return;
 
-  // Under Embedded Swift, the runtime has no
-  // `swift_findAccessibleFunction` and no demangler to query this
-  // section. Skip emission entirely - distributed dispatch will go
-  // through a per-actor accessor table emitted separately.
+  // Currently not emitting AccessibleFunctions in Embedded Swift.
+  // Distributed uses a synthesized per actor "execute" function instead.
   if (Context.LangOpts.hasFeature(Feature::Embedded))
     return;
 

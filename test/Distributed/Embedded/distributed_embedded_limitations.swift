@@ -45,7 +45,7 @@ distributed actor GenericGreeter<ActorSystem> where ActorSystem: DistributedActo
 distributed actor DistributedVarActor {
   typealias ActorSystem = EmbeddedFakeRoundtripActorSystem
 
-  // expected-error@+1{{'distributed' computed property 'name' is not supported in Embedded Swift; use a 'distributed func' instead}}
+  // expected-error@+1{{'distributed' computed properties are not supported in Embedded Swift; use a 'distributed func' instead}}
   distributed var name: String {
     "Kappa"
   }

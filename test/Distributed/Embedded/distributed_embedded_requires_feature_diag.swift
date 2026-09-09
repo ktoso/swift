@@ -46,7 +46,7 @@ extension MyResultHandler {
   public func onReturn<Success: MySerializationRequirement>(_ value: Success) async throws {}
 }
 
-// expected-error@+1{{distributed actors in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'}}
+// expected-error@+1{{'distributed actor' in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'}}
 public final class MySystem: DistributedActorSystem, @unchecked Sendable {
   public typealias ActorID = EmbeddedActorID
   public typealias SerializationRequirement = MySerializationRequirement
@@ -83,7 +83,7 @@ public final class MySystem: DistributedActorSystem, @unchecked Sendable {
 
 typealias DefaultDistributedActorSystem = MySystem
 
-// expected-error@+1{{distributed actors in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'}}
+// expected-error@+1{{'distributed actor' in Embedded Swift require '-enable-experimental-feature EmbeddedDistributed'}}
 distributed actor Greeter {
   distributed func hello() {}
 }

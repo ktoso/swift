@@ -103,7 +103,7 @@ extension $RWorker: MySerializationRequirement {}
 
 distributed actor Hub {
   // `any P` where P is not `@Resolvable`: rejected, no `$P` stub exists
-  // expected-error@+1{{parameter 'to' of type 'any Worker' in distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' of an '@Resolvable' protocol, may appear in 'distributed func' signatures}}
+  // expected-error@+1{{parameter 'to' of type 'any Worker' in distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' types of an '@Resolvable protocol' may appear in 'distributed func' signatures}}
   distributed func sendAny(to worker: any Worker) -> String {
     return "sent"
   }
@@ -115,7 +115,7 @@ distributed actor Hub {
   }
 
   // `some P` parameter where P is NOT `@Resolvable`: rejected, no `$P` stub
-  // expected-error@+1{{parameter 'to' of type 'some Worker' in distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' of an '@Resolvable' protocol, may appear in 'distributed func' signatures}}
+  // expected-error@+1{{parameter 'to' of type 'some Worker' in distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' types of an '@Resolvable protocol' may appear in 'distributed func' signatures}}
   distributed func sendSomeNonResolvable(to worker: some Worker) -> String {
     return "sent"
   }
@@ -130,7 +130,7 @@ distributed actor Hub {
   }
 
   // `any P` result type without `@Resolvable`: rejected
-  // expected-error@+1{{return type 'any Worker' of distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' of an '@Resolvable' protocol, may appear in 'distributed func' signatures}}
+  // expected-error@+1{{return type 'any Worker' of distributed instance method is not supported in Embedded Swift; only concrete types, or 'any'/'some' types of an '@Resolvable' protocol may appear in 'distributed func' signatures}}
   distributed func pickWorker() -> any Worker {
     fatalError()
   }

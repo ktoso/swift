@@ -577,39 +577,35 @@ bool AbstractFunctionDecl::isDistributedActorSystemRemoteCall(bool isVoidReturn)
   if (!DC->isTypeContext() || !hasGenericParamList())
     return false;
 
-  // Under Embedded Swift `remoteCall` is reshaped: it drops the `<Err>` generic
-  // parameter and the `throwing:` / `returning:` metatype parameters (errors
-  // travel as `any Error`, and the result `Res` is inferred from the call
-  // context and decoded inside the concrete `remoteCall` body). The result is
-  // still constrained to the system's `SerializationRequirement`, but that
-  // constraint is carried by the witness rather than the protocol requirement.
-  // The rest of the shape is identical across both modes, so the only Embedded
-  // carve-outs below are the `Err`-related pieces. Recognizing the shape lets
-  // the constraint solver synthesize the ad-hoc conformance (see CSSimplify)
-  // and lets IRGen null the witness slot.
+  // In Embedded Swift `remoteCall` has a slightly different shape.
   const bool isEmbedded = C.LangOpts.hasFeature(Feature::Embedded);
 
   // === Check the name
   auto callId = isVoidReturn ? C.Id_remoteCallVoid : C.Id_remoteCall;
-  if (getBaseName() != callId)
+  if (getBaseName() != callId) {
     return false;
+  }
 
   // === Must be declared in a 'DistributedActorSystem' conforming type
   ProtocolDecl *systemProto = C.getDistributedActorSystemDecl();
-  if (!systemProto)
+  if (!systemProto) {
     return false;
+  }
 
   auto systemNominal = DC->getSelfNominalTypeDecl();
   if (!systemNominal)
     return false;
   auto distSystemConformance = lookupConformance(
       systemNominal->getDeclaredInterfaceType(), systemProto);
-  if (distSystemConformance.isInvalid())
+
+  if (distSystemConformance.isInvalid()) {
     return false;
+  }
 
   auto *func = dyn_cast<FuncDecl>(this);
-  if (!func)
+  if (!func) {
     return false;
+  }
 
   // === Structural checks: must be throwing, async, and non-mutating
   //     (use a class to implement a system instead of a mutating struct)
@@ -687,7 +683,7 @@ bool AbstractFunctionDecl::isDistributedActorSystemRemoteCall(bool isVoidReturn)
   // === Check the generic requirements, in order:
   //       conforms_to: Act DistributedActor
   //     [ conforms_to: Err Error ]                             (non-embedded)
-  //       conforms_to: Res <each SerializationRequirement>     (non-void)
+  //     [ conforms_to: Res <each SerializationRequirement> ]   (non-void)
   //       same_type:   Act.ID Self.ActorID                     (LAST)
   auto sig = getGenericSignature();
   SmallVector<Requirement, 2> reqs;
@@ -695,7 +691,8 @@ bool AbstractFunctionDecl::isDistributedActorSystemRemoteCall(bool isVoidReturn)
   sig->getRequirementsWithInverses(reqs, inverseReqs);
   assert(inverseReqs.empty() && "Non-copyable generics not supported here!");
 
-  size_t expectedRequirementsNum = 1 /*Act*/ + (isEmbedded ? 0 : 1 /*Err*/) +
+  size_t expectedRequirementsNum = 1 /*Act*/ +
+                                   (isEmbedded ? 0 : 1 /*Err*/) +
                                    serializationRequirementsNum +
                                    1 /*Act.ID == Self.ActorID*/;
   if (reqs.size() != expectedRequirementsNum)

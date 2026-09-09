@@ -409,8 +409,8 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
       }
     }
 
+    // Embedded Swift only:
     // DistributedActor._executeDistributedTarget(target:invocationDecoder:resultHandler:)
-    // This requirement only exists on 'DistributedActor' in Embedded builds.
     if (ctx.LangOpts.hasFeature(Feature::Embedded) &&
         name.isCompoundName() &&
         name.getBaseName() == ctx.Id_executeDistributedTarget) {
