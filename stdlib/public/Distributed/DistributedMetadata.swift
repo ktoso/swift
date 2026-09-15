@@ -119,8 +119,7 @@ func _getGenericEnvironmentKeyArgumentCount(
   _ environment: UnsafeRawPointer? // GenericEnvironmentDescriptor *
 ) -> Int
 
-@available(SwiftStdlib 6.4, *) // 6.4.2
-@usableFromInline
+@available(StdlibDeploymentTarget 6.4, *)
 @_silgen_name("swift_distributed_getAccessibleRecord")
 internal func _getDistributedAccessibleRecord(
   _ targetNameStart: UnsafePointer<UInt8>,
