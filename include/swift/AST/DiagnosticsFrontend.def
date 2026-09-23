@@ -628,6 +628,11 @@ ERROR(invalid_code_generation_model,none,
       "expected 'interface', 'implementation', or 'inlinable'",
       (StringRef))
 
+ERROR(distributed_id_gen_requires_embedded,none,
+      "distributed actor ID generation strategy '%0' is only supported in "
+      "Embedded Swift",
+      (StringRef))
+
 GROUPED_WARNING(command_line_conflicts_with_strict_safety,StrictMemorySafety,none,
       "'%0' is not memory-safe and should not be combined with "
       "strict memory safety checking", (StringRef))

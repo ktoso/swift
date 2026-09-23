@@ -914,6 +914,15 @@ private let _immortalStaticStorage: Int = 0
 public struct RemoteCallTarget: ~Escapable {
   @usableFromInline internal let _identifier: RawSpan
 
+  /// The numeric target identifier, set only when the actor was built with
+  /// numeric target identifiers enabled (see '-distributed-id-gen'); `nil` in
+  /// the default name-based mode.
+  ///
+  /// One standard library serves both identifier modes, so the type cannot
+  /// statically know which one produced a given target. A `nil` here means the
+  /// target carries a name identifier (`_identifier`) rather than a numeric one.
+  @usableFromInline internal let _numeric: UInt64?
+
   /// Create a target from a compile-time constant mangled name.
   ///
   /// This is the initializer the compiler-synthesized distributed thunk calls;
@@ -926,6 +935,7 @@ public struct RemoteCallTarget: ~Escapable {
       byteCount: identifier.utf8CodeUnitCount)
     self._identifier =
       unsafe _overrideLifetime(span, borrowing: _immortalStaticStorage)
+    self._numeric = nil
   }
 
   /// Create a target from bytes received off the wire.
@@ -935,12 +945,31 @@ public struct RemoteCallTarget: ~Escapable {
   @_lifetime(copy identifier)
   public init(_ identifier: RawSpan) {
     self._identifier = identifier
+    self._numeric = nil
+  }
+
+  /// Create a target from a compile-time numeric identifier.
+  ///
+  /// This is the initializer the compiler-synthesized distributed thunk calls
+  /// when numeric target identifiers are enabled (see '-distributed-id-gen').
+  /// The identifier is derived from the mangled thunk name so that peers agree
+  /// on it regardless of mangling flavor.
+  @_lifetime(immortal)
+  public init(_ numericIdentifier: UInt64) {
+    self._identifier = RawSpan()
+    self._numeric = numericIdentifier
   }
 
   /// The underlying identifier of the target, returned as-is.
   public var identifier: RawSpan {
     @_lifetime(copy self)
     get { _identifier }
+  }
+
+  /// The numeric target identifier, or `nil` when the target carries a name
+  /// identifier (the default '-distributed-id-gen' mode).
+  public var numericIdentifier: UInt64? {
+    return _numeric
   }
 
   /// The length in bytes of the target identifier.
@@ -1345,8 +1374,20 @@ public protocol DistributedTargetInvocationResultHandler<SerializationRequiremen
 @available(SwiftStdlib 6.5, *)
 public struct EmbeddedDistributedTargetNotFound: Error, Sendable {
   public let targetByteCount: Int
+
+  /// The numeric identifier of the unmatched target, set only when numeric
+  /// target identifiers are enabled (see '-distributed-id-gen'); `nil` in the
+  /// default name-based mode.
+  public let numericTarget: UInt64?
+
   public init(targetByteCount: Int) {
     self.targetByteCount = targetByteCount
+    self.numericTarget = nil
+  }
+
+  public init(numericTarget: UInt64?) {
+    self.targetByteCount = 0
+    self.numericTarget = numericTarget
   }
 }
 #endif // $Embedded

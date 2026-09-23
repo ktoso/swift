@@ -29,6 +29,7 @@
 #include "swift/AST/TypeCheckRequests.h"
 #include "swift/ClangImporter/ClangModule.h"
 #include "swift/Sema/ConstraintSystem.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
@@ -93,6 +94,36 @@ mangleDistributedThunkForAccessorRecordName(
   auto mangled =
       C.AllocateCopy(mangler.mangleDistributedThunkRef(cast<FuncDecl>(thunk)));
   return mangled;
+}
+
+/// Derive the numeric wire identifier for a distributed target from its mangled
+/// thunk name, used by '-distributed-id-gen=fnv1a-64' in Embedded Swift.
+///
+/// The leading two-byte mangling-flavour prefix ('$s' or '$e') is stripped so
+/// that the same declaration hashes identically whether it was mangled in
+/// standard Swift ('$s') or Embedded Swift ('$e'). This is a wire contract: both
+/// peers must derive the same number from the same target.
+static uint64_t distributedTargetNumericIdentifier(StringRef mangledName) {
+  StringRef name = mangledName;
+  if (name.size() >= 2 && name[0] == '$' && (name[1] == 's' || name[1] == 'e'))
+    name = name.drop_front(2);
+
+  uint64_t hash = 0xcbf29ce484222325ull; // FNV-1a 64 offset basis
+  for (unsigned char c : name) {
+    hash ^= static_cast<uint64_t>(c);
+    hash *= 0x100000001b3ull; // FNV-1a 64 prime (wrapping)
+  }
+  return hash;
+}
+
+/// Build an integer literal for a 64-bit distributed target identifier.
+///
+/// 'IntegerLiteralExpr::createFromUnsigned' only accepts 'unsigned', so the
+/// full 64-bit value is spelled out as a decimal string to avoid truncation.
+static IntegerLiteralExpr *
+makeDistributedTargetIdentifierLiteral(ASTContext &C, uint64_t identifier) {
+  return new (C) IntegerLiteralExpr(C.AllocateCopy(llvm::utostr(identifier)),
+                                    SourceLoc(), /*implicit=*/true);
 }
 
 static std::pair<BraceStmt *, bool>
@@ -477,15 +508,35 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
     auto mangledAccessorRecordName =
         mangleDistributedThunkForAccessorRecordName(C, thunk);
 
-    StringLiteralExpr *mangledTargetStringLiteral =
-        new (C) StringLiteralExpr(mangledAccessorRecordName,
-                                  SourceRange(), implicit);
+    // --- The target identifier expression: either the mangled name string, or
+    // its FNV-1a 64 numeric identifier under '-distributed-id-gen=fnv1a-64'.
+    Expr *targetIdentifierExpr;
+    if (C.LangOpts.DistributedTargetIdentifiers ==
+        DistributedTargetIdentifierMode::FNV1a64) {
+      auto numericIdentifier =
+          distributedTargetNumericIdentifier(mangledAccessorRecordName);
+      targetIdentifierExpr =
+          makeDistributedTargetIdentifierLiteral(C, numericIdentifier);
+    } else {
+      targetIdentifierExpr = new (C) StringLiteralExpr(
+          mangledAccessorRecordName, SourceRange(), implicit);
+    }
 
-    // --- let target = RemoteCallTarget(<mangled name>)
+    // --- let target = RemoteCallTarget(<identifier>)
     Pattern *targetPattern = NamedPattern::createImplicit(C, targetVar);
 
     auto remoteCallTargetInitDecl =
         RCT->getDistributedRemoteCallTargetInitFunction();
+    if (!remoteCallTargetInitDecl) {
+      // No initializer of 'RemoteCallTarget' matches the parameter type expected
+      // for the selected '-distributed-id-gen' mode. Diagnose rather than
+      // dereferencing null below, and synthesize an empty body so later passes
+      // do not see a null statement after the error.
+      C.Diags.diagnose(thunk->getLoc(),
+                       diag::distributed_remote_call_target_no_init);
+      return {BraceStmt::create(C, SourceLoc(), {}, SourceLoc(), implicit),
+              /*isTypeChecked=*/true};
+    }
     auto remoteCallTargetInitDeclRef = UnresolvedDeclRefExpr::createImplicit(
         C, remoteCallTargetInitDecl->getEffectiveFullName());
 
@@ -493,7 +544,7 @@ deriveBodyDistributed_thunk(AbstractFunctionDecl *thunk, void *context) {
         C, RCT->getName());
     auto initTargetArgs = ArgumentList::forImplicitCallTo(
         remoteCallTargetInitDeclRef->getName(),
-        {mangledTargetStringLiteral}, C);
+        {targetIdentifierExpr}, C);
 
     auto initTargetCallExpr =
         CallExpr::createImplicit(C, initTargetExpr, initTargetArgs);
@@ -1071,25 +1122,19 @@ static IfStmt *buildEmbeddedDispatchBranch(
     ASTContext &C, AbstractFunctionDecl *thunk,
     VarDecl *targetVar, VarDecl *invocationDecoderVar,
     VarDecl *resultHandlerVar, AbstractFunctionDecl *distFunc,
-    StringRef mangledThunkName) {
+    StringRef mangledThunkName);
+
+/// Build the body that decodes the arguments, invokes the distributed target,
+/// and delivers the result, ending in `return`. This is shared verbatim by both
+/// the default name-based if-chain dispatcher and the numeric-switch
+/// dispatcher; only the way a target is *matched* differs between the two.
+static BraceStmt *buildEmbeddedDispatchBody(
+    ASTContext &C, AbstractFunctionDecl *thunk,
+    VarDecl *invocationDecoderVar,
+    VarDecl *resultHandlerVar, AbstractFunctionDecl *distFunc) {
   const auto implicit = true;
   const SourceLoc sloc = SourceLoc();
   const DeclNameLoc dloc = DeclNameLoc();
-
-  // === Build the target condition
-  //
-  // target.identifierEquals("<mangled>")
-  Expr *mangledLiteral =
-      new (C) StringLiteralExpr(C.AllocateCopy(mangledThunkName),
-                                SourceRange(), implicit);
-
-  Expr *eqCheck = CallExpr::createImplicit(
-      C,
-      UnresolvedDotExpr::createImplicit(
-          C, new (C) DeclRefExpr(ConcreteDeclRef(targetVar), dloc, implicit),
-          C.getIdentifier("identifierEquals")),
-      ArgumentList::createImplicit(
-          C, { Argument(sloc, Identifier(), mangledLiteral) }));
 
   // === Build the decode args, then invoke the target statements
   SmallVector<ASTNode, 8> thenStmts;
@@ -1274,7 +1319,37 @@ static IfStmt *buildEmbeddedDispatchBranch(
   // return
   thenStmts.push_back(ReturnStmt::createImplicit(C, sloc, /*Result=*/nullptr));
 
-  auto *thenBody = BraceStmt::create(C, sloc, thenStmts, sloc, implicit);
+  return BraceStmt::create(C, sloc, thenStmts, sloc, implicit);
+}
+
+/// Build one `if target.identifierEquals("<mangled>") { <body> }` arm for the
+/// default (name-based) Embedded dispatcher.
+static IfStmt *buildEmbeddedDispatchBranch(
+    ASTContext &C, AbstractFunctionDecl *thunk,
+    VarDecl *targetVar, VarDecl *invocationDecoderVar,
+    VarDecl *resultHandlerVar, AbstractFunctionDecl *distFunc,
+    StringRef mangledThunkName) {
+  const auto implicit = true;
+  const SourceLoc sloc = SourceLoc();
+  const DeclNameLoc dloc = DeclNameLoc();
+
+  // === Build the target condition
+  //
+  // target.identifierEquals("<mangled>")
+  Expr *mangledLiteral =
+      new (C) StringLiteralExpr(C.AllocateCopy(mangledThunkName),
+                                SourceRange(), implicit);
+
+  Expr *eqCheck = CallExpr::createImplicit(
+      C,
+      UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(targetVar), dloc, implicit),
+          C.getIdentifier("identifierEquals")),
+      ArgumentList::createImplicit(
+          C, { Argument(sloc, Identifier(), mangledLiteral) }));
+
+  auto *thenBody = buildEmbeddedDispatchBody(
+      C, thunk, invocationDecoderVar, resultHandlerVar, distFunc);
 
   return new (C) IfStmt(sloc, /*Cond=*/eqCheck, /*Then=*/thenBody,
                         /*ElseLoc=*/SourceLoc(), /*Else=*/nullptr,
@@ -1295,6 +1370,98 @@ deriveBodyEmbeddedDistributedReceiveDispatch(AbstractFunctionDecl *thunk,
   auto *targetParam = params->get(0);
   auto *invocationDecoderParam = params->get(1);
   auto *resultHandlerParam = params->get(2);
+
+  // Under '-distributed-id-gen=fnv1a-64' the dispatcher matches on a numeric
+  // identifier via a flat switch, instead of bucketing by mangled-name length
+  // and byte-comparing each candidate. The per-target bodies (decode / call /
+  // deliver) are identical to the default path; only the matching differs.
+  if (C.LangOpts.DistributedTargetIdentifiers ==
+      DistributedTargetIdentifierMode::FNV1a64) {
+    // Compute each target's numeric identifier once, detecting collisions.
+    struct NumericTarget {
+      AbstractFunctionDecl *distFunc;
+      uint64_t identifier;
+    };
+    SmallVector<NumericTarget, 8> targets;
+    llvm::DenseMap<uint64_t, AbstractFunctionDecl *> seen;
+    {
+      Mangle::ASTMangler mangler(C);
+      for (auto *distFunc : ctx->distributedFuncs) {
+        auto *funcDecl = cast<FuncDecl>(distFunc);
+        auto *thunkFunc = funcDecl->getDistributedThunk();
+        if (!thunkFunc)
+          continue;
+        auto mangled = mangler.mangleDistributedThunk(thunkFunc);
+        uint64_t identifier = distributedTargetNumericIdentifier(mangled);
+
+        auto inserted = seen.try_emplace(identifier, distFunc);
+        if (!inserted.second) {
+          // Two distributed targets on this actor hash to the same numeric
+          // identifier: a hard error, since dispatch could not tell them apart.
+          C.Diags.diagnose(distFunc->getLoc(),
+                           diag::distributed_target_identifier_collision,
+                           distFunc, inserted.first->second);
+          C.Diags.diagnose(inserted.first->second->getLoc(),
+                           diag::distributed_target_identifier_collision_here,
+                           inserted.first->second);
+          continue;
+        }
+
+        targets.push_back({distFunc, identifier});
+      }
+    }
+
+    SmallVector<ASTNode, 4> numericBodyStmts;
+
+    // switch target.numericIdentifier { ... }
+    auto makeNumericIdentifierExpr = [&]() -> Expr * {
+      return UnresolvedDotExpr::createImplicit(
+          C, new (C) DeclRefExpr(ConcreteDeclRef(targetParam), dloc, implicit),
+          C.getIdentifier("numericIdentifier"));
+    };
+
+    SmallVector<CaseStmt *, 8> numericCases;
+    for (auto &target : targets) {
+      auto *caseBody = buildEmbeddedDispatchBody(
+          C, thunk, invocationDecoderParam, resultHandlerParam,
+          target.distFunc);
+
+      // case .some(<hash>):
+      auto *hashLit =
+          makeDistributedTargetIdentifierLiteral(C, target.identifier);
+      auto *hashPat = ExprPattern::createImplicit(C, hashLit, thunk);
+      auto *somePat = OptionalSomePattern::createImplicit(C, hashPat);
+      numericCases.push_back(CaseStmt::createImplicit(
+          C, CaseParentKind::Switch, CaseLabelItem(somePat), caseBody));
+    }
+
+    // default: throw EmbeddedDistributedTargetNotFound(numericTarget: ...)
+    {
+      auto *notFoundTypeExpr =
+          UnresolvedDeclRefExpr::createImplicit(
+              C, C.getIdentifier("EmbeddedDistributedTargetNotFound"));
+      auto *notFoundInitArgs =
+          ArgumentList::createImplicit(
+              C, { Argument(sloc, C.getIdentifier("numericTarget"),
+                            makeNumericIdentifierExpr()) });
+      Expr *notFoundExpr = CallExpr::createImplicit(C, notFoundTypeExpr,
+                                                    notFoundInitArgs);
+      auto *defaultBody = BraceStmt::create(
+          C, sloc, { new (C) ThrowStmt(sloc, notFoundExpr) }, sloc, implicit);
+      auto *anyPat = AnyPattern::createImplicit(C);
+      numericCases.push_back(CaseStmt::createImplicit(
+          C, CaseParentKind::Switch, CaseLabelItem::getDefault(anyPat),
+          defaultBody));
+    }
+
+    auto *numericSwitch = SwitchStmt::createImplicit(
+        LabeledStmtInfo(), makeNumericIdentifierExpr(), numericCases, C);
+    numericBodyStmts.push_back(numericSwitch);
+
+    auto *numericBody =
+        BraceStmt::create(C, sloc, numericBodyStmts, sloc, implicit);
+    return { numericBody, /*isTypeChecked=*/false };
+  }
 
   // Mangle each distributed thunk's name exactly once
   struct DispatchTarget {

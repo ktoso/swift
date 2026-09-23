@@ -129,6 +129,16 @@ namespace swift {
     Complete,
   };
 
+  /// Selects how Embedded Swift derives a distributed call target's wire
+  /// identifier.
+  enum class DistributedTargetIdentifierMode : uint8_t {
+    /// The mangled name of the distributed thunk (default).
+    Default,
+    /// FNV-1a 64 over the mangled thunk name with the mangling-flavour prefix
+    /// stripped.
+    FNV1a64,
+  };
+
   /// A collection of options that affect the language dialect and
   /// provide compiler debugging facilities.
   class LangOptions final {
@@ -204,6 +214,11 @@ namespace swift {
 
     /// Optimization mode for unavailable declarations.
     std::optional<UnavailableDeclOptimization> UnavailableDeclOptimizationMode;
+
+    /// Selects how Embedded Swift derives a distributed call target's wire
+    /// identifier.
+    DistributedTargetIdentifierMode DistributedTargetIdentifiers =
+        DistributedTargetIdentifierMode::Default;
 
     /// Causes the compiler to use weak linkage for symbols belonging to
     /// declarations introduced at the deployment target.

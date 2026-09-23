@@ -613,6 +613,15 @@ def unavailable_decl_optimization_EQ : Joined<["-"], "unavailable-decl-optimizat
            "value may be 'none' (no optimization) or 'complete' (code is not "
            "generated at all unavailable declarations)">;
 
+def distributed_id_gen_EQ : Joined<["-"], "distributed-id-gen=">,
+  MetaVarName<"<default,fnv1a-64>">,
+  Flags<[FrontendOption, NoInteractiveOption]>,
+  HelpText<"Selects how Embedded Swift derives a distributed call target's wire "
+           "identifier. 'default' uses the mangled thunk name. 'fnv1a-64' uses an "
+           "FNV-1a 64 hash of it, which is smaller in both code and on the wire but "
+           "changes the wire format. Swift-to-Swift only; not compatible with any "
+           "non-Swift RPC system's tag scheme.">;
+
 def define_enabled_availability_domain : Separate<["-"], "define-enabled-availability-domain">,
     Flags<[HelpHidden, FrontendOption, NoInteractiveOption, ModuleInterfaceOptionIgnorable]>,
     HelpText<"Defines a custom availability domain that is available at compile time">,

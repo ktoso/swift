@@ -1310,10 +1310,18 @@ GetDistributedRemoteCallTargetInitFunctionRequest::evaluate(
           C.getRemoteCallTargetType()))
     return nullptr;
 
-  // The identifier is a `StaticString` in Embedded Swift.
-  NominalTypeDecl *expectedParamDecl =
-      C.LangOpts.hasFeature(Feature::Embedded) ? C.getStaticStringDecl()
-                                               : C.getStringDecl();
+  // In standard Swift the identifier is a `String`. In Embedded Swift it is a
+  // `StaticString` (the mangled thunk name) by default, or a `UInt64` numeric
+  // identifier under '-distributed-id-gen=fnv1a-64'.
+  NominalTypeDecl *expectedParamDecl;
+  if (!C.LangOpts.hasFeature(Feature::Embedded)) {
+    expectedParamDecl = C.getStringDecl();
+  } else if (C.LangOpts.DistributedTargetIdentifiers ==
+             DistributedTargetIdentifierMode::FNV1a64) {
+    expectedParamDecl = C.getUInt64Decl();
+  } else {
+    expectedParamDecl = C.getStaticStringDecl();
+  }
   if (!expectedParamDecl)
     return nullptr;
 

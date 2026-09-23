@@ -1427,6 +1427,28 @@ static bool ParseLangArgs(LangOptions &Opts, ArgList &Args,
   if (parseFeatureArgs(Opts, Args, Diags))
     HadError = true;
 
+  // Parsed after features so the '-distributed-id-gen=fnv1a-64' Embedded-only
+  // check sees whether '-enable-experimental-feature Embedded' was requested.
+  if (const Arg *A = Args.getLastArg(OPT_distributed_id_gen_EQ)) {
+    auto value =
+        llvm::StringSwitch<std::optional<DistributedTargetIdentifierMode>>(
+            A->getValue())
+            .Case("default", DistributedTargetIdentifierMode::Default)
+            .Case("fnv1a-64", DistributedTargetIdentifierMode::FNV1a64)
+            .Default(std::nullopt);
+
+    if (!value) {
+      Diags.diagnose(SourceLoc(), diag::error_invalid_arg_value,
+                     A->getAsString(Args), A->getValue());
+    } else if (*value == DistributedTargetIdentifierMode::FNV1a64 &&
+               !Opts.hasFeature(Feature::Embedded)) {
+      Diags.diagnose(SourceLoc(), diag::distributed_id_gen_requires_embedded,
+                     A->getValue());
+    } else {
+      Opts.DistributedTargetIdentifiers = *value;
+    }
+  }
+
   // SuppressedAssociatedTypesWithDefaults is now always-on by default.
   // If the old prototype version of the feature has been requested, honor it.
   if (Opts.hasFeature(SuppressedAssociatedTypes) &&
