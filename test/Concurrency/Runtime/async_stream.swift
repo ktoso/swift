@@ -1142,6 +1142,54 @@ class NotSendable {}
         }
       }
 
+      // rdar://187176639: a handler set after the stream already terminated
+      // must not be silently dropped; it runs once, when the storage is
+      // destroyed, with the `.cancelled` reason
+      tests.test("onTermination set after finish is invoked on deinit") {
+        nonisolated(unsafe) var reasons: [AsyncStream<Int>.Continuation.Termination] = []
+        do {
+          let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+          continuation.finish()
+          continuation.onTermination = { @Sendable reason in reasons.append(reason) }
+          expectEqual(reasons, [])
+          withExtendedLifetime(stream) {}
+        }
+        expectEqual(reasons, [.cancelled])
+      }
+
+      tests.test("onTermination set after finish is invoked on deinit throwing") {
+        nonisolated(unsafe) var reasons: [AsyncThrowingStream<Int, Error>.Continuation.Termination] = []
+        do {
+          let (stream, continuation) = AsyncThrowingStream.makeStream(of: Int.self)
+          continuation.finish(throwing: SomeError())
+          continuation.onTermination = { @Sendable reason in reasons.append(reason) }
+          expectEqual(reasons.count, 0)
+          withExtendedLifetime(stream) {}
+        }
+        expectEqual(reasons.count, 1)
+        if case .cancelled? = reasons.first {} else {
+          expectUnreachable("expected .cancelled, got \(reasons)")
+        }
+      }
+
+      tests.test("onTermination set after cancellation is invoked on deinit") {
+        nonisolated(unsafe) var reasons: [AsyncStream<Int>.Continuation.Termination] = []
+        do {
+          let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+          continuation.onTermination = { @Sendable reason in reasons.append(reason) }
+          await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+              for await _ in stream {}
+            }
+            group.cancelAll()
+          }
+          expectEqual(reasons, [.cancelled])
+          continuation.onTermination = { @Sendable reason in reasons.append(reason) }
+          expectEqual(reasons, [.cancelled])
+        }
+        expectEqual(reasons, [.cancelled, .cancelled])
+      }
+
       // MARK: - Task Cancellation
 
       // FIXME: https://github.com/swiftlang/swift/issues/88366
