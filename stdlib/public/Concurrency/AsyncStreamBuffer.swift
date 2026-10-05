@@ -574,14 +574,13 @@ final class _AsyncStreamCriticalStorage<Contents>: @unchecked Sendable {
     }
   }
 
-  /// Atomically replaces the contents with `nil` and returns the previous
-  /// contents. At most one caller observes a non-`nil` value.
-  func take<Wrapped>() -> Contents where Contents == Wrapped? {
+  /// Runs `body` with exclusive access to the contents. Values that `body`
+  /// moves out and returns are released by the caller after the lock is
+  /// dropped, so their deinitializers never run while it is held
+  func withLock<Result>(_ body: (inout Contents) -> Result) -> Result {
     lock()
-    let contents = _value
-    _value = nil
-    unlock()
-    return contents
+    defer { unlock() }
+    return body(&_value)
   }
 
   static func create(_ initial: Contents) -> _AsyncStreamCriticalStorage {

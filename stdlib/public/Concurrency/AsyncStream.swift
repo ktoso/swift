@@ -348,22 +348,26 @@ public struct AsyncStream<Element> {
     unfolding produce: @escaping @Sendable () async -> Element?,
     onCancel: (@Sendable () -> Void)? = nil
   ) {
-    let storage: _AsyncStreamCriticalStorage<Optional<() async -> Element?>>
-      = .create(produce)
+    let storage: _AsyncStreamCriticalStorage<(
+      produce: (() async -> Element?)?,
+      onCancel: (@Sendable () -> Void)?
+    )> = .create((produce, onCancel))
     context = _Context {
       return await withTaskCancellationHandler {
-        guard let result = await storage.value?() else {
-          storage.value = nil
+        guard let result = await storage.withLock({ $0.produce })?() else {
+          _ = storage.withLock { $0.produce.take() }
           return nil
         }
         return result
       } onCancel: {
         // This handler also runs immediately for every next() on an
-        // already-cancelled task; call `onCancel` at most once, and not at all
-        // if the stream already finished.
-        if storage.take() != nil {
-          onCancel?()
+        // already-cancelled task, so `onCancel` is taken to call it at most
+        // once. It is taken independently of `produce`, which may already
+        // have returned `nil` after observing the cancellation itself
+        let (_, handler) = storage.withLock { state in
+          (state.produce.take(), state.onCancel.take())
         }
+        handler?()
       }
     }
   }

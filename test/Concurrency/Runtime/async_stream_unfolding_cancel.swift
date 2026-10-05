@@ -105,7 +105,7 @@ final class Gate: Sendable {
         expectEqual(cancelCount.withLock { $0 }, 1)
       }
 
-      tests.test("onCancel not called when cancelled after normal finish") {
+      tests.test("onCancel once when cancelled after normal finish") {
         let cancelCount = Mutex(0)
         let produceCount = Mutex(0)
 
@@ -127,10 +127,64 @@ final class Gate: Sendable {
 
         await task.value
         expectEqual(produceCount.withLock { $0 }, 3)
-        expectEqual(cancelCount.withLock { $0 }, 0)
+        expectEqual(cancelCount.withLock { $0 }, 1)
+      }
+
+      tests.test("onCancel once when producer finishes after observing cancellation") {
+        await producerObservingCancellation(iterations: 200)
       }
     }
 
     await runAllTestsAsync()
+  }
+
+  /// The producer polls for cancellation without suspending and returns `nil`
+  /// as soon as it sees it, racing the cancellation handler that calls
+  /// `onCancel`. Clearing the producer must not consume `onCancel`, so it is
+  /// called exactly once. The cancelling side runs on the main actor so it
+  /// never competes with the spinning producer for a cooperative pool thread
+  @available(SwiftStdlib 6.2, *)
+  @MainActor
+  static func producerObservingCancellation(iterations: Int) async {
+    var counts: [Int: Int] = [:]
+    for _ in 0..<iterations {
+      let cancelCount = Mutex(0)
+      let started = Mutex<CheckedContinuation<Void, Never>?>(nil)
+
+      let stream = AsyncStream<Int>(unfolding: {
+        started.withLock { $0.take() }?.resume()
+        // Fall back to yielding after a while, so a single-threaded pool
+        // can't deadlock the test
+        let deadline = ContinuousClock.now + .seconds(1)
+        var spins = 0
+        while !Task.isCancelled {
+          spins &+= 1
+          if spins & 4095 == 0, ContinuousClock.now > deadline {
+            await Task.yield()
+          }
+        }
+        return nil
+      }, onCancel: {
+        cancelCount.withLock { $0 += 1 }
+      })
+
+      var task: Task<Void, Never>!
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        started.withLock { $0 = c }
+        task = Task.detached {
+          for await _ in stream {}
+          // If the producer returned before cancellation reached the stream's
+          // handler, that handler never ran; a further next() on the
+          // cancelled task runs it immediately, and it must still find
+          // `onCancel`
+          var iterator = stream.makeAsyncIterator()
+          _ = await iterator.next()
+        }
+      }
+      task.cancel()
+      await task.value
+      counts[cancelCount.withLock { $0 }, default: 0] += 1
+    }
+    expectEqual(counts, [1: iterations])
   }
 }
