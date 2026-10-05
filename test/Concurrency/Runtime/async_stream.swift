@@ -1190,6 +1190,66 @@ class NotSendable {}
         expectEqual(reasons, [.cancelled, .cancelled])
       }
 
+      // Cancels a consumer suspended on a stream whose onTermination handler
+      // calls `finish(throwing:)` with `errors` on cancellation, and returns
+      // what the consumer caught
+      func cancelConsumer(finishingWith errors: [SomeError]) async -> Error? {
+        let (controlStream, controlContinuation) = AsyncStream<Int>.makeStream()
+        var controlIterator = controlStream.makeAsyncIterator()
+
+        let task = Task { () -> Error? in
+          let stream = AsyncThrowingStream<Int, Error> { continuation in
+            continuation.onTermination = { @Sendable termination in
+              if case .cancelled = termination {
+                for error in errors {
+                  continuation.finish(throwing: error)
+                }
+              }
+            }
+          }
+          controlContinuation.yield(1)
+          do {
+            for try await _ in stream {}
+            return nil
+          } catch {
+            return error
+          }
+        }
+
+        _ = await controlIterator.next()
+        task.cancel()
+        return await task.value
+      }
+
+      // rdar://183522041: the handler runs before the stream commits to its
+      // terminal state, so its finish(throwing:) decides the outcome
+      tests.test("finish(throwing:) from onTermination on cancellation throws the error passed to finish") {
+        let thrownError = SomeError()
+        let caught = await cancelConsumer(finishingWith: [thrownError])
+        expectEqual(caught as? SomeError, thrownError)
+      }
+
+      tests.test("finish(throwing:) from onTermination keeps the first error when called twice") {
+        let firstError = SomeError(value: 1)
+        let caught = await cancelConsumer(
+          finishingWith: [firstError, SomeError(value: 2)])
+        expectEqual(caught as? SomeError, firstError)
+      }
+
+      // rdar://186212463: the consumer's own next() must not finish the stream
+      // with `nil` while the handler is still about to call finish(throwing:)
+      tests.test("finish(throwing:) from onTermination on cancellation is never lost") {
+        let thrownError = SomeError()
+        var lost = 0
+        for _ in 0..<200 {
+          let caught = await cancelConsumer(finishingWith: [thrownError])
+          if caught as? SomeError != thrownError {
+            lost += 1
+          }
+        }
+        expectEqual(lost, 0)
+      }
+
       // MARK: - Task Cancellation
 
       // FIXME: https://github.com/swiftlang/swift/issues/88366
