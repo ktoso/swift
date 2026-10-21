@@ -1,7 +1,10 @@
 // RUN: %target-swift-emit-silgen-ossa -o /dev/null -enable-sil-opaque-values %s
 // RUN: %target-swift-frontend -Xllvm -sil-print-types -emit-silgen %s -target %target-swift-5.1-abi-triple | %FileCheck %s
+// RUN: %target-swift-frontend -Xllvm -sil-print-types -emit-silgen %s -target %target-swift-5.1-abi-triple -enable-upcoming-feature NonisolatedNonsendingByDefault | %FileCheck %s --check-prefix=CHECK-NONSENDING
+// RUN: %target-swift-frontend -Xllvm -sil-print-types -emit-silgen %s -target %target-swift-5.1-abi-triple | %FileCheck %s --check-prefix=CHECK-NESTED
 
 // REQUIRES: concurrency
+// REQUIRES: swift_feature_NonisolatedNonsendingByDefault
 
 class NotSendable {}
 
@@ -78,6 +81,51 @@ actor DeferInsideInitActor {
   }
 }
 
+// Make sure defer inside a Task closure in an init inherits the closure's isolation.
+actor DeferInsideTaskInitActor {
+  init(foo: ()) async throws {
+    Task {
+      self.assertIsolated("Inside task")
+      // CHECK-LABEL: // $defer #1 () in closure #1 in DeferInsideTaskInitActor.init(foo:)
+      // CHECK-NEXT: // Isolation: actor_instance. name: 'self'
+      // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation24DeferInsideTaskInitActorC3fooACyt_tYaKcfcyyYacfU_6$deferL_yyF : $@convention(thin) () -> () {
+      defer {}
+      print("noop")
+    }
+    self.init()
+  }
+}
+
+// https://github.com/swiftlang/swift/issues/93432
+// An async defer in a global actor isolated closure must hop to the actor on
+// entry, not to the global executor
+@MainActor
+final class AsyncDeferInGlobalActorClosure {
+  func run() {
+    Task {
+      MainActor.assertIsolated("Inside task")
+      // CHECK-LABEL: // $defer #1 () in closure #1 in AsyncDeferInGlobalActorClosure.run()
+      // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+      // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation30AsyncDeferInGlobalActorClosureC3runyyFyyYacfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+      // CHECK-NEXT: // %0
+      // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+
+      // We must not randomly hop off:
+      // CHECK-NOT: #Optional.none!enumelt
+
+      // The defer is caller-isolated and hops to the isolation it is passed:
+      // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+      // CHECK: } // end sil function '$s24local_function_isolation30AsyncDeferInGlobalActorClosureC3runyyFyyYacfU_6$deferL_yyYaF'
+      defer {
+        MainActor.assertIsolated("Inside task")
+        await test()
+      }
+      await test()
+    }
+  }
+}
+
+
 actor NestedAsyncInSyncActor {
   public func outer() async {
     // CHECK-LABEL: sil private [ossa] @$s24local_function_isolation22NestedAsyncInSyncActorC5outeryyYaF6middleL_yyF : $@convention(thin) (@sil_isolated @guaranteed NestedAsyncInSyncActor) -> () {
@@ -105,10 +153,11 @@ func outerFunction(_ a: any Actor) async {
 actor AsyncDeferActor {
   func foo() async {
     // CHECK-LABEL: // $defer #1 () in AsyncDeferActor.foo()
-    // CHECK-NEXT: // Isolation: actor_instance. name: 'self'
-    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation15AsyncDeferActorC3fooyyYaF6$deferL_yyYaF : $@convention(thin) @async (@sil_isolated @guaranteed AsyncDeferActor) -> () {
-    // CHECK-NEXT: // %0 "self"
-    // CHECK-NEXT: bb0(%0 : @closureCapture @guaranteed $AsyncDeferActor):
+    // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation15AsyncDeferActorC3fooyyYaF6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor, @guaranteed AsyncDeferActor) -> () {
+    // CHECK-NEXT: // %0
+    // CHECK-NEXT: // %1 "self"
+    // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor, %1 : @closureCapture @guaranteed $AsyncDeferActor):
     defer {
       await test()
     }
@@ -118,15 +167,195 @@ actor AsyncDeferActor {
 }
 
 
+// An async defer in a closure isolated to an actor instance is passed the
+// isolation of the closure and hops to it on entry.
+actor AsyncDeferInActorInstanceClosure {
+  func run() {
+    Task {
+      self.assertIsolated("Inside task")
+      // CHECK-LABEL: // $defer #1 () in closure #1 in AsyncDeferInActorInstanceClosure.run()
+      // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+      // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation32AsyncDeferInActorInstanceClosureC3runyyFyyYacfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+      // CHECK-NEXT: // %0
+      // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+      // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+      // CHECK-NEXT: // function_ref test()
+      // CHECK-NEXT: %2 = function_ref @$s24local_function_isolation4testyyYaF : $@convention(thin) @async () -> ()
+      // CHECK-NEXT: %3 = apply %2() : $@convention(thin) @async () -> ()
+      // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+      // CHECK-NEXT: %5 = tuple ()
+      // CHECK-NEXT: return %5 : $()
+      // CHECK-NEXT: } // end sil function '$s24local_function_isolation32AsyncDeferInActorInstanceClosureC3runyyFyyYacfU_6$deferL_yyYaF'
+      defer {
+        await test()
+      }
+      await test()
+    }
+  }
+}
+
+// The same for a closure that is isolated to a captured 'isolated' parameter.
+func asyncDeferInCapturedIsolatedParamClosure(isolated: isolated any Actor) async {
+  let _: () async -> Void = {
+    isolated.assertIsolated("Inside closure")
+    // CHECK-LABEL: // $defer #1 () in closure #1 in asyncDeferInCapturedIsolatedParamClosure(isolated:)
+    // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation40asyncDeferInCapturedIsolatedParamClosure8isolatedyScA_pYi_tYaFyyYacfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NEXT: // %0
+    // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NEXT: // function_ref test()
+    // CHECK-NEXT: %2 = function_ref @$s24local_function_isolation4testyyYaF : $@convention(thin) @async () -> ()
+    // CHECK-NEXT: %3 = apply %2() : $@convention(thin) @async () -> ()
+    // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NEXT: %5 = tuple ()
+    // CHECK-NEXT: return %5 : $()
+    // CHECK-NEXT: } // end sil function '$s24local_function_isolation40asyncDeferInCapturedIsolatedParamClosure8isolatedyScA_pYi_tYaFyyYacfU_6$deferL_yyYaF'
+    defer {
+      await test()
+    }
+    await test()
+  }
+}
+
+// Nested async defers in a closure isolated to a global actor.
+@MainActor
+final class NestedAsyncDeferInGlobalActorClosure {
+  func run() {
+    // CHECK-LABEL: // $defer #1 () in closure #1 in NestedAsyncDeferInGlobalActorClosure.run()
+    // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation36NestedAsyncDeferInGlobalActorClosureC3runyyFyyYacfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NEXT: // %0
+    // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    // CHECK-NESTED-LABEL: // $defer #1 () in $defer #1 () in closure #1 in NestedAsyncDeferInGlobalActorClosure.run()
+    // CHECK-NESTED-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NESTED-NEXT: sil private [ossa] @$s24local_function_isolation36NestedAsyncDeferInGlobalActorClosureC3runyyFyyYacfU_6$deferL_yyYaFAEL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NESTED-NEXT: // %0
+    // CHECK-NESTED-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    Task {
+      defer {
+        defer {
+          await test()
+        }
+        await test()
+      }
+      await test()
+    }
+  }
+}
+
+// Nested async defers in a closure isolated to an actor instance.
+actor NestedAsyncDeferInActorInstanceClosure {
+  func run() {
+    // CHECK-LABEL: // $defer #1 () in closure #1 in NestedAsyncDeferInActorInstanceClosure.run()
+    // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation38NestedAsyncDeferInActorInstanceClosureC3runyyFyyYacfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NEXT: // %0
+    // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NESTED-LABEL: // $defer #1 () in $defer #1 () in closure #1 in NestedAsyncDeferInActorInstanceClosure.run()
+    // CHECK-NESTED-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NESTED-NEXT: sil private [ossa] @$s24local_function_isolation38NestedAsyncDeferInActorInstanceClosureC3runyyFyyYacfU_6$deferL_yyYaFAEL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NESTED-NEXT: // %0
+    // CHECK-NESTED-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    // CHECK-NESTED-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    Task {
+      self.assertIsolated("Inside task")
+      defer {
+        defer {
+          await test()
+        }
+        await test()
+      }
+      await test()
+    }
+  }
+}
+
+// A sync defer that does not use the isolation does not capture the actor
+actor PlainSyncDeferInActorInstanceClosure {
+  func run() {
+    // CHECK-LABEL: // $defer #1 () in closure #1 in PlainSyncDeferInActorInstanceClosure.run()
+    // CHECK-NEXT: // Isolation: actor_instance. name: 'self'
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation36PlainSyncDeferInActorInstanceClosureC3runyyFyyYacfU_6$deferL_yyF : $@convention(thin) () -> () {
+    // CHECK-NEXT: bb0:
+    Task {
+      self.assertIsolated("Inside task")
+      defer {
+        print("done")
+      }
+      await test()
+    }
+  }
+}
+
+// https://github.com/swiftlang/swift/issues/93432
+// rdar://190427405
+// An 'async let' initializer never inherits the isolation of its parent, in any
+// mode - an async defer in a closure in it is passed the closure's isolation,
+// which is none
+@MainActor
+final class AsyncDeferInAsyncLet {
+  func run() async {
+    // CHECK-LABEL: // implicit closure #1 in AsyncDeferInAsyncLet.run()
+    // CHECK-NEXT: // Isolation: @concurrent
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_ : $@convention(thin) @Sendable @async @substituted <τ_0_0> () -> (@out τ_0_0, @error any Error) for <Int> {
+    // CHECK-LABEL: // closure #1 in implicit closure #1 in AsyncDeferInAsyncLet.run()
+    // CHECK-NEXT: // Isolation: @concurrent
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_SiyYaXEfU_ : $@convention(thin) @async () -> Int {
+    // CHECK-LABEL: // $defer #1 () in closure #1 in implicit closure #1 in AsyncDeferInAsyncLet.run()
+    // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_SiyYaXEfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NEXT: // %0
+    // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NEXT: // function_ref test()
+    // CHECK-NEXT: %2 = function_ref @$s24local_function_isolation4testyyYaF : $@convention(thin) @async () -> ()
+    // CHECK-NEXT: %3 = apply %2() : $@convention(thin) @async () -> ()
+    // CHECK-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NEXT: %5 = tuple ()
+    // CHECK-NEXT: return %5 : $()
+    // CHECK-NEXT: } // end sil function '$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_SiyYaXEfU_6$deferL_yyYaF'
+    // CHECK-NONSENDING-LABEL: // implicit closure #1 in AsyncDeferInAsyncLet.run()
+    // CHECK-NONSENDING-NEXT: // Isolation: @concurrent
+    // CHECK-NONSENDING-NEXT: sil private [ossa] @$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_ : $@convention(thin) @Sendable @async @substituted <τ_0_0> () -> (@out τ_0_0, @error any Error) for <Int> {
+    // CHECK-NONSENDING-LABEL: // closure #1 in implicit closure #1 in AsyncDeferInAsyncLet.run()
+    // CHECK-NONSENDING-NEXT: // Isolation: @concurrent
+    // CHECK-NONSENDING-NEXT: sil private [ossa] @$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_SiyYaXEfU_ : $@convention(thin) @async () -> Int {
+    // CHECK-NONSENDING-LABEL: // $defer #1 () in closure #1 in implicit closure #1 in AsyncDeferInAsyncLet.run()
+    // CHECK-NONSENDING-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NONSENDING-NEXT: sil private [ossa] @$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_SiyYaXEfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> () {
+    // CHECK-NONSENDING-NEXT: // %0
+    // CHECK-NONSENDING-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor):
+    // CHECK-NONSENDING-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NONSENDING-NEXT: // function_ref test()
+    // CHECK-NONSENDING-NEXT: %2 = function_ref @$s24local_function_isolation4testyyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> ()
+    // CHECK-NONSENDING-NEXT: %3 = apply %2(%0) : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor) -> ()
+    // CHECK-NONSENDING-NEXT: hop_to_executor %0 : $Builtin.ImplicitActor
+    // CHECK-NONSENDING-NEXT: %5 = tuple ()
+    // CHECK-NONSENDING-NEXT: return %5 : $()
+    // CHECK-NONSENDING-NEXT: } // end sil function '$s24local_function_isolation012AsyncDeferInD3LetC3runyyYaFSiyYaYbcfu_SiyYaXEfU_6$deferL_yyYaF'
+    async let result: Int = {
+      defer {
+        await test()
+      }
+      await test()
+      return 42
+    }()
+    _ = await result
+  }
+}
+
 func testAsyncDeferIsolatedParam(isolated: isolated (any Actor)? = nil) async {
   let x: Int = 0
 
   // CHECK-LABEL: // $defer #1 () in testAsyncDeferIsolatedParam(isolated:)
-  // CHECK-NEXT: // Isolation: actor_instance. name: 'isolated'
-  // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaF6$deferL_yyYaF : $@convention(thin) @async (Int, @sil_isolated @guaranteed Optional<any Actor>) -> () {
-  // CHECK-NEXT: // %0 "x"
-  // CHECK-NEXT: // %1 "isolated"
-  // CHECK-NEXT: bb0(%0 : @closureCapture $Int, %1 : @closureCapture @guaranteed $Optional<any Actor>):
+  // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+  // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaF6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor, Int, @guaranteed Optional<any Actor>) -> () {
+  // CHECK-NEXT: // %0
+  // CHECK-NEXT: // %1 "x"
+  // CHECK-NEXT: // %2 "isolated"
+  // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor, %1 : @closureCapture $Int, %2 : @closureCapture @guaranteed $Optional<any Actor>):
   defer {
     await test()
     _ = x
@@ -139,10 +368,11 @@ func testAsyncDeferIsolatedParam(isolated: isolated (any Actor)? = nil) async {
     let z: Int = 0
 
     // CHECK-LABEL: // $defer #1 () in closure #1 in testAsyncDeferIsolatedParam(isolated:)
-    // CHECK-NEXT: // Isolation: global_actor. type: MainActor
-    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaFyyYaScMYccfU_6$deferL_yyYaF : $@convention(thin) @async (Int) -> () {
-    // CHECK-NEXT: // %0 "z"
-    // CHECK-NEXT: bb0(%0 : @closureCapture $Int):
+    // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+    // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaFyyYaScMYccfU_6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor, Int) -> () {
+    // CHECK-NEXT: // %0
+    // CHECK-NEXT: // %1 "z"
+    // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor, %1 : @closureCapture $Int):
     defer {
       await test()
       _ = z
@@ -153,19 +383,21 @@ func testAsyncDeferIsolatedParam(isolated: isolated (any Actor)? = nil) async {
     func inner(isolated: isolated (any Actor)? = nil) async {
       let y: Int = 0
       // CHECK-LABEL: // $defer #1 () in inner #1 (isolated:) in closure #1 in testAsyncDeferIsolatedParam(isolated:)
-      // CHECK-NEXT: // Isolation: actor_instance. name: 'isolated'
-      // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaFyyYaScMYccfU_5innerL_ACyADYi_tYaF6$deferL_yyYaF : $@convention(thin) @async (@sil_isolated @guaranteed Optional<any Actor>, Int) -> () {
-      // CHECK-NEXT: // %0 "isolated"
-      // CHECK-NEXT: // %1 "y"
-      // CHECK-NEXT: bb0(%0 : @closureCapture @guaranteed $Optional<any Actor>, %1 : @closureCapture $Int): 
+      // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+      // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaFyyYaScMYccfU_5innerL_ACyADYi_tYaF6$deferL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor, @guaranteed Optional<any Actor>, Int) -> () {
+      // CHECK-NEXT: // %0
+      // CHECK-NEXT: // %1 "isolated"
+      // CHECK-NEXT: // %2 "y"
+      // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor, %1 : @closureCapture @guaranteed $Optional<any Actor>, %2 : @closureCapture $Int):
       defer {
         await test()
 
         // CHECK-LABEL: // $defer #1 () in $defer #1 () in inner #1 (isolated:) in closure #1 in testAsyncDeferIsolatedParam(isolated:)
-        // CHECK-NEXT: // Isolation: actor_instance. name: 'isolated'
-        // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaFyyYaScMYccfU_5innerL_ACyADYi_tYaF6$deferL_yyYaFAFL_yyYaF : $@convention(thin) @async (@sil_isolated @guaranteed Optional<any Actor>) -> () {
-        // CHECK-NEXT: // %0 "isolated"
-        // CHECK-NEXT: bb0(%0 : @closureCapture @guaranteed $Optional<any Actor>):
+        // CHECK-NEXT: // Isolation: nonisolated(nonsending)
+        // CHECK-NEXT: sil private [ossa] @$s24local_function_isolation27testAsyncDeferIsolatedParam8isolatedyScA_pSgYi_tYaFyyYaScMYccfU_5innerL_ACyADYi_tYaF6$deferL_yyYaFAFL_yyYaF : $@convention(thin) @caller_isolated @async (@sil_isolated @sil_implicit_leading_param @guaranteed Builtin.ImplicitActor, @guaranteed Optional<any Actor>) -> () {
+        // CHECK-NEXT: // %0
+        // CHECK-NEXT: // %1 "isolated"
+        // CHECK-NEXT: bb0(%0 : @guaranteed $Builtin.ImplicitActor, %1 : @closureCapture @guaranteed $Optional<any Actor>):
         defer {
           await test()
         }

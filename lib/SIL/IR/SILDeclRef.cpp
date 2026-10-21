@@ -855,6 +855,13 @@ FuncDecl *SILDeclRef::getFuncDecl() const {
   return dyn_cast_or_null<FuncDecl>(getDecl());
 }
 
+FuncDecl *SILDeclRef::getDeferBodyFuncDecl() const {
+  if (kind != Kind::Func || !hasFuncDecl())
+    return nullptr;
+  auto *FD = getFuncDecl();
+  return FD->isDeferBody() ? FD : nullptr;
+}
+
 ModuleDecl *SILDeclRef::getModuleContext() const {
   if (hasDecl()) {
     return getDecl()->getModuleContext();
@@ -2087,6 +2094,12 @@ bool SILDeclRef::isCalleeAllocatedCoroutine() const {
 }
 
 ActorIsolation SILDeclRef::getActorIsolation() const {
+  // An async defer runs on the isolation of its only caller, the enclosing
+  // scope, which passes it as the implicit isolated parameter
+  if (auto *deferBody = getDeferBodyFuncDecl();
+      deferBody && deferBody->hasAsync())
+    return ActorIsolation::forNonisolatedNonsending();
+
   // Deallocating destructor is always nonisolated. Isolation of the deinit
   // applies only to isolated deallocator and destroyer.
   if (kind == SILDeclRef::Kind::Deallocator) {

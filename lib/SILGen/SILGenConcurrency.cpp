@@ -164,7 +164,10 @@ void SILGenFunction::emitExpectedExecutorProlog() {
 
   if (auto *funcDecl =
         dyn_cast_or_null<AbstractFunctionDecl>(FunctionDC->getAsDecl())) {
-    auto actorIsolation = getActorIsolation(funcDecl);
+    auto *funcOrNull = dyn_cast<FuncDecl>(funcDecl);
+    auto actorIsolation = funcOrNull && funcOrNull->isDeferBody()
+                              ? SILDeclRef(funcDecl).getActorIsolation()
+                              : getActorIsolation(funcDecl);
     switch (actorIsolation.getKind()) {
     case ActorIsolation::Unspecified:
     case ActorIsolation::Nonisolated:

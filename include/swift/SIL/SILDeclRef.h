@@ -306,6 +306,8 @@ struct SILDeclRef {
   ClosureExpr *getClosureExpr() const;
   AutoClosureExpr *getAutoClosureExpr() const;
   FuncDecl *getFuncDecl() const;
+  /// The function of a 'defer' body, if this refers to one, or null
+  FuncDecl *getDeferBodyFuncDecl() const;
   AbstractFunctionDecl *getAbstractFunctionDecl() const;
   AccessorDecl *getAccessorDecl() const;
   FileUnit *getFileUnit() const { return cast<FileUnit *>(loc); }

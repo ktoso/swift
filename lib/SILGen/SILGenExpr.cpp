@@ -7785,7 +7785,11 @@ RValue RValueEmitter::visitCurrentContextIsolationExpr(
 
   auto isolation = getRealActorIsolationOfContext(SGF.FunctionDC);
 
-  if (isolation == ActorIsolation::NonisolatedNonsending) {
+  // An async defer is caller-isolated and receives the isolation implicitly
+  auto *deferBody = dyn_cast_or_null<FuncDecl>(SGF.FunctionDC->getAsDecl());
+  bool isAsyncDefer = SGF.F.isDefer() && deferBody && deferBody->hasAsync();
+
+  if (isolation == ActorIsolation::NonisolatedNonsending || isAsyncDefer) {
     auto *isolatedArg = SGF.F.maybeGetIsolatedArgument();
     assert(isolatedArg &&
            "Caller Isolation Inheriting without isolated parameter");
