@@ -382,6 +382,9 @@ extern uintptr_t __COMPATIBILITY_LIBRARIES_CANNOT_CHECK_THE_IS_SWIFT_BIT_DIRECTL
 #define __ptrauth_swift_deinit_work_function                                   \
   __ptrauth(ptrauth_key_function_pointer, 1,                                   \
             SpecialPointerAuthDiscriminators::DeinitWorkFunction)
+#define __ptrauth_swift_synchronous_task_operation                             \
+  __ptrauth(ptrauth_key_function_pointer, 1,                                   \
+            SpecialPointerAuthDiscriminators::SynchronousTaskOperation)
 #define __ptrauth_swift_is_global_actor_function                               \
   __ptrauth(ptrauth_key_function_pointer, 1,                                   \
             SpecialPointerAuthDiscriminators::IsCurrentGlobalActorFunction)
@@ -442,6 +445,7 @@ extern uintptr_t __COMPATIBILITY_LIBRARIES_CANNOT_CHECK_THE_IS_SWIFT_BIT_DIRECTL
 #define swift_ptrauth_sign_opaque_modify_resume_function(__fn, __buffer) (__fn)
 #define __ptrauth_swift_type_layout_string
 #define __ptrauth_swift_deinit_work_function
+#define __ptrauth_swift_synchronous_task_operation
 #define __ptrauth_swift_is_global_actor_function
 #define __ptrauth_swift_concurrency_hook
 #define __ptrauth_swift_thread_sanitizer_hook

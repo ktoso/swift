@@ -271,6 +271,11 @@ typedef struct swift_async_task_info {
 
   const char *Name;
   swift_reflection_ptr_t RegistryNext;
+
+  /// The task's operation is a synchronous function.
+  ///
+  /// Introduced in Swift 6.5
+  bool HasSynchronousOperation;
 } swift_async_task_info_t;
 
 typedef struct swift_actor_info {
